@@ -1,0 +1,182 @@
+---
+title: "Saltmarsh_fn_traits"
+author: "Dana Lanceman"
+date: "2023-09-12"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+# 1. Set up
+
+```{r Load packages}
+#install.packages("readxl")
+#install.packages("tidyverse")
+
+library(readxl)
+library(tidyverse)
+```
+
+
+```{r Get data}
+# set working directory
+setwd("C:/Users/z5204897/OneDrive - UNSW/Desktop/PhD/Data_analysis")
+
+# input saltmarsh data
+salt <- read_excel("Data/xlsx/Functional_traits_combined_data.xlsx", sheet = "Saltmarsh") %>% 
+  arrange(Date, Time) %>% 
+  mutate(total_stems = Stems * 10000/Quad_length_cm^2, # add column for total stem count per 1m2 for each species to standardise stem counts
+         rest_year = case_when(
+           Site == "AE" ~ as.numeric("2017"),
+           Site == "HS" ~ as.numeric("2008"),
+           Site == "TA" ~ as.numeric("2007"),
+           Site == "TB" ~ as.numeric("2012"),
+           Site == "CC" ~ as.numeric("1990"),
+           Site == "CF" ~ as.numeric("1993"),
+           Site == "DLW" ~ as.numeric("2014")
+         )) # add a column for restoration years
+# double check with Will years for each
+```
+
+
+# 2. Explore data
+
+```{r Explore non-species-specific data}
+# plot by order of observation
+plot(salt$Canopy_ht_cm)
+plot(salt$Burrows_0.5x0.5)
+plot(salt$`Total_cover_%`)
+
+# plot by site
+new_order <- with(salt, reorder(Site, Canopy_ht_cm, median, na.rm=T)) 
+boxplot(Canopy_ht_cm ~ new_order, data = salt)
+
+new_order <- with(salt, reorder(Site, Burrows_0.5x0.5, median, na.rm=T)) 
+boxplot(Burrows_0.5x0.5 ~ new_order, data = salt)
+
+new_order <- with(salt, reorder(Site, `Total_cover_%`, median, na.rm=T)) 
+boxplot(`Total_cover_%` ~ new_order, data = salt)
+```
+
+
+```{r By species - Sporobolus}
+spor <- salt %>%
+  filter(Species == "Sporobolus")
+
+# plot each variable by order recorded
+plot(spor$total_stems)
+plot(spor$`Sp_cover_%`)
+# need to fix first and then do flowers and seeds too plot(spor$Buds)
+plot(spor$Stem_ht_mm)
+plot(spor$Stem_dia_mm)
+
+# plot by Site
+new_order <- with(spor, reorder(Site, total_stems, median, na.rm=T)) 
+boxplot(total_stems ~ new_order, data = spor)
+
+new_order <- with(spor, reorder(Site, `Sp_cover_%`, median, na.rm=T)) 
+boxplot(`Sp_cover_%` ~ new_order, data = spor)
+
+new_order <- with(spor, reorder(Site, Stem_ht_mm, median, na.rm=T)) 
+boxplot(Stem_ht_mm ~ new_order, data = spor)
+
+new_order <- with(spor, reorder(Site, Stem_dia_mm, median, na.rm=T)) 
+boxplot(Stem_dia_mm ~ new_order, data = spor)
+
+
+# plot relationships between variables
+plot(spor$Stem_ht_mm, spor$Stem_dia_mm)
+plot(spor$total_stems, spor$`Sp_cover_%`)
+```
+
+```{r By species - Sarcocornia}
+sarc <- salt %>%
+  filter(Species == "Sarcocornia")
+
+# plot each variable by order recorded
+plot(sarc$total_stems)
+plot(sarc$`Sp_cover_%`)
+# need to fix first and then do flowers and seeds too plot(spor$Buds)
+plot(sarc$Stem_ht_mm)
+plot(sarc$Stem_dia_mm)
+
+# plot by Site
+new_order <- with(sarc, reorder(Site, total_stems, median, na.rm=T)) 
+boxplot(total_stems ~ new_order, data = sarc)
+
+new_order <- with(sarc, reorder(Site, `Sp_cover_%`, median, na.rm=T)) 
+boxplot(`Sp_cover_%` ~ new_order, data = sarc)
+
+new_order <- with(sarc, reorder(Site, Stem_ht_mm, median, na.rm=T)) 
+boxplot(Stem_ht_mm ~ new_order, data = sarc)
+
+new_order <- with(sarc, reorder(Site, Stem_dia_mm, median, na.rm=T)) 
+boxplot(Stem_dia_mm ~ new_order, data = sarc)
+
+
+# plot relationships between variables
+plot(sarc$Stem_dia_mm, sarc$Stem_ht_mm)
+plot(sarc$total_stems, sarc$`Sp_cover_%`)
+```
+
+
+```{r By species - Triglochin}
+trig <- salt %>%
+  filter(Species == "Triglochin")
+
+# plot each variable by order recorded
+plot(trig$total_stems)
+plot(trig$`Sp_cover_%`)
+# need to fix first and then do flowers and seeds too plot(spor$Buds)
+plot(trig$Stem_ht_mm)
+plot(trig$Stem_dia_mm)
+
+# plot by Site
+new_order <- with(trig, reorder(Site, total_stems, median, na.rm=T)) 
+boxplot(total_stems ~ new_order, data = trig)
+
+new_order <- with(trig, reorder(Site, `Sp_cover_%`, median, na.rm=T)) 
+boxplot(`Sp_cover_%` ~ new_order, data = trig)
+
+new_order <- with(trig, reorder(Site, Stem_ht_mm, median, na.rm=T)) 
+boxplot(Stem_ht_mm ~ new_order, data = trig)
+
+new_order <- with(trig, reorder(Site, Stem_dia_mm, median, na.rm=T)) 
+boxplot(Stem_dia_mm ~ new_order, data = trig)
+
+
+# plot relationships between variables
+plot(trig$Stem_dia_mm, trig$Stem_ht_mm)
+plot(trig$total_stems, trig$`Sp_cover_%`)
+```
+
+```{r By species - Pneumatophores}
+pneu <- salt %>%
+  filter(Species == "Pneumatophores")
+
+# plot each variable by order recorded
+plot(pneu$total_stems)
+plot(pneu$`Sp_cover_%`)
+# need to fix first and then do flowers and seeds too plot(spor$Buds)
+plot(pneu$Stem_ht_mm)
+plot(pneu$Stem_dia_mm)
+
+# plot by Site
+new_order <- with(pneu, reorder(Site, total_stems, median, na.rm=T)) 
+boxplot(total_stems ~ new_order, data = pneu)
+
+new_order <- with(pneu, reorder(Site, `Sp_cover_%`, median, na.rm=T)) 
+boxplot(`Sp_cover_%` ~ new_order, data = pneu)
+
+new_order <- with(pneu, reorder(Site, Stem_ht_mm, median, na.rm=T)) 
+boxplot(Stem_ht_mm ~ new_order, data = pneu)
+
+new_order <- with(pneu, reorder(Site, Stem_dia_mm, median, na.rm=T)) 
+boxplot(Stem_dia_mm ~ new_order, data = pneu)
+
+
+# plot relationships between variables
+plot(pneu$Stem_dia_mm, pneu$Stem_ht_mm)
+plot(pneu$total_stems, pneu$`Sp_cover_%`)
+```
+
