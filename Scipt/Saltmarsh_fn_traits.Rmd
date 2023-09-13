@@ -59,6 +59,40 @@ boxplot(`Total_cover_%` ~ new_order, data = salt)
 ```
 
 
+this chunk isn't very relevant for anything
+```{r Exploring potential overall changes in species-specific traits}
+# plot each variable by order recorded
+plot(salt$total_stems)
+plot(salt$`Sp_cover_%`)
+# need to fix first and then do flowers and seeds too plot(spor$Buds)
+plot(salt$Stem_ht_mm)
+plot(salt$Stem_dia_mm)
+
+# plot by Site
+new_order <- with(salt, reorder(Site, total_stems, median, na.rm=T)) 
+boxplot(total_stems ~ new_order, data = salt)
+# not really a relevant metric on a non-species-specific level as we measured stems differently for different species.
+
+new_order <- with(salt, reorder(Site, `Sp_cover_%`, median, na.rm=T)) 
+boxplot(`Sp_cover_%` ~ new_order, data = salt)
+# not really a relevant metric on a non-species-specific level as it's more a function of how many species there are
+
+new_order <- with(salt, reorder(Site, Stem_ht_mm, median, na.rm=T)) 
+boxplot(Stem_ht_mm ~ new_order, data = salt)
+# shorter for Maroochy, no clear trends with restoration
+
+new_order <- with(salt, reorder(Site, Stem_dia_mm, median, na.rm=T)) 
+boxplot(Stem_dia_mm ~ new_order, data = salt)
+# no clear trends
+
+
+# plot relationships between variables
+plot(salt$Stem_ht_mm, salt$Stem_dia_mm)
+plot(salt$total_stems, salt$`Sp_cover_%`)
+```
+
+
+
 ```{r By species - Sporobolus}
 spor <- salt %>%
   filter(Species == "Sporobolus")
