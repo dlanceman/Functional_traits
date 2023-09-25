@@ -1,0 +1,209 @@
+---
+title: "Mangrove Tree Traits"
+author: "Dana Lanceman"
+date: "2023-09-14"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+# 1. Set up
+
+```{r Load packages}
+#install.packages("readxl")
+#install.packages("tidyverse")
+
+library(readxl)
+library(tidyverse)
+```
+
+```{r Get data - mangrove tree data}
+# set working directory
+setwd("C:/Users/z5204897/OneDrive - UNSW/Desktop/PhD/Data_analysis/Project/Functional_traits")
+
+# input mangrove data
+mantree <- read_excel("Data/Functional_traits_combined_data.xlsx", sheet = "Mangrove_tree") %>% 
+  arrange(Date, Time) %>% 
+  mutate(total_trees = Trees * 100/Quadrat_size_m2, 
+         total_saplings = Saplings * 100/Quadrat_size_m2,
+         total_hollows = Hollows * 100/Quadrat_size_m2,
+         # add columns for total tree, seedling and hollow counts per 1m2 for each species to standardise  counts
+         rest_year = case_when(
+           Site == "HS" ~ as.numeric("2008"),
+           Site == "CC" ~ as.numeric("1990"),
+           Site == "CF" ~ as.numeric("1993"),
+           Site == "DLW" ~ as.numeric("2014"),
+           Site == "CCW" ~ as.numeric("2007"), # don't know the exact year, need to investigate
+           Site == "YCW" ~ as.numeric("2018")
+         )) # add a column for restoration years
+# double check with Will years for each
+```
+
+```{r Get data - mangrove leaf data}
+# eventually, should combine this with mangrove tree data.
+
+# mangrove leaf herbivory data
+manherb <- read_excel("Data/Functional_traits_combined_data.xlsx", sheet = "Mangrove_herb") %>% 
+  rowwise() %>% 
+  mutate(Herb_av = mean(c_across(Leaf_1:Leaf_5), na.rm = TRUE))
+```
+
+
+# 2. Explore data - Sites, Species, Restoration
+
+```{r Explore quadrat level traits}
+# plot by observation order
+plot(mantree$`Canopy_cover_%`)
+# need to change reproductive data into binary variables 0/1
+plot(mantree$total_trees)
+plot(mantree$total_saplings)
+plot(mantree$total_hollows)
+
+# plot by site
+new_order <- with(mantree, reorder(Site, `Canopy_cover_%`, median, na.rm=T)) 
+boxplot(`Canopy_cover_%` ~ new_order, data = mantree)
+
+new_order <- with(mantree, reorder(Site, total_trees, median, na.rm=T)) 
+boxplot(total_trees ~ new_order, data = mantree)
+
+new_order <- with(mantree, reorder(Site, total_saplings, median, na.rm=T)) 
+boxplot(total_saplings ~ new_order, data = mantree)
+
+new_order <- with(mantree, reorder(Site, total_hollows, median, na.rm=T)) 
+boxplot(total_hollows ~ new_order, data = mantree)
+```
+
+```{r Explore potential overall changes in tree traits}
+
+```
+
+
+```{r Explore tree traits by species - grey mangroves}
+grey <- mantree %>% 
+  filter(Species == "Grey")
+
+# plot by order of observation
+plot(grey$Stems)
+plot(grey$DBH_cm)
+plot(grey$Basal_circ_cm)
+plot(grey$Height_m)
+
+# plot by site
+new_order <- with(grey, reorder(Site, Stems, median, na.rm=T)) 
+boxplot(Stems ~ new_order, data = grey)
+
+new_order <- with(grey, reorder(Site, DBH_cm, median, na.rm=T)) 
+boxplot(DBH_cm ~ new_order, data = grey)
+
+new_order <- with(grey, reorder(Site, Basal_circ_cm, median, na.rm=T)) 
+boxplot(Basal_circ_cm ~ new_order, data = grey)
+
+new_order <- with(grey, reorder(Site, Height_m, median, na.rm=T)) 
+boxplot(Height_m ~ new_order, data = grey)
+```
+
+
+```{r Explore tree traits by species - river mangroves}
+river <- mantree %>% 
+  filter(Species == "River")
+
+# plot by order of observation
+plot(river$Stems)
+plot(river$DBH_cm)
+plot(river$Basal_circ_cm)
+plot(river$Height_m)
+
+# plot by site
+new_order <- with(river, reorder(Site, Stems, median, na.rm=T)) 
+boxplot(Stems ~ new_order, data = river)
+
+new_order <- with(river, reorder(Site, DBH_cm, median, na.rm=T)) 
+boxplot(DBH_cm ~ new_order, data = river)
+
+new_order <- with(river, reorder(Site, Basal_circ_cm, median, na.rm=T)) 
+boxplot(Basal_circ_cm ~ new_order, data = river)
+
+new_order <- with(river, reorder(Site, Height_m, median, na.rm=T)) 
+boxplot(Height_m ~ new_order, data = river)
+```
+
+
+```{r Explore tree traits by species - orange mangroves}
+orange <- mantree %>% 
+  filter(Species == "Orange")
+
+# plot by order of observation
+plot(orange$Stems)
+plot(orange$DBH_cm)
+plot(orange$Basal_circ_cm)
+plot(orange$Height_m)
+
+# plot by site
+new_order <- with(orange, reorder(Site, Stems, median, na.rm=T)) 
+boxplot(Stems ~ new_order, data = orange)
+
+new_order <- with(orange, reorder(Site, DBH_cm, median, na.rm=T)) 
+boxplot(DBH_cm ~ new_order, data = orange)
+
+new_order <- with(orange, reorder(Site, Basal_circ_cm, median, na.rm=T)) 
+boxplot(Basal_circ_cm ~ new_order, data = orange)
+
+new_order <- with(orange, reorder(Site, Height_m, median, na.rm=T)) 
+boxplot(Height_m ~ new_order, data = orange)
+```
+
+
+Only 11 observations of red mangroves, insufficient to say anything
+
+
+# 3. Explore data - leaf data
+
+```{r Leaf herbivory - all species}
+# plot by order of observation
+plot(manherb$Herb_av)
+
+# plot by site
+new_order <- with(manherb, reorder(Site, Herb_av, median, na.rm=T)) 
+boxplot(Herb_av ~ new_order, data = manherb)
+
+# plot by estuary
+boxplot(Herb_av ~ Estuary, data = manherb)
+```
+
+```{r Leaf herbivory - grey mangroves}
+hgrey <- manherb %>% 
+  filter(Species == "Grey")
+
+# plot by order of observation
+plot(hgrey$Herb_av)
+
+# plot by site
+new_order <- with(hgrey, reorder(Site, Herb_av, median, na.rm=T)) 
+boxplot(Herb_av ~ new_order, data = hgrey)
+# lower herbivory at younger restoration sites than older and natural sites (except SI)
+```
+
+```{r Leaf herbivory - orange mangroves}
+horange <- manherb %>% 
+  filter(Species == "Orange")
+
+# plot by order of observation
+plot(horange$Herb_av)
+
+# plot by site
+new_order <- with(horange, reorder(Site, Herb_av, median, na.rm=T)) 
+boxplot(Herb_av ~ new_order, data = horange)
+```
+
+```{r Leaf herbivory - river mangroves}
+hriver <- manherb %>% 
+  filter(Species == "River")
+
+# plot by order of observation
+plot(hriver$Herb_av)
+
+# plot by site
+new_order <- with(hriver, reorder(Site, Herb_av, median, na.rm=T)) 
+boxplot(Herb_av ~ new_order, data = hriver)
+```
+
