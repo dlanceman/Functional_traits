@@ -12,9 +12,13 @@ editor_options:
 ```{r Load packages}
 #install.packages("readxl")
 #install.packages("tidyverse")
+#install.packages("lme4")
+#install.packages("MuMIn")
 
 library(readxl)
 library(tidyverse)
+library(lme4)
+library(MuMIn)
 ```
 
 
@@ -91,12 +95,32 @@ plot(salt$Stem_ht_mm, salt$Stem_dia_mm)
 plot(salt$total_stems, salt$`Sp_cover_%`)
 ```
 
-
-
-```{r By species - Sporobolus}
+```{r Create species-specific dataframes}
 spor <- salt %>%
   filter(Species == "Sporobolus")
 
+sarc <- salt %>%
+  filter(Species == "Sarcocornia")
+
+trig <- salt %>%
+  filter(Species == "Triglochin")
+
+pneu <- salt %>%
+  filter(Species == "Pneumatophores")
+
+# list all species
+unique(salt$Species)
+
+junc.k <- salt %>% 
+  filter(Species == "Juncus_kraussii")
+
+aster <- salt %>% 
+  filter(Species == "Aster")
+
+```
+
+
+```{r By species - Sporobolus}
 # plot each variable by order recorded
 plot(spor$total_stems)
 plot(spor$`Sp_cover_%`)
@@ -124,9 +148,6 @@ plot(spor$total_stems, spor$`Sp_cover_%`)
 ```
 
 ```{r By species - Sarcocornia}
-sarc <- salt %>%
-  filter(Species == "Sarcocornia")
-
 # plot each variable by order recorded
 plot(sarc$total_stems)
 plot(sarc$`Sp_cover_%`)
@@ -155,8 +176,6 @@ plot(sarc$total_stems, sarc$`Sp_cover_%`)
 
 
 ```{r By species - Triglochin}
-trig <- salt %>%
-  filter(Species == "Triglochin")
 
 # plot each variable by order recorded
 plot(trig$total_stems)
@@ -185,8 +204,6 @@ plot(trig$total_stems, trig$`Sp_cover_%`)
 ```
 
 ```{r By species - Pneumatophores}
-pneu <- salt %>%
-  filter(Species == "Pneumatophores")
 
 # plot each variable by order recorded
 plot(pneu$total_stems)
@@ -268,9 +285,11 @@ For linear mixed effects models, these are:
 - model residuals have equal variances
 - model residuals are independent
 
-We also need to identify any unrealistic outliers in the dataset so they can be removed prior to analysis.
+We also need to identify any unrealistic outliers in the dataset so they can be removed prior to analysis. These are identified below using cleveland plots.
 
-```{r Identify outliers - side-by-side Cleveland plot and boxplot}
+Normality of response variables is not required but is checked below using histograms, boxplots and cleveland plots.
+
+```{r Identify outliers and explore distributions - side-by-side Cleveland plot and boxplot}
 cleveland_plot <- function(vector,axislab){
   par(mfrow= c(1,2), mar = c(5,4,2,1)) # set some parameters for the plot
   boxplot(vector,  ylab = axislab)
@@ -286,7 +305,7 @@ cleveland_plot(salt$Burrows_0.5x0.5, "Number of burrows") # right skewed (and ze
 # sporobolus
 cleveland_plot(spor$`Sp_cover_%`, "Species cover (%)") # somewhat left skewed but decent. No outliers
 cleveland_plot(spor$Stem_ht_mm, "Stem height (mm)") # there are only a few values with height >600. When investigating- this is realistic for each large height value. Overall the distribution is fairly evenly spread.
-cleveland_plot(spor$Stem_dia_mm, "Stem diameter (mm)") # right skewed. There are some very large values that need investigating. 
+cleveland_plot(spor$Stem_dia_mm, "Stem diameter (mm)") # right skewed. There are some very large values that need investigating - plant net doesn't state the regular stem diameter so don't exclude. They are little overestimates, and the 0.1mm measurements are likely too low, but should be OK and no reason to remove, so retain.
 cleveland_plot(spor$total_stems, "Stem density (number of stems)") # right skewed
 
 # sarcocornia
@@ -308,10 +327,13 @@ cleveland_plot(pneu$Stem_dia_mm, "Stem diameter (mm)") # evenly distributed, one
 cleveland_plot(pneu$total_stems, "Stem density (number of stems)") # right skewed. One potential high outlier, but it's realistic 
 ```
 
-```{r Less common species}
+```{r Less common species - check potential data issues from notes}
 # Juncus - need to investigate consistency of stem measurements
+cleveland_plot(junc.k$Stem_ht_mm, "Stem height (mm)") # looks great
+cleveland_plot(junc.k$Stem_dia_mm, "Stem diameter (mm)") # 2 of last (top) three look a bit large, but these weren't the data points I made a potential note about and they are close to plant net's guidelines for width (1.8-4.5mm), so retain. Slight right skew.
 
-# Aster - need to investigate stem height (some measured to the flower)
+# Aster - need to investigate stem height (potentially measured to the flower before 4:08pm 18/4/23)
+cleveland_plot(aster$Stem_ht_mm, "Stem height (mm)") # balanced distribution. there are no very high measurements after around the first 1/3 of data points. However, there are only 12 data points before 4:08pm 18/4/23 so there are large data points after this. We don't know how much to offset potential flower measurements so should retain with care.
 ```
 
 
@@ -327,6 +349,7 @@ cleveland_plot(log(spor$`Sp_cover_%` + 1), "log Species cover (%)") # much worse
 cleveland_plot(sqrt(spor$`Sp_cover_%`), "sqrt Species cover (%)") # worse than original
 cleveland_plot(log(spor$Stem_ht_mm), "log Stem height (mm)") # much more even spread. better
 cleveland_plot(log(spor$Stem_dia_mm), "log Stem diameter (mm)") # much more even spread. better
+cleveland_plot(sqrt(spor$Stem_dia_mm), "sqrt Stem diameter (mm)") # similar to original. log is better.
 cleveland_plot(log(spor$total_stems), "log Stem density (number of stems)") # more skewed than original
 cleveland_plot(sqrt(spor$total_stems), "sqrt Stem density (number of stems)") # even spread now.
 
@@ -339,7 +362,7 @@ cleveland_plot(log(trig$`Sp_cover_%` +1), "log Species cover (%)") # evenly dist
 cleveland_plot(log(trig$Stem_dia_mm), "log Stem diameter (mm)") # not really an improvement
 cleveland_plot(sqrt(trig$Stem_dia_mm), "sqrt Stem diameter (mm)") # more evenly distributed
 cleveland_plot(log(trig$total_stems), "log Stem density (number of stems)") # improvement
-cleveland_plot(sqrt(trig$total_stems), "sqrt Stem density (number of stems)") # improvement, and probably somewhat better than the log transform
+cleveland_plot(sqrt(trig$total_stems), "sqrt Stem density (number of stems)") # improvement, probably somewhat worse than the log transform
 
 cleveland_plot(log(pneu$`Sp_cover_%` +1), "log Species cover (%)") # still skewed but less skewed
 cleveland_plot(sqrt(pneu$`Sp_cover_%`), "sqrt Species cover (%)") # only a little skewed now, acceptable
@@ -348,21 +371,183 @@ cleveland_plot(sqrt(pneu$total_stems), "sqrt Stem density (number of stems)") # 
 ```
 
 Therefore:
-- log-transform: canopy height, sporobolus stem height, sporobolus stem diameter, triglochin species cover
-- sqrt-transform: sporobolus stem density, sarc stem diameter, sarc total stems, triglochin stem diameter, trig stem density, pneu sp cover, pneu total stems
+- log-transform: canopy height, sporobolus stem height, sporobolus stem diameter, triglochin species cover, trig stem density
+- sqrt-transform: sporobolus stem density, sarc stem diameter, sarc total stems, triglochin stem diameter, pneu sp cover, pneu total stems
 - Don't need transforming: sporobolus species cover, sarcocornia species cover, sarc stem height, triglochin stem height (just needs extreme values removed), pneumatophore stem height, pneu stem diameter
 - Transforms don't help: total cover, burrows (zero-inflated), sporobolus species cover
 
 ```{r Transforming data and removing unrealistic outliers}
-# sporobolus - remove large stem diameter values?
+# all saltmarsh
+salt$ln.canopy.ht <- log(salt$Canopy_ht_cm)
 
+# sporobolus
+spor$ln.stem.ht <- log(spor$Stem_ht_mm)
+spor$ln.stem.dia <- log(spor$Stem_dia_mm)
+spor$sq.stem.dens <- sqrt(spor$total_stems)
 
+# sarcocornia
+sarc$sq.stem.dia <- sqrt(sarc$Stem_dia_mm)
+sarc$sq.stem.dens <- sqrt(sarc$total_stems)
+
+# triglochin
 trig[121,19] <- NA # this value had stem height of 556mm
 trig[240,19] <- NA # this value had stem height of 860mm
 trig[c(98:104),20] <- NA # these had stem diameters > 4mm
 trig[78,20] <- NA # stem diameter was > 4mm
+trig$ln.sp.cover <- log(trig$`Sp_cover_%` + 1)
+trig$sq.stem.dia <- sqrt(trig$Stem_dia_mm)
+trig$ln.stem.dens <- log(trig$total_stems)
 
 # pneumatophores
 pneu[40,20] <- NA # this had stem diameter of 1mm
+pneu$sq.sp.cover <- sqrt(pneu$`Sp_cover_%`)
+pneu$sq.stem.dens <- sqrt(pneu$total_stems)
+```
+
+```{r Histograms}
+# overall saltmarsh - log canopy height
+ggplot(salt, aes(x = ln.canopy.ht)) +
+  geom_histogram() # looks normally distributed
+
+# sporobolus - species cover, log stem height, log stem diameter, sqrt stem density
+ggplot(spor, aes(x = `Sp_cover_%`)) +
+  geom_histogram() # not normally distibuted. very left skewed. transformations didn't help.
+ggplot(spor, aes(x = ln.stem.ht)) +
+  geom_histogram() # looks close enough to normal
+ggplot(spor, aes(x = ln.stem.dia)) +
+  geom_histogram(binwidth = 0.5) # looks close enough to normal
+ggplot(spor, aes(x = sq.stem.dens)) +
+  geom_histogram(binwidth=10) # looks close enough to normal
+
+# sarcocornia - species cover, stem height, sqrt stem diameter, sqrt stem density
+ggplot(sarc, aes(x = `Sp_cover_%`)) +
+  geom_histogram() # not normally distributed
+ggplot(sarc, aes(x = Stem_ht_mm)) +
+  geom_histogram() # looks normal
+ggplot(sarc, aes(x = sq.stem.dia)) +
+  geom_histogram(binwidth = 0.2) # looks close enough to normal
+ggplot(sarc, aes(x = sq.stem.dens)) +
+  geom_histogram(binwidth=2) # somewhat right skewed but hopefully close enough
+
+# triglochin - log species cover, stem height, sqrt stem diameter, sqrt stem density
+ggplot(trig, aes(x = ln.sp.cover)) +
+  geom_histogram() # not normally distributed
+ggplot(trig, aes(x = Stem_ht_mm)) +
+  geom_histogram() # looks normal
+ggplot(trig, aes(x = sq.stem.dia)) +
+  geom_histogram(binwidth = 0.1) # looks close enough to normal
+ggplot(trig, aes(x = ln.stem.dens)) +
+  geom_histogram() # slightly left skewed but ok
+
+# pneumatophores - sqrt species cover, stem height, stem diameter, sqrt stem density
+ggplot(pneu, aes(x = sq.sp.cover)) +
+  geom_histogram() # not normal
+ggplot(pneu, aes(x = Stem_ht_mm)) +
+  geom_histogram() # normal
+ggplot(pneu, aes(x = Stem_dia_mm)) +
+  geom_histogram(binwidth = 0.5) # normal
+ggplot(pneu, aes(x = sq.stem.dens)) +
+  geom_histogram() # looks close enough to normal
+```
+
+Probably need non-parametric tests:
+- Overall saltmarsh: Total cover, burrows
+- Sporobolus: Species cover
+- Sarcocornia: Species cover
+- Triglochin: Species cover
+- Pneumatophores: Species cover
+- Reproduction for all!
+
+These are proportions (covers) and zero-inflated (burrows) and binary (reproduction)
+
+(note that normal distribution is of residuals only, rather than for each raw variable, so check that first)
+
+```{r Scatterplots - check for no relationships between predictors}
+# Restoration age x Elevation (?)
+ggplot(salt, aes(rest_year, Elevation)) +
+  geom_point() # no  correlation
+```
+
+# 5. Model Building
+
+Further assumptions require model building and are looked into below, with code adapted from https://www.ssc.wisc.edu/sscc/pubs/MM/MM_DiagInfer.html
+
+Notes on interpreting diagnostic plots:
+
+- plot():
+    - linearity of residuals: is the mean of the residuals approximately zero for each value of the predictor?
+    - equal variances: is there an equal spread of data points along fitted values?
+    - asymmetry of residuals: are positive and negative tails similar in amplitude?
+    - see https://stats.stackexchange.com/questions/242517/interpretation-of-residual-plot-for-mixed-effect-linear-model
+    
+- linear model for predictor variables:
+    - no non-linear trends in the plot
+
+- qqnorm plot:
+    - approx x = y plot, no strong deviations
+    
+- values with strong leverage:
+    - all values have similar leverage
+    
+To build our models, we are representing random factors in this format: (1|RandomFactor) and fixed factors in this format: FixedFactor. Interactions are represented with asterisks.
+
+For us, restoration year is a fixed factor (although not all points have this - need to investigate). Elevation is also fixed. Site and quadrat are random factors. Quadrat is nested within site - so the same quadrat number is irrelevant between sites - how to best represent this?
+
+```{r Diagnostic plots - saltmarsh log canopy height}
+M <- lmer(ln.canopy.ht ~ Elevation + (1|Site) * (1|Quadrat), data=salt, REML= FALSE)
+# set R's global handling of NA values = function doesn't fun with NAs. this seems necessary for "dredge" to work correctly.
+options(na.action = "na.fail")
+# dredge creates a model selection table with different combinations of fixed effects
+d <- dredge(M)
+# change this option back so it doesn't impact other functions in R
+options(na.action = "na.omit")
+# view dredge results
+tab_df(d,use.viewer = T)
+
+# average the models with delta values less than 2 (all similarly good fits)
+M.avg.GP <- model.avg(d,fit=TRUE,subset = delta < 2)
+
+# visualise the results of averaged model
+tab_model(
+    M.avg.GP,
+    show.ci = FALSE, # showing confidence intervals
+    show.se = TRUE, # showing standard errors
+    auto.label = T, # labels factors in a "prettier" way
+    string.se = "SE", # title of the standard error column
+    show.icc = FALSE, # showing intraclass correlation coefficient for mixed models
+    dv.labels = c("Insect damage") # list of dependent variables
+    )
+
+# predict effects of inundation when controlling for the other factors
+predict_Inun <- ggemmeans(M, terms = c("s.Inundation.300m [all]"))
+# view this result
+print(predict_Inun)
+# visualise this result
+I.I <- plot(predict_Inun, ci = T,add.data = TRUE, dot.alpha = 1,  jitter = 0) +
+  ggtitle("") +  geom_line(size = 1.2) +
+  labs(y = "Insect damage", x = "") +
+  theme_classic() +
+  theme(text = element_text(size = 32),
+        axis.text = element_text(size = 26)) 
+
+  # predict effects of stem density when controlling for other factors
+predict_stemdens <- ggemmeans(M, terms = c("L.Stem.density [all]"))
+print(predict_stemdens)
+S.I <- plot(predict_stemdens, ci = T,add.data = TRUE, dot.alpha = 1,  jitter = 0) +
+  ggtitle("") +  geom_line(size = 1.2) +
+  labs(y = "Insect damage*", x = "") +
+  theme_classic() +
+  theme(text = element_text(size = 32),
+        axis.text = element_text(size = 26)) 
+  
+  # predict effects of elevation when controlling for other factors
+predict_elev <- ggemmeans(M, terms = c("Elevation [all]"))
+print(predict_elev)
+E.I <- plot(predict_elev, ci = T,add.data = TRUE, dot.alpha = 1,  jitter = 0)  +
+  ggtitle("") +  geom_line(size = 1.2) +
+  labs(y = "Insect damage*", x = "") +
+  theme_classic() +
+  theme(text = element_text(size = 32),
+        axis.text = element_text(size = 26)) 
 ```
 
