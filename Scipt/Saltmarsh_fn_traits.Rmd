@@ -256,3 +256,113 @@ plot(`Sp_cover_%` ~ Elevation, pneu) #  no clear trend
 plot(Stem_ht_mm ~ Elevation, pneu) # no clear trend
 plot(Stem_dia_mm ~ Elevation, pneu) # no clear trend
 ```
+
+
+#4. Test model assumptions
+
+To create linear mixed effects models and generalised mixed models, we need to test if the data conform to model assumptions.
+
+For linear mixed effects models, these are:
+- linear relationship between predictor and response variable
+- model residuals are normally distributed
+- model residuals have equal variances
+- model residuals are independent
+
+We also need to identify any unrealistic outliers in the dataset so they can be removed prior to analysis.
+
+```{r Identify outliers - side-by-side Cleveland plot and boxplot}
+cleveland_plot <- function(vector,axislab){
+  par(mfrow= c(1,2), mar = c(5,4,2,1)) # set some parameters for the plot
+  boxplot(vector,  ylab = axislab)
+  dotchart(vector, xlab = axislab,
+         ylab = "Order of the data") 
+}
+
+# all species
+cleveland_plot(salt$Canopy_ht_cm, "Canopy height (cm)") # right skewed, has outliers but values are realistic
+cleveland_plot(salt$`Total_cover_%`, "Total cover (%)") # left skewed, has outliers but values should be realistic
+cleveland_plot(salt$Burrows_0.5x0.5, "Number of burrows") # right skewed (and zero inflated), has outliers but values are realistic
+
+# sporobolus
+cleveland_plot(spor$`Sp_cover_%`, "Species cover (%)") # somewhat left skewed but decent. No outliers
+cleveland_plot(spor$Stem_ht_mm, "Stem height (mm)") # there are only a few values with height >600. When investigating- this is realistic for each large height value. Overall the distribution is fairly evenly spread.
+cleveland_plot(spor$Stem_dia_mm, "Stem diameter (mm)") # right skewed. There are some very large values that need investigating. 
+cleveland_plot(spor$total_stems, "Stem density (number of stems)") # right skewed
+
+# sarcocornia
+cleveland_plot(sarc$`Sp_cover_%`, "Species cover (%)") # evenly spread, no outliers
+cleveland_plot(sarc$Stem_ht_mm, "Stem height (mm)") # evenly distributed. One relatively large value but it is realistic. Two relatively small values but realistic.
+cleveland_plot(sarc$Stem_dia_mm, "Stem diameter (mm)") # slightly right skewed but very acceptable distribution. Three larger values but realistic
+cleveland_plot(sarc$total_stems, "Stem density (number of stems)") # right skewed, some relatively high values but realistic
+
+# triglochin
+cleveland_plot(trig$`Sp_cover_%`, "Species cover (%)") # very right skewed. Potential outlier high extreme value - checked photo and this is accurate.
+cleveland_plot(trig$Stem_ht_mm, "Stem height (mm)") # fairly evenly distributed except some very high potential outliers. There's no evidence for stems as high as 860mm or 556mm in photos and according to plantnet this species only grows to ~30cm, so 860 and 556 are likely data errors. Other high measurements are likely OK.
+cleveland_plot(trig$Stem_dia_mm, "Stem diameter (mm)") # there are some extreme outliers that need investigating. According to plantnet, leaf diameters (what we're calling stems) are usually 1-3mm. 7 out of 8 extreme values of 4 or more are from the same quadrat - potentially a consistent error with measuring there. These extreme values should be removed. The distribution is inflated by values of 1.
+cleveland_plot(trig$total_stems, "Stem density (number of stems)") # one extreme value but realistic. somewhat right skewed (mostly because of this value)
+
+# pneumatophores
+cleveland_plot(pneu$`Sp_cover_%`, "Species cover (%)") # right skewed with one extreme high value. This is potentially an overestimate, looking at photos. But photos don't make re-estimation very easy. So leave for now. I also think pneumatophore cover is a fairly irrelevant metric as they're usually covered by saltmarsh and end up with 0% cover, which doesn't tell us anything.
+cleveland_plot(pneu$Stem_ht_mm, "Stem height (mm)") # evenly distributed, no outliers
+cleveland_plot(pneu$Stem_dia_mm, "Stem diameter (mm)") # evenly distributed, one potential low outlier. This value is unrealistic and should be removed.
+cleveland_plot(pneu$total_stems, "Stem density (number of stems)") # right skewed. One potential high outlier, but it's realistic 
+```
+
+```{r Less common species}
+# Juncus - need to investigate consistency of stem measurements
+
+# Aster - need to investigate stem height (some measured to the flower)
+```
+
+
+```{r Trying transformations}
+# do transformations fix skew?
+cleveland_plot(log(salt$Canopy_ht_cm), "log Canopy height (cm)") # skew is fixed with log transformation
+cleveland_plot(log(salt$`Total_cover_%`), "log Total cover (%)") # log transform makes this worse
+cleveland_plot(sqrt(salt$`Total_cover_%`), "sqrt Total cover (%)") # sqrt transform makes this worse
+cleveland_plot(log(salt$Burrows_0.5x0.5 +1), "log Number of burrows") # better, but always will be zero-inflated
+cleveland_plot(sqrt(salt$Burrows_0.5x0.5), "sqrt Number of burrows") # similar to log transform
+
+cleveland_plot(log(spor$`Sp_cover_%` + 1), "log Species cover (%)") # much worse than original
+cleveland_plot(sqrt(spor$`Sp_cover_%`), "sqrt Species cover (%)") # worse than original
+cleveland_plot(log(spor$Stem_ht_mm), "log Stem height (mm)") # much more even spread. better
+cleveland_plot(log(spor$Stem_dia_mm), "log Stem diameter (mm)") # much more even spread. better
+cleveland_plot(log(spor$total_stems), "log Stem density (number of stems)") # more skewed than original
+cleveland_plot(sqrt(spor$total_stems), "sqrt Stem density (number of stems)") # even spread now.
+
+cleveland_plot(log(sarc$Stem_dia_mm), "log Stem diameter (mm)") # comperable / no less skewed than original
+cleveland_plot(sqrt(sarc$Stem_dia_mm), "sqrt Stem diameter (mm)") # similar to original but slightly more evenly spread so could be a slight improvement (original was fine anyway)
+cleveland_plot(log(sarc$total_stems), "log Stem density (number of stems)") # becomes left skewed instead, but more even than original
+cleveland_plot(sqrt(sarc$total_stems), "sqrt Stem density (number of stems)") # quite evenly distributed. Use this one.
+
+cleveland_plot(log(trig$`Sp_cover_%` +1), "log Species cover (%)") # evenly distributed now
+cleveland_plot(log(trig$Stem_dia_mm), "log Stem diameter (mm)") # not really an improvement
+cleveland_plot(sqrt(trig$Stem_dia_mm), "sqrt Stem diameter (mm)") # more evenly distributed
+cleveland_plot(log(trig$total_stems), "log Stem density (number of stems)") # improvement
+cleveland_plot(sqrt(trig$total_stems), "sqrt Stem density (number of stems)") # improvement, and probably somewhat better than the log transform
+
+cleveland_plot(log(pneu$`Sp_cover_%` +1), "log Species cover (%)") # still skewed but less skewed
+cleveland_plot(sqrt(pneu$`Sp_cover_%`), "sqrt Species cover (%)") # only a little skewed now, acceptable
+cleveland_plot(log(pneu$total_stems), "log Stem density (number of stems)") # improvement, but now a little left skewed
+cleveland_plot(sqrt(pneu$total_stems), "sqrt Stem density (number of stems)") # evenly spread
+```
+
+Therefore:
+- log-transform: canopy height, sporobolus stem height, sporobolus stem diameter, triglochin species cover
+- sqrt-transform: sporobolus stem density, sarc stem diameter, sarc total stems, triglochin stem diameter, trig stem density, pneu sp cover, pneu total stems
+- Don't need transforming: sporobolus species cover, sarcocornia species cover, sarc stem height, triglochin stem height (just needs extreme values removed), pneumatophore stem height, pneu stem diameter
+- Transforms don't help: total cover, burrows (zero-inflated), sporobolus species cover
+
+```{r Transforming data and removing unrealistic outliers}
+# sporobolus - remove large stem diameter values?
+
+
+trig[121,19] <- NA # this value had stem height of 556mm
+trig[240,19] <- NA # this value had stem height of 860mm
+trig[c(98:104),20] <- NA # these had stem diameters > 4mm
+trig[78,20] <- NA # stem diameter was > 4mm
+
+# pneumatophores
+pneu[40,20] <- NA # this had stem diameter of 1mm
+```
+
