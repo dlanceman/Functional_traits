@@ -40,6 +40,11 @@ salt <- read_excel("Data/Functional_traits_combined_data.xlsx", sheet = "Saltmar
            Site == "DLW" ~ as.numeric("2014")
          )) # add a column for restoration years
 # double check with Will years for each
+
+# reassign Quadrat as an explictly nested variable within Site
+salt$Quadrat <- as.character(salt$Quadrat)
+salt$Quadrat.f <- factor(interaction(salt$Site, salt$Quadrat, sep = ":"))
+salt$Quadrat.f <- as.character(salt$Quadrat.f)
 ```
 
 
@@ -488,10 +493,32 @@ Notes on interpreting diagnostic plots:
     
 - values with strong leverage:
     - all values have similar leverage
+
+
+First, it's useful to rescale explanatory variables so they have a constant mean of 0 and standard deviation of 1.
+```{r Rescale/standardise explanatory variables}
+salt$Elevation <- scale(salt$Elevation, center = TRUE, scale = TRUE)
+```
+
     
 To build our models, we are representing random factors in this format: (1|RandomFactor) and fixed factors in this format: FixedFactor. Interactions are represented with asterisks.
 
-For us, restoration year is a fixed factor (although not all points have this - need to investigate). Elevation is also fixed. Site and quadrat are random factors. Quadrat is nested within site - so the same quadrat number is irrelevant between sites - how to best represent this?
+For us, restoration year is a fixed factor (although not all points have this - need to investigate). Elevation is also fixed. Site and quadrat are random factors. 
+
+Quadrat is not a variable for quadrat-level measurements though, as there is only one measurement per quadrat!
+
+```{r Model - saltmarsh log canopy height}
+M <- lmer(ln.canopy.ht ~ rest_year + Elevation + (1|Estuary) + (1|Site), data = salt, na.action = na.exclude) # Error
+M <- lmer(ln.canopy.ht ~ Elevation + (1|Estuary) + (1|Site) + (1|Quadrat.f), data = salt, na.action = na.exclude) # same Error
+M <- lmer(ln.canopy.ht ~ Elevation + (1|Quadrat.f), data = salt, na.action = na.exclude) #  different Error
+M <- lmer(ln.canopy.ht ~ Elevation + (1|Quadrat.f), data = salt, na.action = na.exclude, control = lmerControl(optCtrl = list(maxIter = 10000))) # different error remains
+```
+
+Given the constant errors here, let's try another model..
+```{r Model - sporobolus stem height}
+
+```
+
 
 ```{r Diagnostic plots - saltmarsh log canopy height}
 M <- lmer(ln.canopy.ht ~ Elevation + (1|Site) * (1|Quadrat), data=salt, REML= FALSE)
