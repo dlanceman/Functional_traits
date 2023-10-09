@@ -1,0 +1,287 @@
+---
+title: "Saltmarsh mixed modelling"
+author: "Dana Lanceman"
+date: "2023-10-05"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This R script tests different types of modelling that can be applied to our saltmarsh functional traits dataset.
+
+# 1. Set up
+
+
+```{r Load packages}
+#install.packages("readxl")
+#install.packages("tidyverse")
+#install.packages("lme4")
+#install.packages("MuMIn")
+#install.packages("car")
+#install.packages("performance")
+#install.packages("glmmTMB")
+
+library(readxl)
+library(tidyverse)
+library(lme4)
+library(MuMIn)
+library(car)
+library(performance)
+library(glmmTMB)
+```
+
+
+```{r Get data}
+# set working directory
+setwd("C:/Users/z5204897/OneDrive - UNSW/Desktop/PhD/Data_analysis/Project/Functional_traits")
+
+# input saltmarsh data
+salt <- read_excel("Data/Functional_traits_combined_data.xlsx", sheet = "Saltmarsh") %>% 
+  arrange(Date, Time) %>% 
+  mutate(total_stems = Stems * 10000/Quad_length_cm^2, # add column for total stem count per 1m2 for each species to standardise stem counts
+         rest_status = case_when(
+           Site == "AE" ~ as.numeric("1"),
+           Site == "HS" ~ as.numeric("1"),
+           Site == "TA" ~ as.numeric("1"),
+           Site == "TB" ~ as.numeric("1"),
+           Site == "CC" ~ as.numeric("1"),
+           Site == "CF" ~ as.numeric("1"),
+           Site == "DLW" ~ as.numeric("1"),
+           .default = as.numeric("0"), # add a column for restoration status where 1 = restored and 0 = natural
+         ),
+         rest_year = case_when(
+           Site == "AE" ~ as.numeric("2017"),
+           Site == "HS" ~ as.numeric("2008"),
+           Site == "TA" ~ as.numeric("2007"),
+           Site == "TB" ~ as.numeric("2012"),
+           Site == "CC" ~ as.numeric("1990"),
+           Site == "CF" ~ as.numeric("1993"),
+           Site == "DLW" ~ as.numeric("2014")
+         ), # add a column for restoration years
+         YSR = case_when(
+           Site == "AE" ~ as.numeric("6"),
+           Site == "HS" ~ as.numeric("15"),
+           Site == "TA" ~ as.numeric("16"),
+           Site == "TB" ~ as.numeric("11"),
+           Site == "CC" ~ as.numeric("33"),
+           Site == "CF" ~ as.numeric("30"),
+           Site == "DLW" ~ as.numeric("9"),
+           Site == "AI" ~ as.numeric("100"), # try modelling that natural sites are "100 years since restoration"
+           Site == "SI" ~ as.numeric("100"),
+           Site == "VSR" ~ as.numeric("100"),
+           Site == "MWS" ~ as.numeric("100"),
+         ))  # add a column for years since restoration
+# double check with Will years for each
+
+# reassign Quadrat as an explictly nested variable within Site
+salt$Quadrat <- as.character(salt$Quadrat)
+salt$Quadrat.f <- factor(interaction(salt$Site, salt$Quadrat, sep = ":"))
+salt$Quadrat.f <- as.character(salt$Quadrat.f)
+```
+
+Outlier removal - these were checked in the Saltmarsh_fn_traits script.
+
+```{r Remove unrealistic outliers}
+salt[443,20] <- NA # remove triglochin measurement with unrealistic stem diameter >4mm
+salt[c(738-744), 20] <- NA # remove triglochin measurements with unrealistic stem diameter >4mm
+salt[802,19] <- NA # remove triglochin measurement with unrealistic stem height 556mm
+salt[1271,19] <- NA # remove triglochin measurement with unrealistic stem height 860mm
+salt[112,20] <- NA # remove pneumatophore measurement with unrealistic diameter 1mm
+```
+
+
+Data transformations - need to check whether these are required for these models. If so, need to check across-species assumptions.
+```{r Data transformations}
+salt$ln.canopy.ht <- log(salt$Canopy_ht_cm)
+
+```
+
+
+Also not sure if this is needed for this particular model, but it can be useful to rescale explanatory variables so they have a constant mean of 0 and standard deviation of 1.
+```{r Rescale/standardise explanatory variables}
+salt$Elevation <- scale(salt$Elevation, center = TRUE, scale = TRUE)
+
+```
+
+
+Duplicate deletion - for community-level variables, there are several rows for each quadrat that are all identical. We need to remove these duplicate rows
+
+```{r Duplicate deletion - community-level variables}
+salt_comm <- salt %>% distinct(Combo, .keep_all = TRUE) 
+
+salt_comm <- salt_comm[,-c(11:20,22,26)] # remove irrelevant rows
+  
+```
+
+
+
+
+# 2. Simple trial models
+
+First, let's create univariate models for our community-level variables (tallest canopy height, total cover and burrows).
+
+For now, we'll run these models without a species presence/proportions variable for simplicity. If we decide that species composition is likely affecting these variables, we could try running modified models later.
+
+
+# 2a Tallest canopy height
+
+Tallest canopy height
+- Canopy height ~ YSR + Elevation + (1|Estuary) + (1|Site)
+
+First assumption: linear relationship between predictor and response variable
+
+```{r Tallest canopy height - check assumptions - linear relationship }
+# numeric predictors are YSR and elevation
+plot(salt_comm$Canopy_ht_cm ~ salt_comm$YSR) # not obviously non-linear
+plot(salt_comm$Canopy_ht_cm ~ salt_comm$Elevation) # not obviously non-linear
+
+# therefore linear relationship assumption is OK
+```
+
+
+```{r Tallest canopy height - model}
+M <- lmer(Canopy_ht_cm ~ rest_status/YSR + Elevation + Estuary + (1|Site), data = salt_comm, na.action = na.exclude)
+# check whether this model makes sense and the correct way to include YSR as a fixed factor nested within rest_status
+summary(M)
+
+M1 <- lmer(ln.canopy.ht ~ rest_status/YSR + Elevation + Estuary + (1|Site), data = salt_comm, na.action = na.exclude)
+# check whether this model makes sense and whether rest_status:rest_year is the correct way to add rest_year as a fixed factor nested within rest_status
+summary(M1)
+```
+
+Other assumptions:
+- model residuals are normally distributed
+- model residuals have equal variances
+- model residuals are independent
+
+```{r Tallest canopy height - check residuals assumptions}
+# check for collinearity between predictors
+check_collinearity(M) # VIF < 5 (low collinearity) - good.
+
+# residuals plots
+plot(M) # doesn't look like equal variances
+qqnorm(resid(M)) 
+qqline(resid(M)) # not normal
+
+# check for collinearity between predictors
+check_collinearity(M1) # VIF < 5 (low collinearity) - good.
+
+# residuals plots
+plot(M1) # looks like equal variances
+qqnorm(resid(M1)) 
+qqline(resid(M1)) # closer to normal, but not great (high values diverge)
+
+# confirm if this is good enough
+# use log transformed rather than non-transformed
+```
+
+```{r Tallest canopy height - plot}
+(mm_plot <- ggplot(salt_comm, aes(x = Elevation, y = ln.canopy.ht, colour = Estuary)) +
+      facet_wrap(~Site, nrow=2) +   # a panel for each mountain range
+      geom_point(alpha = 0.5) +
+      theme_classic() +
+      geom_line(data = cbind(salt_comm, pred = predict(M1)), aes(y = pred), size = 1) +  # adding predicted line from mixed model 
+      theme(legend.position = "none",
+            panel.spacing = unit(2, "lines"))  # adding space between panels
+)
+
+(mm_plot <- ggplot(salt_comm, aes(x = Elevation, y = ln.canopy.ht, colour = Site)) +   
+      geom_point(alpha = 0.5) +
+      theme_classic() +
+      geom_line(data = cbind(salt_comm, pred = predict(M1)), aes(y = pred), size = 1)) 
+
+(mm_plot <- ggplot(salt_comm, aes(x = YSR, y = ln.canopy.ht, colour = Site)) +   
+      geom_point(alpha = 0.5) +
+      theme_classic()) 
+```
+
+
+# 2b - Total cover 
+
+Total cover
+- Total cover ~ YSR + Elevation + (1|Estuary) + (1|Site)
+- beta distribution (proportional data with 2 categories - cover and non cover)
+
+
+```{r Total cover - model}
+# turn total cover into a proportion between 0 and 1 instead of between 0 and 100
+salt_comm <- salt_comm %>% mutate(total_cover_prop = `Total_cover_%`/100 -0.001)
+# also included a tiny offset since it doesn't like values of exactly 1 - must be below 1.
+
+M <- glmmTMB(total_cover_prop ~ rest_status/YSR + Elevation + Estuary + (1|Site), data = salt_comm, family = beta_family(link = "logit"), na.action = na.exclude)
+# check whether this model makes sense and the correct way to include YSR as a fixed factor nested within rest_status
+summary(M)
+```
+
+Other assumptions (??)
+
+
+```{r Total cover - plot}
+(mm_plot <- ggplot(salt_comm, aes(x = Elevation, y = total_cover_prop, colour = Estuary)) +
+      facet_wrap(~Site, nrow=2) +   # a panel for each mountain range
+      geom_point(alpha = 0.5) +
+      theme_classic() +
+      geom_line(data = cbind(salt_comm, pred = predict(M)), aes(y = pred), size = 1) +  # adding predicted line from mixed model 
+      theme(legend.position = "none",
+            panel.spacing = unit(2, "lines"))  # adding space between panels
+)
+
+(mm_plot <- ggplot(salt_comm, aes(x = Elevation, y = total_cover_prop, colour = Site)) +   
+      geom_point(alpha = 0.5) +
+      theme_classic() +
+      geom_line(data = cbind(salt_comm, pred = predict(M)), aes(y = pred), size = 1)) 
+
+(mm_plot <- ggplot(salt_comm, aes(x = YSR, y = total_cover_prop, colour = Site)) +   
+      geom_point(alpha = 0.5) +
+      theme_classic()) 
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+--------------
+
+The following model formats are suggested by Jamil et al. (2012) for a simple model with one trait "z" and one fixed environmental vaiable "x":
+
+M1 <- glmer(y ~ z + x + z:x + (1 + x|species) + (1|site), family=binomial(link=“logit”), data)
+
+M0 <- glmer(y ~ z + x +(1 + x|species) + (1|site), family=binomial(link=“logit”), data)
+
+However, "y" is species presence/absence or species abundance, which is not the focus of my analysis. I want to shift the focus to the trait value and have species proportions as a driver for that.
+
+The first model includes the interaction between trait and environment and the second model is run without the interaction term so that we can compare the two models using an ANOVA to test the trait-environment interaction:
+
+ANOVA(M0,M1)
+
+```{r Test - log canopy height and elevation}
+M1 <- glmer(y ~ z + x + z:x + (1 + x|species) + (1|site), family=binomial(link="logit"), data)
+
+M0 <- glmer(y ~ z + x +(1 + x|species) + (1|site), family=binomial(link="logit"), data)
+
+ANOVA(M0,M1)
+```
+

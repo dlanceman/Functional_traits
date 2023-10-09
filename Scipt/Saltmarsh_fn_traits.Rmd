@@ -30,6 +30,16 @@ setwd("C:/Users/z5204897/OneDrive - UNSW/Desktop/PhD/Data_analysis/Project/Funct
 salt <- read_excel("Data/Functional_traits_combined_data.xlsx", sheet = "Saltmarsh") %>% 
   arrange(Date, Time) %>% 
   mutate(total_stems = Stems * 10000/Quad_length_cm^2, # add column for total stem count per 1m2 for each species to standardise stem counts
+         rest_status = case_when(
+           Site == "AE" ~ as.numeric("1"),
+           Site == "HS" ~ as.numeric("1"),
+           Site == "TA" ~ as.numeric("1"),
+           Site == "TB" ~ as.numeric("1"),
+           Site == "CC" ~ as.numeric("1"),
+           Site == "CF" ~ as.numeric("1"),
+           Site == "DLW" ~ as.numeric("1"),
+           .default = as.numeric("0"), # add a column for restoration status where 1 = restored and 0 = natural
+         ),
          rest_year = case_when(
            Site == "AE" ~ as.numeric("2017"),
            Site == "HS" ~ as.numeric("2008"),
@@ -38,13 +48,47 @@ salt <- read_excel("Data/Functional_traits_combined_data.xlsx", sheet = "Saltmar
            Site == "CC" ~ as.numeric("1990"),
            Site == "CF" ~ as.numeric("1993"),
            Site == "DLW" ~ as.numeric("2014")
-         )) # add a column for restoration years
+         ), # add a column for restoration years
+         YSR = case_when(
+           Site == "AE" ~ as.numeric("6"),
+           Site == "HS" ~ as.numeric("15"),
+           Site == "TA" ~ as.numeric("16"),
+           Site == "TB" ~ as.numeric("11"),
+           Site == "CC" ~ as.numeric("33"),
+           Site == "CF" ~ as.numeric("30"),
+           Site == "DLW" ~ as.numeric("9")
+         ))  # add a column for years since restoration
 # double check with Will years for each
 
 # reassign Quadrat as an explictly nested variable within Site
 salt$Quadrat <- as.character(salt$Quadrat)
 salt$Quadrat.f <- factor(interaction(salt$Site, salt$Quadrat, sep = ":"))
 salt$Quadrat.f <- as.character(salt$Quadrat.f)
+```
+
+
+```{r Create species-specific dataframes}
+spor <- salt %>%
+  filter(Species == "Sporobolus")
+
+sarc <- salt %>%
+  filter(Species == "Sarcocornia")
+
+trig <- salt %>%
+  filter(Species == "Triglochin")
+
+pneu <- salt %>%
+  filter(Species == "Pneumatophores")
+
+# list all species
+unique(salt$Species)
+
+junc.k <- salt %>% 
+  filter(Species == "Juncus_kraussii")
+
+aster <- salt %>% 
+  filter(Species == "Aster")
+
 ```
 
 
@@ -98,30 +142,6 @@ boxplot(Stem_dia_mm ~ new_order, data = salt)
 # plot relationships between variables
 plot(salt$Stem_ht_mm, salt$Stem_dia_mm)
 plot(salt$total_stems, salt$`Sp_cover_%`)
-```
-
-```{r Create species-specific dataframes}
-spor <- salt %>%
-  filter(Species == "Sporobolus")
-
-sarc <- salt %>%
-  filter(Species == "Sarcocornia")
-
-trig <- salt %>%
-  filter(Species == "Triglochin")
-
-pneu <- salt %>%
-  filter(Species == "Pneumatophores")
-
-# list all species
-unique(salt$Species)
-
-junc.k <- salt %>% 
-  filter(Species == "Juncus_kraussii")
-
-aster <- salt %>% 
-  filter(Species == "Aster")
-
 ```
 
 
@@ -475,7 +495,64 @@ ggplot(salt, aes(rest_year, Elevation)) +
 
 # 5. Model Building
 
-Further assumptions require model building and are looked into below, with code adapted from https://www.ssc.wisc.edu/sscc/pubs/MM/MM_DiagInfer.html
+First, it's useful to rescale explanatory variables so they have a constant mean of 0 and standard deviation of 1.
+```{r Rescale/standardise explanatory variables}
+salt$Elevation <- scale(salt$Elevation, center = TRUE, scale = TRUE)
+spor$Elevation <- scale(spor$Elevation, center = TRUE, scale = TRUE)
+sarc$Elevation <- scale(sarc$Elevation, center = TRUE, scale = TRUE)
+trig$Elevation <- scale(trig$Elevation, center = TRUE, scale = TRUE)
+pneu$Elevation <- scale(pneu$Elevation, center = TRUE, scale = TRUE)
+```
+
+    
+To build our models, we are representing random factors in this format: (1|RandomFactor) and fixed factors in this format: FixedFactor. Interactions are represented with asterisks.
+
+For us, restoration year is a fixed factor, nested within the fixed factor restoration status. Elevation is also fixed. Site and quadrat are random factors. Estuary is fixed because it only has two levels.
+
+Quadrat is not a variable for quadrat-level measurements though, as there is only one measurement per quadrat!
+
+```{r Model - saltmarsh log canopy height}
+M <- lmer(ln.canopy.ht ~ rest_status + rest_status:rest_year + Elevation + Estuary + (1|Site), data = salt, na.action = na.exclude)
+# check whether this model makes sense and whether rest_status:rest_year is the correct way to add rest_year as a fixed factor nested within rest_status
+summary(M)
+```
+
+```{r potential part of assumptions testing or delete it}
+# Calculate correlations
+cor(salt[, c("rest_status", "rest_year", "Elevation")])
+
+# Check VIFs
+library(car)
+vif(M)
+
+```
+
+
+
+```{r Model - log sporobolus stem height}
+M <- lmer(ln.stem.ht ~ rest_status + rest_status:rest_year + Elevation + Estuary + (1|Site) + (1|Quadrat.f), data = spor, na.action = na.exclude)
+# check whether this model makes sense and whether rest_status:rest_year is the correct way to add rest_year as a fixed factor nested within rest_status
+summary(M)
+```
+
+
+
+```{r Model - ln sporobolus stem diameter}
+M <- lmer(ln.stem.dia ~ rest_status + rest_status:rest_year + Elevation + Estuary + (1|Site) + (1|Quadrat.f), data = spor, na.action = na.exclude)
+# check whether this model makes sense and whether rest_status:rest_year is the correct way to add rest_year as a fixed factor nested within rest_status
+summary(M)
+```
+
+
+```{r Model - sqrt sporobolus stem density}
+M <- lmer(sq.stem.dens ~ rest_status + rest_status:rest_year + Elevation + Estuary + (1|Site), data = spor, na.action = na.exclude)
+# check whether this model makes sense and whether rest_status:rest_year is the correct way to add rest_year as a fixed factor nested within rest_status
+summary(M)
+```
+
+
+# 6. Test model assumptions
+
 
 Notes on interpreting diagnostic plots:
 
@@ -493,88 +570,3 @@ Notes on interpreting diagnostic plots:
     
 - values with strong leverage:
     - all values have similar leverage
-
-
-First, it's useful to rescale explanatory variables so they have a constant mean of 0 and standard deviation of 1.
-```{r Rescale/standardise explanatory variables}
-salt$Elevation <- scale(salt$Elevation, center = TRUE, scale = TRUE)
-```
-
-    
-To build our models, we are representing random factors in this format: (1|RandomFactor) and fixed factors in this format: FixedFactor. Interactions are represented with asterisks.
-
-For us, restoration year is a fixed factor (although not all points have this - need to investigate). Elevation is also fixed. Site and quadrat are random factors. 
-
-Quadrat is not a variable for quadrat-level measurements though, as there is only one measurement per quadrat!
-
-```{r Model - saltmarsh log canopy height}
-M <- lmer(ln.canopy.ht ~ rest_year + Elevation + (1|Estuary) + (1|Site), data = salt, na.action = na.exclude) # Error
-M <- lmer(ln.canopy.ht ~ Elevation + (1|Estuary) + (1|Site) + (1|Quadrat.f), data = salt, na.action = na.exclude) # same Error
-M <- lmer(ln.canopy.ht ~ Elevation + (1|Quadrat.f), data = salt, na.action = na.exclude) #  different Error
-M <- lmer(ln.canopy.ht ~ Elevation + (1|Quadrat.f), data = salt, na.action = na.exclude, control = lmerControl(optCtrl = list(maxIter = 10000))) # different error remains
-```
-
-Given the constant errors here, let's try another model..
-```{r Model - sporobolus stem height}
-
-```
-
-
-```{r Diagnostic plots - saltmarsh log canopy height}
-M <- lmer(ln.canopy.ht ~ Elevation + (1|Site) * (1|Quadrat), data=salt, REML= FALSE)
-# set R's global handling of NA values = function doesn't fun with NAs. this seems necessary for "dredge" to work correctly.
-options(na.action = "na.fail")
-# dredge creates a model selection table with different combinations of fixed effects
-d <- dredge(M)
-# change this option back so it doesn't impact other functions in R
-options(na.action = "na.omit")
-# view dredge results
-tab_df(d,use.viewer = T)
-
-# average the models with delta values less than 2 (all similarly good fits)
-M.avg.GP <- model.avg(d,fit=TRUE,subset = delta < 2)
-
-# visualise the results of averaged model
-tab_model(
-    M.avg.GP,
-    show.ci = FALSE, # showing confidence intervals
-    show.se = TRUE, # showing standard errors
-    auto.label = T, # labels factors in a "prettier" way
-    string.se = "SE", # title of the standard error column
-    show.icc = FALSE, # showing intraclass correlation coefficient for mixed models
-    dv.labels = c("Insect damage") # list of dependent variables
-    )
-
-# predict effects of inundation when controlling for the other factors
-predict_Inun <- ggemmeans(M, terms = c("s.Inundation.300m [all]"))
-# view this result
-print(predict_Inun)
-# visualise this result
-I.I <- plot(predict_Inun, ci = T,add.data = TRUE, dot.alpha = 1,  jitter = 0) +
-  ggtitle("") +  geom_line(size = 1.2) +
-  labs(y = "Insect damage", x = "") +
-  theme_classic() +
-  theme(text = element_text(size = 32),
-        axis.text = element_text(size = 26)) 
-
-  # predict effects of stem density when controlling for other factors
-predict_stemdens <- ggemmeans(M, terms = c("L.Stem.density [all]"))
-print(predict_stemdens)
-S.I <- plot(predict_stemdens, ci = T,add.data = TRUE, dot.alpha = 1,  jitter = 0) +
-  ggtitle("") +  geom_line(size = 1.2) +
-  labs(y = "Insect damage*", x = "") +
-  theme_classic() +
-  theme(text = element_text(size = 32),
-        axis.text = element_text(size = 26)) 
-  
-  # predict effects of elevation when controlling for other factors
-predict_elev <- ggemmeans(M, terms = c("Elevation [all]"))
-print(predict_elev)
-E.I <- plot(predict_elev, ci = T,add.data = TRUE, dot.alpha = 1,  jitter = 0)  +
-  ggtitle("") +  geom_line(size = 1.2) +
-  labs(y = "Insect damage*", x = "") +
-  theme_classic() +
-  theme(text = element_text(size = 32),
-        axis.text = element_text(size = 26)) 
-```
-
