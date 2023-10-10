@@ -87,3 +87,12 @@ saltc_wide <- saltc_wide %>%
     mutate_at(c(10:36), ~replace_na(.,0))
 ```
 
+```{r}
+install.packages("writexl")
+
+library(writexl)
+
+# Assuming your dataframe is named 'my_dataframe'
+write_xlsx(saltc_wide, "Output/salt_comm_comp2.xlsx")
+```
+
