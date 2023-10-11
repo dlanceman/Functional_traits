@@ -24,6 +24,8 @@ This R script tests different types of modelling that can be applied to our salt
 #install.packages("car")
 #install.packages("performance")
 #install.packages("glmmTMB")
+#install.packages("bbmle")
+#install.packages("GLMMadaptive")
 
 library(readxl)
 library(tidyverse)
@@ -32,6 +34,8 @@ library(MuMIn)
 library(car)
 library(performance)
 library(glmmTMB)
+library(bbmle)
+library(GLMMadaptive)
 ```
 
 
@@ -69,11 +73,11 @@ salt <- read_excel("Data/Functional_traits_combined_data.xlsx", sheet = "Saltmar
            Site == "TB" ~ as.numeric("11"),
            Site == "CC" ~ as.numeric("33"),
            Site == "CF" ~ as.numeric("30"),
-           Site == "DLW" ~ as.numeric("9"),
-           Site == "AI" ~ as.numeric("100"), # try modelling that natural sites are "100 years since restoration"
-           Site == "SI" ~ as.numeric("100"),
-           Site == "VSR" ~ as.numeric("100"),
-           Site == "MWS" ~ as.numeric("100"),
+           Site == "DLW" ~ as.numeric("9") #,
+           #Site == "AI" ~ as.numeric("NA"), # figure out how best to include natural sites in model when they don't have a restoration age
+           #Site == "SI" ~ as.numeric("NA"),
+           #Site == "VSR" ~ as.numeric("NA"),
+           #Site == "MWS" ~ as.numeric("NA"),
          ))  # add a column for years since restoration
 # double check with Will years for each
 
@@ -96,15 +100,6 @@ trig <- salt %>%
 
 pneu <- salt %>%
   filter(Species == "Pneumatophores")
-
-# list all species
-unique(salt$Species)
-
-junc.k <- salt %>% 
-  filter(Species == "Juncus_kraussii")
-
-aster <- salt %>% 
-  filter(Species == "Aster")
 
 ```
 
@@ -166,8 +161,19 @@ Duplicate deletion - for community-level variables, there are several rows for e
 
 ```{r Duplicate deletion - community-level variables}
 salt_comm <- salt %>% distinct(Combo, .keep_all = TRUE) 
-
 salt_comm <- salt_comm[,-c(11:20,22,26)] # remove irrelevant rows
+
+spor_comm <- spor %>% distinct(Combo, .keep_all = TRUE) 
+spor_comm <- spor_comm[,-c(19,20,31,32)] # remove irrelevant rows
+
+sarc_comm <- sarc %>% distinct(Combo, .keep_all = TRUE) 
+sarc_comm <- sarc_comm[,-c(19,20,31)] # remove irrelevant rows
+
+trig_comm <- trig %>% distinct(Combo, .keep_all = TRUE) 
+trig_comm <- trig_comm[,-c(19,20,32)] # remove irrelevant rows
+
+pneu_comm <- pneu %>% distinct(Combo, .keep_all = TRUE) 
+pneu_comm <- pneu_comm[,-c(19,20)] # remove irrelevant rows
   
 ```
 
@@ -273,9 +279,15 @@ Total cover
 salt_comm <- salt_comm %>% mutate(total_cover_prop = `Total_cover_%`/100 -0.001)
 # also included a tiny offset since it doesn't like values of exactly 1 - must be below 1.
 
+# with restoration status - gives an error when YSR has NAs
 M <- glmmTMB(total_cover_prop ~ rest_status/YSR + Elevation + Estuary + (1|Site), data = salt_comm, family = beta_family(link = "logit"), na.action = na.exclude)
 # check whether this model makes sense and the correct way to include YSR as a fixed factor nested within rest_status
 summary(M)
+
+# without restoration status - no error
+M1 <- glmmTMB(total_cover_prop ~ YSR + Elevation + Estuary + (1|Site), data = salt_comm, family = beta_family(link = "logit"), na.action = na.exclude)
+# check whether this model makes sense and the correct way to include YSR as a fixed factor nested within rest_status
+summary(M1)
 ```
 
 Other assumptions (??)
@@ -302,6 +314,87 @@ Other assumptions (??)
       theme_classic()) 
 ```
 
+#2a - burrows
+
+```{r Zero-inflation testing and model approach}
+# test for zero-inflation
+
+100*sum(salt_comm$Burrows_0.5x0.5 == 0, na.rm = TRUE)/nrow(salt_comm)
+# 44% of our data are zeroes
+
+# check if this number of zeroes can be predicted under a poisson model
+# without restoration status for now until we figure that out
+M1 <- glmmTMB(Burrows_0.5x0.5 ~ YSR + Elevation + Estuary + (1|Site),
+          family = 'poisson',
+          data = salt_comm)
+
+summary(M1)
+
+## Check for over/underdispersion in the model
+E2 <- resid(M1, type = "pearson")
+N  <- nrow(salt_comm)
+p  <- length(coef(M1))   
+sum(E2^2) / (N - p)
+
+# 3.79 > 1 - evidence of overdispersion
+
+# check if this number of zeroes can be predicted under a negative binomial model
+# without restoration status for now
+
+## Check which type of negative binomial to use!!
+
+M2 <- glmmTMB(Burrows_0.5x0.5 ~ YSR + Elevation + Estuary + (1|Site),
+          family = 'nbinom1',
+          data = salt_comm)
+
+summary(M2)
+
+## Check for over/underdispersion in the model
+E2 <- resid(M2, type = "pearson")
+N  <- nrow(salt_comm)
+p  <- length(coef(M1))   
+sum(E2^2) / (N - p)
+
+# 0.93 < 1 therefore minor underdispersion 
+
+M3 <- glmmTMB(Burrows_0.5x0.5 ~ YSR + Elevation + Estuary + (1|Site),
+          family = 'nbinom2',
+          data = salt_comm)
+
+summary(M3)
+
+## Check for over/underdispersion in the model
+E2 <- resid(M3, type = "pearson")
+N  <- nrow(salt_comm)
+p  <- length(coef(M1))   
+sum(E2^2) / (N - p)
+
+# 0.82 therefore more underdispersed than the last model
+
+# try zeroinflated poisson model
+M_poisson_z <- glmmTMB(Burrows_0.5x0.5 ~ YSR + Elevation + Estuary + (1|YSR), data=salt_comm, ziformula=~1, family=poisson)
+summary(M_poisson_z)
+
+# compare the different models
+AICtab(M_poisson_z, M1, M2, M3)
+# lower values indicate a better model fit. M2 (negative binomial 1) has the best fit. It also had a value close to even dispersion.
+```
+
+```{r M2 - negative binomial 1 model}
+M2 <- glmmTMB(Burrows_0.5x0.5 ~ YSR + Elevation + Estuary + (1|Site),
+          family = 'nbinom1',
+          data = salt_comm)
+
+summary(M2)
+```
+
+Not sure how to best plot this.
+
+```{r Also need to test restoration status}
+# ideally combine within the same model, but otherwise could do a separate test like a t-test or ANOVA - make sure we test assumptions first though.
+
+t.test(salt_comm$Burrows_0.5x0.5 ~ salt_comm$rest_status)
+```
 
 
 # 3. Simple trial models - species level
@@ -316,39 +409,40 @@ First assumption: linear relationship between predictors and response variable
 
 ```{r Sporobolus stem density - check assumptions - linear relationship }
 # numeric predictors are YSR and elevation
-plot(spor$total_stems ~ spor$YSR) # not obviously non-linear
-plot(spor$total_stems ~ spor$Elevation) # not obviously non-linear
+plot(spor_comm$total_stems ~ spor_comm$YSR) # not obviously non-linear
+plot(spor_comm$total_stems ~ spor_comm$Elevation) # not obviously non-linear
 
 # therefore linear relationship assumption is OK
 ```
 
 
 ```{r Sporobolus stem density - model}
-M <- lmer(total_stems ~ rest_status/YSR + Elevation + Estuary + (1|Site), data = spor, na.action = na.exclude)
+M <- lmer(total_stems ~ rest_status/YSR + Elevation + Estuary + (1|Site), data = spor_comm, na.action = na.exclude)
 # check whether this model makes sense and the correct way to include YSR as a fixed factor nested within rest_status
 # this model gives a warning message about dropping a variable unless we assign "restoration ages" to the natural sites
 summary(M)
 
-M1 <- lmer(sq.stem.dens ~ rest_status/YSR + Elevation + Estuary + (1|Site), data = spor, na.action = na.exclude)
+M1 <- lmer(sq.stem.dens ~ rest_status/YSR + Elevation + Estuary + (1|Site), data = spor_comm, na.action = na.exclude)
 # check whether this model makes sense and whether rest_status:rest_year is the correct way to add rest_year as a fixed factor nested within rest_status
 # this model gives a warning message about dropping a variable unless we assign "restoration ages" to the natural sites
 summary(M1)
 
 # Hunter only
-spor_H <- spor %>% subset(Estuary == "Hunter")
+spor_comm_H <- spor_comm %>% subset(Estuary == "Hunter")
 
-M2 <- lmer(sq.stem.dens ~ rest_status/YSR + Elevation + (1|Site), data = spor_H, na.action = na.exclude)
+M2 <- lmer(sq.stem.dens ~ rest_status/YSR + Elevation + (1|Site), data = spor_comm_H, na.action = na.exclude)
 # check whether this model makes sense and whether rest_status:rest_year is the correct way to add rest_year as a fixed factor nested within rest_status
 # this model gives a warning message about dropping a variable unless we assign "restoration ages" to the natural sites
 summary(M2)
 
 # Hunter only, restored only 
-spor_H_res <- spor_H %>% subset(rest_status == "1")
+spor_comm_H_res <- spor_comm_H %>% subset(rest_status == "1")
 
-M3 <- lmer(sq.stem.dens ~ YSR + Elevation + (1|Site), data = spor_H_res, na.action = na.exclude)
-# check whether this model makes sense and whether rest_status:rest_year is the correct way to add rest_year as a fixed factor nested within rest_status
-# this model gives a warning message about dropping a variable unless we assign "restoration ages" to the natural sites
+M3 <- lmer(sq.stem.dens ~ YSR + Elevation + (1|YSR), data = spor_comm_H_res, na.action = na.exclude)
+# I've included YSR as a fixed and random factor as we are interested in it as a fixed numeric factor but it also represents random differences between sites. I've excluded site because it's correlated with YSR, particularly here where there are no natural sites
 summary(M3)
+
+# not sure if I can do restored only including both estuaries given that there is only one restoration site in the Maroochy estuary
 ```
 
 Other assumptions:
@@ -363,7 +457,7 @@ check_collinearity(M) # VIF < 5 (low collinearity) - good.
 # residuals plots
 plot(M) # equal variances assumption is OK
 qqnorm(resid(M)) 
-qqline(resid(M)) # not normal
+qqline(resid(M)) # not great but not terrible
 
 # check for collinearity between predictors
 check_collinearity(M1) # VIF < 5 (low collinearity) - good.
@@ -371,7 +465,7 @@ check_collinearity(M1) # VIF < 5 (low collinearity) - good.
 # residuals plots
 plot(M1) # looks like equal variances
 qqnorm(resid(M1)) 
-qqline(resid(M1)) # closer to normal, probably good enough (low values diverge)
+qqline(resid(M1)) # pretty close to normal
 
 # confirm if this is good enough
 # use sqrt transformed rather than non-transformed
@@ -379,7 +473,7 @@ qqline(resid(M1)) # closer to normal, probably good enough (low values diverge)
 
 ```{r Sporobolus stem density - plot}
 # plot elevation against stem density at each estuary
-(mm_plot <- ggplot(spor, aes(x = Elevation, y = sq.stem.dens, colour = Estuary)) +
+(mm_plot <- ggplot(spor_comm, aes(x = Elevation, y = sq.stem.dens, colour = Estuary)) +
       facet_wrap(~Estuary, nrow=2) +   # a panel for each mountain range
       geom_point(alpha = 0.5) +
       theme_classic() +
@@ -390,41 +484,98 @@ qqline(resid(M1)) # closer to normal, probably good enough (low values diverge)
 # looks like a trend in Hunter but not Maroochy
 
 
-(mm_plot <- ggplot(spor, aes(x = YSR, y = sq.stem.dens, colour = Estuary)) +   
+(mm_plot <- ggplot(spor_comm, aes(x = YSR, y = sq.stem.dens, colour = Estuary)) +   
       geom_point(alpha = 0.5, na.rm = TRUE) +
       geom_smooth(method = "lm", na.rm = TRUE) +
       theme_classic()) 
 # plot years since restoration against log canopy height 
 
 
-(mm_plot <- ggplot(spor_H, aes(x = YSR, y = sq.stem.dens)) +   
+(mm_plot <- ggplot(spor_comm_H, aes(x = YSR, y = sq.stem.dens)) +   
       geom_point(alpha = 0.5, na.rm = TRUE) +
       geom_smooth(method = "lm", na.rm = TRUE) +
       theme_classic()) 
 
-(mm_plot <- ggplot(spor_H_res, aes(x = YSR, y = sq.stem.dens)) +   
+(mm_plot <- ggplot(spor_comm_H_res, aes(x = YSR, y = sq.stem.dens)) +   
       geom_point(alpha = 0.5, na.rm = TRUE) +
       geom_smooth(method = "lm", na.rm = TRUE) +
       theme_classic()) 
 
-spor_H %>% subset(rest_status == "0") %>% 
+spor_comm_H %>% subset(rest_status == "0") %>% 
   ggplot(., aes(x = Site, y=sq.stem.dens)) +
   geom_boxplot() +
   theme_classic()
 ```
 
 
+Sporobolus % species cover
+- Total cover ~ rest_status*YSR + Elevation + (1|Estuary) + (1|Site)
+- beta distribution (proportional data with 2 categories - cover and non cover)
 
+```{r Sporobolus species cover - model}
+# turn species cover into a proportion between 0 and 1 instead of between 0 and 100
+spor_comm <- spor_comm %>% mutate(sp_cover_prop = `Sp_cover_%`/100 -0.001)
+# also included a tiny offset since it doesn't like values of exactly 1 - must be below 1.
 
+# when YSR has NA values, this model comes up with an error
+M <- glmmTMB(sp_cover_prop ~ rest_status/YSR + Elevation + Estuary + (1|Site), data = spor_comm, family = beta_family(link = "logit"), na.action = na.exclude)
+# check whether this model makes sense and the correct way to include YSR as a fixed factor nested within rest_status
+summary(M)
 
+# excluding restoration status (and therefore natural sites) from the model removes the error
+M <- glmmTMB(sp_cover_prop ~ YSR + Elevation + Estuary + (1|YSR), data = spor_comm, family = beta_family(link = "logit"), na.action = na.exclude)
+# check whether this model makes sense and the correct way to include YSR as a fixed factor nested within rest_status
+summary(M)
+```
 
-```{r Model - sqrt sporobolus stem density}
-M <- lmer(sq.stem.dens ~ rest_status + rest_status:rest_year + Elevation + Estuary + (1|Site), data = spor, na.action = na.exclude)
-# check whether this model makes sense and whether rest_status:rest_year is the correct way to add rest_year as a fixed factor nested within rest_status
+```{r Sporobolus species cover/overall cover model}
+spor_comm <- spor_comm %>% mutate(sp_cov_tot_prop = (`Sp_cover_%`/`Total_cover_%`) - 0.001 )
+
+# when YSR has NA values, this model comes up with an error
+M <- glmmTMB(sp_cov_tot_prop ~ rest_status/YSR + Elevation + Estuary + (1|Site), data = spor_comm, family = beta_family(link = "logit"), na.action = na.exclude)
+# check whether this model makes sense and the correct way to include YSR as a fixed factor nested within rest_status
+summary(M)
+
+# excluding restoration status (and therefore natural sites) from the model removes the error
+M <- glmmTMB(sp_cov_tot_prop ~ YSR + Elevation + Estuary + (1|YSR), data = spor_comm, family = beta_family(link = "logit"), na.action = na.exclude)
+# check whether this model makes sense and the correct way to include YSR as a fixed factor nested within rest_status
 summary(M)
 ```
 
 
+Other assumptions (??)
+
+
+```{r Sporobolus species cover - plot}
+(mm_plot <- ggplot(spor_comm, aes(x = YSR, y = sp_cover_prop)) +   
+      geom_point(alpha = 0.5) +
+    geom_smooth() + # meaningless
+      theme_classic()) 
+# older sites have consistently higher cover, compared with more varied cover at younger sites
+
+spor_comm %>% subset(rest_status == "0") %>% 
+  ggplot(., aes(x = Site, y=sp_cover_prop)) +
+  geom_boxplot() +
+  theme_classic()
+```
+
+
+Sporobolus seeding - ordinal categorical response variable
+
+```{r Data manipulation}
+# make seeds into an ordinal variable
+spor_comm$Seeds <- factor(spor_comm$Seeds, order = TRUE, levels = c("No", "Very few", "Few", "Some", "Lots"))
+```
+
+We can use the GLMMadaptive package to create a mixed model with an ordinal response variable.
+
+Need to explore data to decide which family is most appropriate.
+
+```{r Sporobolus seeding - model}
+m_seeds <- mixed_model(fixed = Seeds ~ YSR + Elevation + Estuary, random = ~ 1 | Site, 
+                  data = spor_comm, family = binomial())
+summary(m_seeds)
+```
 
 
 
