@@ -47,6 +47,18 @@ setwd("C:/Users/z5204897/OneDrive - UNSW/Desktop/PhD/Data_analysis/Project/Funct
 salt <- read_excel("Data/Functional_traits_combined_data.xlsx", sheet = "Saltmarsh") %>% 
   arrange(Date, Time) %>% 
   mutate(total_stems = Stems * 10000/Quad_length_cm^2, # add column for total stem count per 1m2 for each species to standardise stem counts
+         Buds = case_when(  # reassign Buds as a numeric variable
+           Buds == "Yes" ~ 1,
+           Buds == "No" ~ 0,
+           Buds == "Unknown" ~ NA,
+           Buds == "NA" ~ NA
+         ),
+         Flowers = case_when(  # reassign Buds as a numeric variable
+           Flowers == "Yes" ~ 1,
+           Flowers == "No" ~ 0,
+           Flowers == "Unknown" ~ NA,
+           Flowers == "NA" ~ NA
+         ),
          rest_status = case_when(
            Site == "AE" ~ as.numeric("1"),
            Site == "HS" ~ as.numeric("1"),
@@ -81,10 +93,36 @@ salt <- read_excel("Data/Functional_traits_combined_data.xlsx", sheet = "Saltmar
          ))  # add a column for years since restoration
 # double check with Will years for each
 
+# Create a column for the Dominant Species in each quadrat
+salt <- salt %>%
+  group_by(Combo) %>% 
+  mutate(
+    MaxSpeciesCover = max(`Sp_cover_%`),
+    DomSpecies = ifelse(100 - `Total_cover_%` > MaxSpeciesCover, "unvegetated", #Species[which.max(`Sp_cover_%`)] # old code, but computes the first occurrence of the max cover so doesn't deal with "ties"
+                        paste(unique(Species[`Sp_cover_%` == MaxSpeciesCover]), collapse = ", "))) %>% # Calculate the species with maximum cover for each Quadrat, and list multiple if it's a tie
+  ungroup() %>%
+  select(-MaxSpeciesCover) # Remove MaxSpeciesCover colummn
+
+# For quadrats that have ended up listing two species as jointly dominant, manually edit these to include whichever of these species is "bulkier" as dominant
+# i.e. Juncus > Triglochin, Sarcocornia > GSG, Juncus > Sporobolus
+
+salt <- salt %>% mutate(
+  DomSpecies = case_when(
+    DomSpecies == "Juncus_kraussii, Sporobolus" ~ "Juncus_kraussii",
+    DomSpecies == "Juncus_kraussii, Triglochin" ~ "Juncus_kraussii",
+    DomSpecies == "GSG, Sarcocornia" ~ "Sarcocornia",
+    .default = DomSpecies
+  )
+)
+
+# create a column for proportion cover of each species (species cover/overall cover)
+salt <- salt %>% mutate(sp_prop = `Sp_cover_%`/`Total_cover_%`)
+
 # reassign Quadrat as an explictly nested variable within Site
 salt$Quadrat <- as.character(salt$Quadrat)
 salt$Quadrat.f <- factor(interaction(salt$Site, salt$Quadrat, sep = ":"))
 salt$Quadrat.f <- as.character(salt$Quadrat.f)
+
 ```
 
 
@@ -161,16 +199,16 @@ Duplicate deletion - for community-level variables, there are several rows for e
 
 ```{r Duplicate deletion - community-level variables}
 salt_comm <- salt %>% distinct(Combo, .keep_all = TRUE) 
-salt_comm <- salt_comm[,-c(11:20,22,26)] # remove irrelevant rows
+salt_comm <- salt_comm[,-c(11:20,22,26,31)] # remove irrelevant rows
 
 spor_comm <- spor %>% distinct(Combo, .keep_all = TRUE) 
-spor_comm <- spor_comm[,-c(19,20,31,32)] # remove irrelevant rows
+spor_comm <- spor_comm[,-c(19,20,33,34)] # remove irrelevant rows
 
 sarc_comm <- sarc %>% distinct(Combo, .keep_all = TRUE) 
-sarc_comm <- sarc_comm[,-c(19,20,31)] # remove irrelevant rows
+sarc_comm <- sarc_comm[,-c(19,20,33)] # remove irrelevant rows
 
 trig_comm <- trig %>% distinct(Combo, .keep_all = TRUE) 
-trig_comm <- trig_comm[,-c(19,20,32)] # remove irrelevant rows
+trig_comm <- trig_comm[,-c(19,20,34)] # remove irrelevant rows
 
 pneu_comm <- pneu %>% distinct(Combo, .keep_all = TRUE) 
 pneu_comm <- pneu_comm[,-c(19,20)] # remove irrelevant rows
@@ -207,6 +245,12 @@ plot(salt_comm$Canopy_ht_cm ~ salt_comm$Elevation) # not obviously non-linear
 M <- lmer(Canopy_ht_cm ~ rest_status/YSR + Elevation + Estuary + (1|Site), data = salt_comm, na.action = na.exclude)
 # check whether this model makes sense and the correct way to include YSR as a fixed factor nested within rest_status
 # this model gives a warning message about dropping a variable unless we assign "restoration ages" to the natural sites
+summary(M)
+
+M <- lmer(Canopy_ht_cm ~ rest_status*YSR + Elevation + Estuary + (1|Site), data = salt_comm, na.action = na.exclude)
+summary(M)
+
+M <- lmer(Canopy_ht_cm ~ YSR + Elevation + Estuary + (1|Site), data = salt_comm, na.action = na.exclude)
 summary(M)
 
 M1 <- lmer(ln.canopy.ht ~ rest_status/YSR + Elevation + Estuary + (1|Site), data = salt_comm, na.action = na.exclude)
@@ -314,7 +358,7 @@ Other assumptions (??)
       theme_classic()) 
 ```
 
-#2a - burrows
+#2c - burrows
 
 ```{r Zero-inflation testing and model approach}
 # test for zero-inflation
@@ -427,6 +471,11 @@ M1 <- lmer(sq.stem.dens ~ rest_status/YSR + Elevation + Estuary + (1|Site), data
 # this model gives a warning message about dropping a variable unless we assign "restoration ages" to the natural sites
 summary(M1)
 
+M2 <- lmer(sq.stem.dens ~ YSR + Elevation + Estuary + (1|Site), data = spor_comm, na.action = na.exclude)
+# check whether this model makes sense and whether rest_status:rest_year is the correct way to add rest_year as a fixed factor nested within rest_status
+# this model gives a warning message about dropping a variable unless we assign "restoration ages" to the natural sites
+summary(M2)
+
 # Hunter only
 spor_comm_H <- spor_comm %>% subset(Estuary == "Hunter")
 
@@ -450,7 +499,7 @@ Other assumptions:
 - model residuals have equal variances
 - model residuals are independent
 
-```{r Tallest canopy height - check residuals assumptions}
+```{r Sporobolus stem density - check residuals assumptions}
 # check for collinearity between predictors
 check_collinearity(M) # VIF < 5 (low collinearity) - good.
 
@@ -560,9 +609,17 @@ spor_comm %>% subset(rest_status == "0") %>%
 ```
 
 
+Sporobolus buds and flowers - binary response variables
+
+```{r Sporobolus buds and flowers - visualise distributions}
+hist(spor_comm$Buds) # all zeroes - nothing to model
+hist(spor_comm$Flowers) # almost all zeroes (only 5 quadrats with flowers) - not enough data to model
+```
+
+
 Sporobolus seeding - ordinal categorical response variable
 
-```{r Data manipulation}
+```{r Sporobolus seeding - Data manipulation}
 # make seeds into an ordinal variable
 spor_comm$Seeds <- factor(spor_comm$Seeds, order = TRUE, levels = c("No", "Very few", "Few", "Some", "Lots"))
 ```
@@ -572,9 +629,9 @@ We can use the GLMMadaptive package to create a mixed model with an ordinal resp
 Need to explore data to decide which family is most appropriate.
 
 ```{r Sporobolus seeding - model}
-m_seeds <- mixed_model(fixed = Seeds ~ YSR + Elevation + Estuary, random = ~ 1 | Site, 
+m_spor_seeds <- mixed_model(fixed = Seeds ~ YSR + Elevation + Estuary, random = ~ 1 | Site, 
                   data = spor_comm, family = binomial())
-summary(m_seeds)
+summary(m_spor_seeds)
 ```
 
 
@@ -582,11 +639,298 @@ summary(m_seeds)
 
 
 
+# 3a again - Sporobolus new models
+
+```{r Sporobolus modelling - data prep}
+# new dataframe for Sporobolus Hunter only
+spor_H <- spor %>% subset(Estuary == "Hunter")
+spor_comm_H <- spor_comm  %>% subset(Estuary == "Hunter")
+```
+
+
+1. Sporobolus stem density, height and diameter
+
+1a. Natural vs restored
+
+Explanatory variables:
+- restoration status (binary)
+- Elevation (continuous)
+- Site (random, nested in restoration status)
+- Quadrat (for stem height and diameter, unless we average them) (random, nested in Site in restoration status)
+- Dominant species (categorical)
+- species proportional cover (continuous)
+
+1ai. Hunter estuary
+
+
+```{r Sporobolus continuous depedent variables - check correlations}
+plot(spor_H$total_stems ~ spor_H$Stem_dia_mm) # not correlated
+plot(spor_H$Stem_ht_mm ~ spor_H$Stem_dia_mm) # not correlated
+plot(spor_H$total_stems ~ spor_H$Stem_ht_mm) # not correlated
+
+# therefore can model all three variables, as none are correlated
+```
+
+Should we only include Dominant Species of interest?
+
+```{r Sporobolus stem height - univariate model}
+# test assumptions - linear relationship between predictors and response
+# numeric predictors are species proportional cover and elevation
+plot(spor_H$Stem_ht_mm ~ spor_H$sp_prop) # not obviously non-linear, but clearly stem height is 1-inflated. Need to figure out if this is an issue and if there's anything I can do about it.
+plot(spor_H$Stem_ht_mm ~ spor_H$Elevation) # looks non-linear
+ggplot(spor_H, aes(x = Elevation, y = Stem_ht_mm)) +
+  geom_point() +
+  geom_smooth(span = 0.5)
+# therefore use a generalised linear model with a non-linear method or include elevation as a non-linear predictor variable. Maybe a cubic function?
+
+
+# create model
+M_spor_H_stem_ht <- lmer(Stem_ht_mm ~ rest_status + poly(Elevation,3) + DomSpecies + sp_prop + (1|Site) + (1|Quadrat.f), data = spor_H, na.action = na.exclude)
+# do I need to specify nesting here or will the model figure out due to the unique labelling of factors?
+summary(M_spor_H_stem_ht)
+
+# 3rd order polynomial elevation was non-significant, so include as a 2nd order polynomial
+M_spor_H_stem_ht <- lmer(Stem_ht_mm ~ rest_status + poly(Elevation,2) + DomSpecies + sp_prop + (1|Site) + (1|Quadrat.f), data = spor_H, na.action = na.exclude)
+summary(M_spor_H_stem_ht)
+
+# looks like elevation and Juncus dominance influence Sporobolus stem height, but not restoration status (consistent with exploratory plots about restoration status)
+
+# create a simplified model with only the significant factors
+M_spor_H_stem_ht <- lmer(Stem_ht_mm ~ poly(Elevation,2) + DomSpecies + (1|Site) + (1|Quadrat.f), data = spor_H, na.action = na.exclude)
+summary(M_spor_H_stem_ht)
+
+
+# check more model assumptions
 
 
 
 
 
+# plot
+ggplot(spor_H, aes(x = Elevation, y = Stem_ht_mm)) +
+  geom_point() +
+  #geom_smooth(span = 1)
+  stat_smooth(method="lm", se=TRUE, fill=NA,
+                formula=y ~ poly(x, 2, raw=TRUE))
+
+boxplot(spor_H$Stem_ht_mm ~ spor_H$rest_status)
+
+boxplot(spor_H$Stem_ht_mm ~ spor_H$DomSpecies)
+```
+
+
+```{r Sporoblus stem density - univariate model}
+# test assumptions - linear relationship between predictors and response
+# numeric predictors are species proportional cover and elevation
+plot(spor_comm_H$total_stems ~ spor_comm_H$sp_prop) # potentially non-linear
+ggplot(spor_comm_H, aes(x = sp_prop, y = total_stems)) +
+  geom_point() +
+  geom_smooth(span = 1) +
+  geom_smooth(method = lm) # close enough to linear
+
+plot(spor_comm_H$total_stems ~ spor_comm_H$Elevation) # not obviously non-linear
+
+
+# create model
+M_spor_H_stem_dens <- lmer(total_stems ~ rest_status + Elevation + DomSpecies + sp_prop + (1|Site), data = spor_comm_H, na.action = na.exclude)
+# do I need to specify nesting here or will the model figure out due to the unique labelling of factors?
+summary(M_spor_H_stem_dens)
+
+# looks like elevation and species proportion influence Sporobolus stem density, but not restoration status (exploratory plots looked like restoration status did have an influence, but older sites were similar to natural sites, so wouldn't necessarily show up in this binary model)
+
+# create a simplified model with only the significant factors
+M_spor_H_stem_dens <- lmer(total_stems ~ Elevation + sp_prop + (1|Site), data = spor_comm_H, na.action = na.exclude)
+summary(M_spor_H_stem_dens)
+# elevation is no longer significant?
+
+
+# check more model assumptions
+
+
+
+
+
+# plot
+ggplot(spor_comm_H, aes(x = Elevation, y = total_stems)) +
+  geom_point() +
+  geom_smooth(method = lm)
+
+ggplot(spor_comm_H, aes(x = sp_prop, y = total_stems)) +
+  geom_point() +
+  geom_smooth(method = lm)
+
+boxplot(spor_comm_H$total_stems ~ spor_comm_H$rest_status)
+
+
+# might not make sense to include species proportion in the model as it is logically correlated with stem density... rerun without?
+```
+
+how to interpret random factors??
+
+
+
+1b. Restoration age
+
+1bi. Hunter estuary
+
+
+```{r Sporoblus stem density - univariate model}
+# test assumptions - linear relationship between predictors and response
+# numeric predictors are species proportional cover and elevation
+plot(spor_comm_H$total_stems ~ spor_comm_H$sp_prop) # potentially non-linear
+ggplot(spor_comm_H, aes(x = sp_prop, y = total_stems)) +
+  geom_point() +
+  geom_smooth(span = 1) +
+  geom_smooth(method = lm) # close enough to linear
+
+plot(spor_comm_H$total_stems ~ spor_comm_H$Elevation) # not obviously non-linear
+
+
+# create model
+M_spor_H_stem_dens <- lmer(total_stems ~ YSR + Elevation + DomSpecies + sp_prop + (1|Site), data = spor_comm_H, na.action = na.exclude)
+# do I need to specify nesting here or will the model figure out due to the unique labelling of factors?
+summary(M_spor_H_stem_dens)
+
+# YSR is non-significant
+
+# looks like elevation and species proportion influence Sporobolus stem density, but not restoration status (exploratory plots looked like restoration status did have an influence, but older sites were similar to natural sites, so wouldn't necessarily show up in this binary model)
+
+# create a simplified model with only the significant factors
+M_spor_H_stem_dens <- lmer(total_stems ~ Elevation + sp_prop + (1|Site), data = spor_comm_H, na.action = na.exclude)
+summary(M_spor_H_stem_dens)
+# elevation is no longer significant?
+
+
+# check more model assumptions
+
+
+
+
+
+# plot
+ggplot(spor_comm_H, aes(x = Elevation, y = total_stems)) +
+  geom_point() +
+  geom_smooth(method = lm)
+
+ggplot(spor_comm_H, aes(x = sp_prop, y = total_stems)) +
+  geom_point() +
+  geom_smooth(method = lm)
+
+ggplot(spor_comm_H, aes(x = YSR, y = total_stems)) +
+  geom_point() +
+  geom_smooth(method = lm)
+
+
+# might not make sense to include species proportion in the model as it is logically correlated with stem density... rerun without?
+```
+
+
+
+```{r stem height}
+ggplot(spor_H, aes(x = YSR, y = Stem_ht_mm)) +
+  geom_point() +
+  geom_smooth(method = lm)
+```
+
+
+```{r sporobolus % cover univariate}
+ggplot(spor_comm_H, aes(x = YSR, y = `Sp_cover_%`)) +
+  geom_point() +
+  geom_smooth(method = lm)
+
+boxplot(spor_comm_H$`Sp_cover_%` ~ spor_comm_H$rest_status)
+```
+
+
+Need to standardise these variables (centred on 0 with SD of 1) in order to model them together?
+
+Need to account for the fact that stem density is measured at a quadrat level and stem height and diameter are measured at stem level.
+
+```{r Sporobolus stem height, diameter and density - Multivariate model}
+
+```
+
+
+# 3b - Sarcocornia
+
+
+
+Sarcocornia reproduction
+
+```{r Sarcocornia reproduction - Visualise distributions}
+hist(sarc_comm$Buds) # no buds
+hist(sarc_comm$Flowers) # there are occurrences of both flowers and no flowers
+
+# make seeds a binary variable
+sarc_comm <- sarc_comm %>% mutate(
+  Seeds = case_when(
+    Seeds == "Yes" ~ 1,
+    Seeds == "No" ~ 0,
+    Seeds == "Unknown" ~ NA,
+    Seeds == "NA" ~ NA  
+  )
+)
+hist(sarc_comm$Seeds) # there are occurrences of both seeds and no seeds
+
+# are Flower and Seed presence correlated?
+# see if there is a more formal way of testing this
+sarc_comm$Seeds[sarc_comm$Flowers == 1] # there are 25 cases when Flowers are present. Seeds are present in 15 of these and no seeds in 8 of these.
+sarc_comm$Seeds[sarc_comm$Flowers == 0] # there are 11 cases when Flowers are not present. Seeds are present in 5 of these and not present in 4 of these.
+# therefore it seems like they aren't well correlated and can both be analysed
+```
+
+Need to decide whether we want to include these in a multivariate model together or have two separate models.
+
+```{r Sarcocornia flowers - model}
+m_sarc_flow <- glmmTMB(Flowers ~ YSR + Elevation + (1|Site), 
+                  data = sarc_comm, family = binomial(), na.action = na.exclude)
+# can't include estuary in the model as this species was only surveyed at Hunter
+summary(m_sarc_flow)
+```
+
+
+```{r Sarcocornia seeds - model}
+m_sarc_seeds <- glmmTMB(Seeds ~ YSR + Elevation + (1|Site), 
+                  data = sarc_comm, family = binomial(), na.action = na.exclude)
+# can't include estuary in the model as this species was only surveyed at Hunter
+summary(m_sarc_seeds)
+```
+
+
+
+
+# 3c - Triglochin
+
+Triglochin reproduction
+
+```{r Triglochin reproduction - Visualise distributions}
+hist(trig_comm$Buds) # there are occurrences of buds and no buds
+hist(trig_comm$Flowers) # there are occurrences of both flowers and no flowers, but only about 2 occurrences of no flowers, which is not enough to analyse
+
+# make seeds a binary variable
+trig_comm <- trig_comm %>% mutate(
+  Seeds = case_when(
+    Seeds == "Yes" ~ 1,
+    Seeds == "No" ~ 0,
+    Seeds == "Unknown" ~ NA,
+    Seeds == "NA" ~ NA  
+  )
+)
+hist(trig_comm$Seeds) # there are occurrences of both seeds and no seeds
+
+# are Bud and Seed presence correlated?
+# see if there is a more formal way of testing this
+trig_comm$Buds[trig_comm$Seeds == 1] # there are 12 cases when seeds are present. Buds are present in 7 of these and not present in 5 of these
+trig_comm$Buds[trig_comm$Seeds == 0] # there are 21 cases when seeds are not present. Buds are present in 3 of these and not present in 18 of these.
+trig_comm$Seeds[trig_comm$Buds == 1] # there are 10 cases when Buds are present. Seeds are present in 7 of these and not present in 3 of these
+trig_comm$Seeds[trig_comm$Buds == 0] # there are 23 cases when Buds are not present. Seeds are present in 5 of these and not present in 18 of these.
+# therefore I'm not sure if they're too correlated or not..
+```
+
+
+
+
+# 3d - pneumatophores
 
 
 
