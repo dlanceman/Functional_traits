@@ -26,6 +26,9 @@ This R script tests different types of modelling that can be applied to our salt
 #install.packages("glmmTMB")
 #install.packages("bbmle")
 #install.packages("GLMMadaptive")
+#install.packages("ggeffects")
+#install.packages("emmeans")
+#install.packages("robustlmm")
 
 library(readxl)
 library(tidyverse)
@@ -36,6 +39,9 @@ library(performance)
 library(glmmTMB)
 library(bbmle)
 library(GLMMadaptive)
+library(ggeffects)
+library(emmeans)
+library(robustlmm)
 ```
 
 
@@ -150,12 +156,14 @@ salt[c(738-744), 20] <- NA # remove triglochin measurements with unrealistic ste
 salt[802,19] <- NA # remove triglochin measurement with unrealistic stem height 556mm
 salt[1271,19] <- NA # remove triglochin measurement with unrealistic stem height 860mm
 salt[112,20] <- NA # remove pneumatophore measurement with unrealistic diameter 1mm
+salt[c(862,917),20] <- NA # remove sporobolus measurements with unrealistic diameters > 4mm
 
 trig[121,19] <- NA # this value had stem height of 556mm
 trig[240,19] <- NA # this value had stem height of 860mm
 trig[c(98:104),20] <- NA # these had stem diameters > 4mm
 trig[78,20] <- NA # stem diameter was > 4mm
 pneu[40,20] <- NA # this had stem diameter of 1mm
+spor[c(283,313),20] <- NA # remove sporobolus measurements with unrealistic diameters > 4mm
 ```
 
 
@@ -166,7 +174,9 @@ salt$ln.canopy.ht <- log(salt$Canopy_ht_cm)
 
 # sporobolus
 spor$ln.stem.ht <- log(spor$Stem_ht_mm)
-spor$ln.stem.dia <- log(spor$Stem_dia_mm + 1)
+spor$sq.stem.ht <- sqrt(spor$Stem_ht_mm)
+spor$ln.stem.dia <- log(spor$Stem_dia_mm + 0.01)
+spor$sq.stem.dia <- sqrt(spor$Stem_dia_mm)
 spor$sq.stem.dens <- sqrt(spor$total_stems)
 
 # sarcocornia
@@ -174,7 +184,7 @@ sarc$sq.stem.dia <- sqrt(sarc$Stem_dia_mm)
 sarc$sq.stem.dens <- sqrt(sarc$total_stems)
 
 # triglochin
-trig$ln.sp.cover <- log(trig$`Sp_cover_%` + 1)
+trig$ln.sp.cover <- log(trig$`Sp_cover_%` + 0.01)
 trig$sq.stem.dia <- sqrt(trig$Stem_dia_mm)
 trig$ln.stem.dens <- log(trig$total_stems)
 
@@ -200,9 +210,12 @@ Duplicate deletion - for community-level variables, there are several rows for e
 ```{r Duplicate deletion - community-level variables}
 salt_comm <- salt %>% distinct(Combo, .keep_all = TRUE) 
 salt_comm <- salt_comm[,-c(11:20,22,26,31)] # remove irrelevant rows
+# turn total cover into a proportion between 0 and 1 instead of between 0 and 100
+salt_comm <- salt_comm %>% mutate(total_cover_prop = `Total_cover_%`/100 -0.001)
+# also included a tiny offset since it doesn't like values of exactly 1 - must be below 1.
 
 spor_comm <- spor %>% distinct(Combo, .keep_all = TRUE) 
-spor_comm <- spor_comm[,-c(19,20,33,34)] # remove irrelevant rows
+spor_comm <- spor_comm[,-c(19,20,33:36)] # remove irrelevant rows
 
 sarc_comm <- sarc %>% distinct(Combo, .keep_all = TRUE) 
 sarc_comm <- sarc_comm[,-c(19,20,33)] # remove irrelevant rows
@@ -215,48 +228,100 @@ pneu_comm <- pneu_comm[,-c(19,20)] # remove irrelevant rows
   
 ```
 
+Create datasets for just restored data and just natural data
+```{r Subsetting dataframes}
+salt_H <- salt %>% subset(Estuary == "Hunter")
+spor_H <- spor %>% subset(Estuary == "Hunter")
+sarc_H <- sarc %>% subset(Estuary == "Hunter")
+trig_H <- trig %>% subset(Estuary == "Hunter")
+pneu_H <- pneu %>% subset(Estuary == "Hunter")
+
+spor_H_rest <- spor_H %>% subset(rest_status == 1)
+sarc_H_rest <- sarc_H %>% subset(rest_status == 1)
+trig_H_rest <- trig_H %>% subset(rest_status == 1)
+pneu_H_rest <- pneu_H %>% subset(rest_status == 1)
+
+spor_H_nat <- spor_H %>% subset(rest_status == 0)
+sarc_H_nat <- sarc_H %>% subset(rest_status == 0)
+trig_H_nat <- trig_H %>% subset(rest_status == 0)
+pneu_H_nat <- pneu_H %>% subset(rest_status == 0)
+
+salt_comm_rest <- salt_comm %>% subset(salt_comm$rest_status == 1)
+salt_comm_nat <- salt_comm %>% subset(salt_comm$rest_status == 0)
+salt_comm_rest_H <- salt_comm_rest %>% subset(salt_comm_rest$Estuary == "Hunter")
+salt_comm_nat_H <- salt_comm_nat %>% subset(salt_comm_nat$Estuary == "Hunter")
+salt_comm_H <- salt_comm %>% subset(salt_comm$Estuary == "Hunter")
+
+spor_comm_H <- spor_comm %>% subset(Estuary == "Hunter")
+sarc_comm_H <- sarc_comm %>% subset(Estuary == "Hunter")
+trig_comm_H <- trig_comm %>% subset(Estuary == "Hunter")
+pneu_comm_H <- pneu_comm %>% subset(Estuary == "Hunter")
+
+# Hunter only, restored only 
+spor_comm_H_res <- spor_comm_H %>% subset(rest_status == "1")
+sarc_comm_H_res <- sarc_comm_H %>% subset(rest_status == "1")
+trig_comm_H_res <- trig_comm_H %>% subset(rest_status == "1")
+pneu_comm_H_res <- pneu_comm_H %>% subset(rest_status == "1")
+
+# Hunter only, natural only 
+spor_comm_H_nat <- spor_comm_H %>% subset(rest_status == "0")
+sarc_comm_H_nat <- sarc_comm_H %>% subset(rest_status == "0")
+trig_comm_H_nat <- trig_comm_H %>% subset(rest_status == "0")
+pneu_comm_H_nat <- pneu_comm_H %>% subset(rest_status == "0")
+```
 
 
+# A. Hunter only
 
 # 2. Simple trial models - community level
 
 First, let's create univariate models for our community-level variables (tallest canopy height, total cover and burrows).
 
-For now, we'll run these models without a species presence/proportions variable for simplicity. If we decide that species composition is likely affecting these variables, we could try running modified models later.
-
 
 # 2a Tallest canopy height
 
 Tallest canopy height
-- Canopy height ~ YSR + Elevation + (1|Estuary) + (1|Site)
+- Canopy height ~ YSR + DomSpecies + Elevation + (1|Site)
 
 First assumption: linear relationship between predictors and response variable
 
 ```{r Tallest canopy height - check assumptions - linear relationship }
 # numeric predictors are YSR and elevation
-plot(salt_comm$Canopy_ht_cm ~ salt_comm$YSR) # not obviously non-linear
-plot(salt_comm$Canopy_ht_cm ~ salt_comm$Elevation) # not obviously non-linear
-
-# therefore linear relationship assumption is OK
+plot(salt_comm$Canopy_ht_cm ~ salt_comm$YSR) # possibly non-linear
+plot(salt_comm$Canopy_ht_cm ~ salt_comm$Elevation) # possibly non-linear
 ```
 
 
 ```{r Tallest canopy height - model}
-M <- lmer(Canopy_ht_cm ~ rest_status/YSR + Elevation + Estuary + (1|Site), data = salt_comm, na.action = na.exclude)
-# check whether this model makes sense and the correct way to include YSR as a fixed factor nested within rest_status
-# this model gives a warning message about dropping a variable unless we assign "restoration ages" to the natural sites
+M <- lmer(Canopy_ht_cm ~ YSR + DomSpecies + Elevation + (1|Site), data = salt_comm_rest_H, na.action = na.exclude)
 summary(M)
 
-M <- lmer(Canopy_ht_cm ~ rest_status*YSR + Elevation + Estuary + (1|Site), data = salt_comm, na.action = na.exclude)
-summary(M)
+# YSR is significant
+# DomSpeciesPhragmites is significant, DomSpeciesSarcocornia is significant, DomSpeciesSporobolus is significant, DomSpeciesSuaeda is significant, DomSpeciesTriglochin is significant, DomSpeciesunvegetated is significant
+# Site explains 117/372 = 31% of the variance not explained by fixed effects
 
-M <- lmer(Canopy_ht_cm ~ YSR + Elevation + Estuary + (1|Site), data = salt_comm, na.action = na.exclude)
-summary(M)
-
-M1 <- lmer(ln.canopy.ht ~ rest_status/YSR + Elevation + Estuary + (1|Site), data = salt_comm, na.action = na.exclude)
+M1 <- lmer(ln.canopy.ht ~ YSR + DomSpecies + Elevation + (1|Site), data = salt_comm_rest_H, na.action = na.exclude)
 # check whether this model makes sense and whether rest_status:rest_year is the correct way to add rest_year as a fixed factor nested within rest_status
 # this model gives a warning message about dropping a variable unless we assign "restoration ages" to the natural sites
 summary(M1)
+
+# elevation is significant in this model
+
+# try a model with polynomial variables
+M2 <- lmer(Canopy_ht_cm ~ poly(YSR,2) + DomSpecies + poly(Elevation,2) + (1|Site), data = salt_comm_rest_H, na.action = na.exclude)
+summary(M2)
+
+# estimate > st error for 2nd order polynomial YSR & 1st order polynomial
+# 1st order elevation is significant here
+
+# try a model with polynomial variables and log transform
+M3 <- lmer(ln.canopy.ht ~ poly(YSR,2) + DomSpecies + poly(Elevation,2) + (1|Site), data = salt_comm_rest_H, na.action = na.exclude)
+summary(M3)
+
+# remove non-significant factors - polynomial elevation
+
+M3 <- lmer(ln.canopy.ht ~ poly(YSR,2) + DomSpecies + Elevation + (1|Site), data = salt_comm_rest_H, na.action = na.exclude)
+summary(M3)
 ```
 
 Other assumptions:
@@ -269,175 +334,257 @@ Other assumptions:
 check_collinearity(M) # VIF < 5 (low collinearity) - good.
 
 # residuals plots
-plot(M) # doesn't look like equal variances
+plot(M) # roughly equal variances
 qqnorm(resid(M)) 
 qqline(resid(M)) # not normal
 
+# try M1 with log-transformed response variable
 # check for collinearity between predictors
 check_collinearity(M1) # VIF < 5 (low collinearity) - good.
 
 # residuals plots
-plot(M1) # looks like equal variances
+plot(M1) # roughly equal variances / slightly worse than before
 qqnorm(resid(M1)) 
 qqline(resid(M1)) # closer to normal, but not great (high values diverge)
 
-# confirm if this is good enough
+# try M2 with polynomial variables
+# check for collinearity between predictors
+check_collinearity(M2) # VIF < 5 (low collinearity) - good.
+
+# residuals plots
+plot(M2) # roughly equal variances / slightly worse than before
+qqnorm(resid(M2)) 
+qqline(resid(M2)) # not great
+
+# try M3 
+# check for collinearity between predictors
+check_collinearity(M3) # VIF < 5 (low collinearity) - good.
+
+# residuals plots
+plot(M3) # roughly equal variances / slightly worse than before
+qqnorm(resid(M3)) 
+qqline(resid(M3)) # not good at all. don't use this one.
+
 # use log transformed rather than non-transformed
+# confirm if this is good enough
 ```
 
 ```{r Tallest canopy height - plot}
-# plot elevation against log canopy height at each site
-(mm_plot <- ggplot(salt_comm, aes(x = Elevation, y = ln.canopy.ht, colour = Estuary)) +
-      facet_wrap(~Site, nrow=2) +   # a panel for each mountain range
-      geom_point(alpha = 0.5) +
-      theme_classic() +
-      geom_line(data = cbind(salt_comm, pred = predict(M1)), aes(y = pred), size = 1) +  # adding predicted line from mixed model 
-      theme(legend.position = "none",
-            panel.spacing = unit(2, "lines"))  # adding space between panels
-)
-# looks like no relationships
-
-(mm_plot <- ggplot(salt_comm, aes(x = Elevation, y = ln.canopy.ht, colour = Site)) +   
-      geom_point(alpha = 0.5) +
-      theme_classic() +
-      geom_line(data = cbind(salt_comm, pred = predict(M1)), aes(y = pred), size = 1)) 
-# plot elevation against log canopy height across sites - looks like no effect
-
-(mm_plot <- ggplot(salt_comm, aes(x = YSR, y = ln.canopy.ht, colour = Estuary)) +   
+# Years since restoration
+ggplot(salt_comm_rest_H, aes(x = YSR, y = ln.canopy.ht)) +   
       geom_point(alpha = 0.5, na.rm = TRUE) +
-      geom_smooth(method = "lm", na.rm = TRUE) +
-      theme_classic()) 
-# plot years since restoration against log canopy height 
+      geom_smooth(span = 10) +
+    scale_y_continuous(breaks = log(pretty(exp(salt_comm$ln.canopy.ht))), labels = pretty(exp(salt_comm$ln.canopy.ht))) +
+    labs(y = "Canopy height (cm)", x = "Years since restoration") +
+      theme_classic()
+
+# plot predicted values with ggeffects ggemmeans
+predict_YSR <- ggemmeans(M2, terms = c("YSR [all]"))
+# view this result
+print(predict_YSR)
+# visualise this result
+plot(predict_YSR, ci = T,add.data = TRUE, dot.alpha = 0.5,  jitter = 0.2)+
+  ggtitle("") +  geom_line(size = 1.2) +
+  labs(y = "Tallest stem height (cm)", x = "Years since restoration") +
+  theme_classic()
+
+# natural sites boxplot
+ggplot(salt_comm_nat_H, aes(x = Site, y = ln.canopy.ht)) +
+  geom_boxplot() +
+    scale_y_continuous(breaks = log(pretty(exp(salt_comm$ln.canopy.ht))), labels = pretty(exp(salt_comm$ln.canopy.ht)))   +
+  geom_point() +
+    labs(y = "Canopy height (cm)") +
+  theme_classic()
+
+# Elevation
+ggplot(salt_comm_rest_H, aes(x = Elevation, y = ln.canopy.ht)) +   
+      geom_point(alpha = 0.5, na.rm = TRUE) +
+      geom_smooth(method = lm) +
+    scale_y_continuous(breaks = log(pretty(exp(salt_comm$ln.canopy.ht))), labels = pretty(exp(salt_comm$ln.canopy.ht))) +
+    labs(y = "Canopy height (cm)", x = "Elevation (standardised)") +
+      theme_classic() 
+# ideally back-transform the elevation axis
+
+# Dominant species
+salt_comm_rest_H %>% 
+  subset(DomSpecies %in% c("Bolboschoenus", "Phragmites", "Sarcocornia", "Sporobolus", "Triglochin")) %>% 
+  ggplot(., aes(x = DomSpecies, y = ln.canopy.ht)) +
+  geom_boxplot() +
+    scale_y_continuous(breaks = log(pretty(exp(salt_comm$ln.canopy.ht))), labels = pretty(exp(salt_comm$ln.canopy.ht)))   +
+  geom_point() +
+    labs(y = "Canopy height (cm)") +
+  theme_classic()
+# aster, juncus, suaeda and unvegetated only have one value each so should be excluded from the plot and (maybe) model.
 ```
 
 
 # 2b - Total cover 
 
 Total cover
-- Total cover ~ YSR + Elevation + (1|Estuary) + (1|Site)
+- Total cover ~ YSR + DomSpecies + Elevation + (1|Site)
 - beta distribution (proportional data with 2 categories - cover and non cover)
 
 
 ```{r Total cover - model}
-# turn total cover into a proportion between 0 and 1 instead of between 0 and 100
-salt_comm <- salt_comm %>% mutate(total_cover_prop = `Total_cover_%`/100 -0.001)
-# also included a tiny offset since it doesn't like values of exactly 1 - must be below 1.
-
-# with restoration status - gives an error when YSR has NAs
-M <- glmmTMB(total_cover_prop ~ rest_status/YSR + Elevation + Estuary + (1|Site), data = salt_comm, family = beta_family(link = "logit"), na.action = na.exclude)
-# check whether this model makes sense and the correct way to include YSR as a fixed factor nested within rest_status
+M <- glmmTMB(total_cover_prop ~ YSR + DomSpecies + Elevation + (1|Site), data = salt_comm_rest_H, family = beta_family(link = "logit"), na.action = na.exclude)
 summary(M)
-
-# without restoration status - no error
-M1 <- glmmTMB(total_cover_prop ~ YSR + Elevation + Estuary + (1|Site), data = salt_comm, family = beta_family(link = "logit"), na.action = na.exclude)
-# check whether this model makes sense and the correct way to include YSR as a fixed factor nested within rest_status
-summary(M1)
+# YSR is near-significant
+# unvegetated is very signficant which makes sense
+# elevation is significant
 ```
 
 Other assumptions (??)
 
-
 ```{r Total cover - plot}
-(mm_plot <- ggplot(salt_comm, aes(x = Elevation, y = total_cover_prop, colour = Estuary)) +
-      facet_wrap(~Site, nrow=2) +   # a panel for each mountain range
-      geom_point(alpha = 0.5) +
-      theme_classic() +
-      geom_line(data = cbind(salt_comm, pred = predict(M)), aes(y = pred), size = 1) +  # adding predicted line from mixed model 
-      theme(legend.position = "none",
-            panel.spacing = unit(2, "lines"))  # adding space between panels
-)
+# Years since restoration
+ggplot(salt_comm_rest_H, aes(x = YSR, y = total_cover_prop)) +   
+      geom_point(alpha = 0.5, na.rm = TRUE) +
+      geom_smooth(method = lm) +
+    labs(y = "Total cover (proportion)", x = "Years since restoration") +
+      theme_classic()
+# all look very similar
 
-(mm_plot <- ggplot(salt_comm, aes(x = Elevation, y = total_cover_prop, colour = Site)) +   
-      geom_point(alpha = 0.5) +
-      theme_classic() +
-      geom_line(data = cbind(salt_comm, pred = predict(M)), aes(y = pred), size = 1)) 
+# plot predicted values with ggeffects ggemmeans
+predict_YSR <- ggemmeans(M, terms = c("YSR [all]"))
+# view this result
+print(predict_YSR)
+# visualise this result
+plot(predict_YSR, ci = T,add.data = TRUE, dot.alpha = 0.5,  jitter = 0.2)+
+  ggtitle("") +  geom_line(size = 1.2) +
+  labs(y = "Total cover (proportion)", x = "Years since restoration") +
+  theme_classic()
 
-(mm_plot <- ggplot(salt_comm, aes(x = YSR, y = total_cover_prop)) +   
-      geom_point(alpha = 0.5) +
-    geom_smooth() + # meaningless
-      theme_classic()) 
+# plot natural boxplots
+ggplot(salt_comm_nat_H, aes(x = Site, y = total_cover_prop)) +
+  geom_boxplot()  +
+  geom_point() +
+    labs(y = "Canopy height (cm)") +
+  theme_classic()
+
+# Elevation
+ggplot(salt_comm_rest_H, aes(x = Elevation, y = total_cover_prop)) +   
+      geom_point(alpha = 0.5, na.rm = TRUE) +
+      geom_smooth(method = lm) +
+    labs(y = "Total cover (proportion)", x = "Elevation (standardised)") +
+      theme_classic() 
+# looks very similar
+# ideally back-transform the elevation axis
 ```
+
 
 #2c - burrows
 
 ```{r Zero-inflation testing and model approach}
 # test for zero-inflation
 
-100*sum(salt_comm$Burrows_0.5x0.5 == 0, na.rm = TRUE)/nrow(salt_comm)
-# 44% of our data are zeroes
+100*sum(salt_comm_rest_H$Burrows_0.5x0.5 == 0, na.rm = TRUE)/nrow(salt_comm_rest_H)
+# 58% of our data are zeroes
 
 # check if this number of zeroes can be predicted under a poisson model
-# without restoration status for now until we figure that out
-M1 <- glmmTMB(Burrows_0.5x0.5 ~ YSR + Elevation + Estuary + (1|Site),
+M1 <- glmmTMB(Burrows_0.5x0.5 ~ poly(YSR,2) + DomSpecies + Elevation + (1|Site),
           family = 'poisson',
-          data = salt_comm)
+          data = salt_comm_rest_H)
 
 summary(M1)
 
 ## Check for over/underdispersion in the model
 E2 <- resid(M1, type = "pearson")
-N  <- nrow(salt_comm)
+N  <- nrow(salt_comm_rest_H)
 p  <- length(coef(M1))   
 sum(E2^2) / (N - p)
 
-# 3.79 > 1 - evidence of overdispersion
+# 5.75 > 1 - evidence of overdispersion
 
 # check if this number of zeroes can be predicted under a negative binomial model
 # without restoration status for now
 
 ## Check which type of negative binomial to use!!
 
-M2 <- glmmTMB(Burrows_0.5x0.5 ~ YSR + Elevation + Estuary + (1|Site),
+M2 <- glmmTMB(Burrows_0.5x0.5 ~ poly(YSR,2) + Elevation + DomSpecies + (1|Site),
           family = 'nbinom1',
-          data = salt_comm)
+          data = salt_comm_rest_H)
 
 summary(M2)
 
 ## Check for over/underdispersion in the model
 E2 <- resid(M2, type = "pearson")
-N  <- nrow(salt_comm)
-p  <- length(coef(M1))   
+N  <- nrow(salt_comm_rest_H)
+p  <- length(coef(M2))   
 sum(E2^2) / (N - p)
 
-# 0.93 < 1 therefore minor underdispersion 
+# 2.10 > 1 therefore still highly overdispersed
 
-M3 <- glmmTMB(Burrows_0.5x0.5 ~ YSR + Elevation + Estuary + (1|Site),
+M3 <- glmmTMB(Burrows_0.5x0.5 ~ poly(YSR,2) + Elevation + DomSpecies + (1|Site),
           family = 'nbinom2',
-          data = salt_comm)
+          data = salt_comm_rest_H)
 
 summary(M3)
 
 ## Check for over/underdispersion in the model
 E2 <- resid(M3, type = "pearson")
-N  <- nrow(salt_comm)
-p  <- length(coef(M1))   
+N  <- nrow(salt_comm_rest_H)
+p  <- length(coef(M3))   
 sum(E2^2) / (N - p)
 
-# 0.82 therefore more underdispersed than the last model
-
-# try zeroinflated poisson model
-M_poisson_z <- glmmTMB(Burrows_0.5x0.5 ~ YSR + Elevation + Estuary + (1|YSR), data=salt_comm, ziformula=~1, family=poisson)
-summary(M_poisson_z)
+# 0.86 therefore underdispersed / kind of close to even!
 
 # compare the different models
-AICtab(M_poisson_z, M1, M2, M3)
-# lower values indicate a better model fit. M2 (negative binomial 1) has the best fit. It also had a value close to even dispersion.
+AICtab(M1, M2, M3)
+# lower values indicate a better model fit. M2 (negative binomial 1) has the best fit. However it is overdispersed. M3 is relatively close to M2 and has close to even dispersion so use it.
 ```
 
-```{r M2 - negative binomial 1 model}
-M2 <- glmmTMB(Burrows_0.5x0.5 ~ YSR + Elevation + Estuary + (1|Site),
-          family = 'nbinom1',
-          data = salt_comm)
+```{r Burrows - M3 - negative binomial 2 model}
+M3 <- glmmTMB(Burrows_0.5x0.5 ~ poly(YSR,2) + Elevation + DomSpecies + (1|Site),
+          family = 'nbinom2',
+          data = salt_comm_rest_H)
 
-summary(M2)
+summary(M3)
 ```
 
 Not sure how to best plot this.
 
-```{r Also need to test restoration status}
-# ideally combine within the same model, but otherwise could do a separate test like a t-test or ANOVA - make sure we test assumptions first though.
+```{r Burrows - plot}
+# Years since restoration
+ggplot(salt_comm_rest_H, aes(x = YSR, y = Burrows_0.5x0.5)) +   
+      geom_point(alpha = 0.5, na.rm = TRUE) +
+      geom_smooth(span = 10)  +
+    labs(y = "Burrows", x = "Years since restoration") +
+      theme_classic()
 
-t.test(salt_comm$Burrows_0.5x0.5 ~ salt_comm$rest_status)
+# natural only
+ggplot(salt_comm_nat_H, aes(x = Site, y = Burrows_0.5x0.5)) +
+  geom_boxplot()  +
+  geom_point() +
+    labs(y = "Burrows") +
+  theme_classic()
+
+# predict effects of YSR when controlling for the other factors
+# this plot needs work - not sure what the y axis is??
+predict_YSR <- ggemmeans(M3, terms = c("YSR [all]"))
+# view this result
+print(predict_YSR)
+# visualise this result
+plot(predict_YSR, ci = T) +
+  ggtitle("") +  geom_line(size = 1.2) +
+  labs(y = "Burrows", x = "Years since restoration") +
+  theme_classic() 
+```
+
+
+```{r Also need to test restoration status}
+M4 <- glmmTMB(Burrows_0.5x0.5 ~ rest_status + Elevation + DomSpecies + (1|Site),
+          family = 'nbinom2',
+          data = salt_comm_H)
+
+summary(M4)
+
+# check dispersion issues for this model
+E2 <- resid(M4, type = "pearson")
+N  <- nrow(salt_comm_rest_H)
+p  <- length(coef(M4))   
+sum(E2^2) / (N - p)
+
+# 1.62 = overdispersed but not too bad?
 ```
 
 
@@ -445,117 +592,572 @@ t.test(salt_comm$Burrows_0.5x0.5 ~ salt_comm$rest_status)
 
 # 3a - Sporobolus
 
-Sporobolus stem density 
-- Stem density ~ rest_status + rest_status/YSR + Elevation + Estuary + (1|Site)
+Sporobolus stem density, height and diameter
+
+Explanatory variables:
+- restoration status (binary) OR YSR (continuous), depending on the model
+- Elevation (continuous)
+- Site (random, nested in restoration status)
+- Quadrat (for stem height and diameter, unless we average them) (random, nested in Site in restoration status)
+- Dominant species (categorical)
+- species proportional cover (continuous)
+
+
+```{r Sporobolus continuous depedent variables - check correlations}
+plot(spor_H$total_stems ~ spor_H$Stem_dia_mm) # not correlated
+plot(spor_H$Stem_ht_mm ~ spor_H$Stem_dia_mm) # not correlated
+plot(spor_H$total_stems ~ spor_H$Stem_ht_mm) # not correlated
+
+# therefore can model all three variables, as none are correlated
+```
+
+Should we only include Dominant Species of interest?
+
+# 3ai. Sporobolus stem height
+
+```{r Sporobolus stem height - initial assumptions}
+# test assumptions - linear relationship between predictors and response
+# numeric predictors are species proportional cover and elevation
+plot(spor_H$Stem_ht_mm ~ spor_H$sp_prop) # potentially slightly non-linear, and clearly stem height is 1-inflated. Need to figure out if this is an issue and if there's anything I can do about it.
+ggplot(spor_H, aes(x = sp_prop, y = Stem_ht_mm)) +
+  geom_point() +
+  geom_smooth(span = 1) 
+
+plot(spor_H$Stem_ht_mm ~ spor_H$Elevation) # looks non-linear
+ggplot(spor_H, aes(x = Elevation, y = Stem_ht_mm)) +
+  geom_point() +
+  geom_smooth(span = 0.5)
+# therefore try including these variables as non-linear predictor variables. Maybe a quadratic and cubic function respectively?
+
+plot(spor_H$Stem_ht_mm ~ spor_H$YSR) # not sure
+ggplot(spor_H, aes(x = YSR, y = Stem_ht_mm)) +
+  geom_point() +
+  geom_smooth(span = 0.8) # maybe non-linear
+```
+
+
+```{r Sporobolus stem height - restoration status - Model building}
+# create model
+M_spor_H_stem_ht <- lmer(Stem_ht_mm ~ rest_status + poly(Elevation,3) + DomSpecies + poly(sp_prop,2) + (1|Site) + (1|Quadrat.f), data = spor_H, na.action = na.exclude)
+# do I need to specify nesting here or will the model figure out due to the unique labelling of factors?
+summary(M_spor_H_stem_ht)
+
+# 3rd order polynomial elevation was non-significant, so include as a 2nd order polynomial
+M_spor_H_stem_ht <- lmer(Stem_ht_mm ~ rest_status + poly(Elevation,2) + DomSpecies + poly(sp_prop,2) + (1|Site) + (1|Quadrat.f), data = spor_H, na.action = na.exclude)
+summary(M_spor_H_stem_ht)
+
+# check more model assumptions
+# check for collinearity between predictors
+check_collinearity(M_spor_H_stem_ht) # VIF ~ 6 (moderate collinearity) 
+# species proportions and dominance are correlated here - drop one.
+
+# drop DomSpecies predictor variable as it has the highest VIF
+M <- lmer(Stem_ht_mm ~ rest_status + poly(Elevation,2) + poly(sp_prop, 2) + (1|Site) + (1|Quadrat.f), data = spor_H, na.action = na.exclude)
+summary(M)
+
+# check for collinearity between predictors
+check_collinearity(M) # VIF are all <5 (low collinearity)
+
+# residuals plots
+plot(M) # roughly equal variances / just one outlier/low value
+qqnorm(resid(M)) 
+qqline(resid(M)) # not great
+
+
+
+# try using log-transformed stem height data given that assumptions are not ok
+M <- lmer(ln.stem.ht ~ rest_status + poly(Elevation,3) + DomSpecies + poly(sp_prop,2) + (1|Site) + (1|Quadrat.f), data = spor_H, na.action = na.exclude)
+summary(M)
+
+# drop elevation 2 and 3 - only 1 is significant
+M <- lmer(ln.stem.ht ~ rest_status + Elevation + DomSpecies + poly(sp_prop,2) + (1|Site) + (1|Quadrat.f), data = spor_H, na.action = na.exclude)
+summary(M)
+
+# check for collinearity between predictors
+check_collinearity(M) # some VIF are >5 (moderate collinearity)
+
+# drop species proportion as it has the highest VIF
+M <- lmer(ln.stem.ht ~ rest_status + Elevation + DomSpecies + (1|Site) + (1|Quadrat.f), data = spor_H, na.action = na.exclude)
+summary(M)
+
+check_collinearity(M) # all VIF are <5 (low collinearity)
+
+# residuals plots
+plot(M) # roughly equal variances
+qqnorm(resid(M)) 
+qqline(resid(M)) # not good
+
+
+# try square-root transformed?
+M <- lmer(sq.stem.ht ~ rest_status + Elevation + DomSpecies + (1|Site) + (1|Quadrat.f), data = spor_H, na.action = na.exclude)
+summary(M)
+
+# residuals plots
+plot(M) # good
+qqnorm(resid(M)) 
+qqline(resid(M)) # still not very good. could be due to 1-inflation. try a different model type?
+
+
+# try robust lmer
+M2 <- rlmer(ln.stem.ht ~ rest_status + Elevation + DomSpecies + (1|Site) + (1|Quadrat.f), data = spor_H, na.action = na.exclude)
+
+# residuals plots
+plot(M2) # 
+qqnorm(resid(M2)) 
+qqline(resid(M2))
+# still not good. Looks similar to plots made with normal lmer rather than rlmer.
+```
+
+
+```{r Sporobolus stem height - restoration status - plot}
+# plot
+ggplot(spor_H, aes(x = Elevation, y = Stem_ht_mm)) +
+  geom_point() +
+  #geom_smooth(span = 1)
+  stat_smooth(method="lm", se=TRUE, fill=NA,
+                formula=y ~ poly(x, 2, raw=TRUE))
+
+boxplot(spor_H$Stem_ht_mm ~ spor_H$rest_status)
+
+boxplot(spor_H$Stem_ht_mm ~ spor_H$DomSpecies)
+```
+
+
+
+
+```{r Sporobolus stem height - YSR - Model building}
+# create model
+M_spor_H_stem_ht <- lmer(Stem_ht_mm ~ poly(YSR,2) + poly(Elevation,3) + DomSpecies + poly(sp_prop,2) + (1|Site) + (1|Quadrat.f), data = spor_H_rest, na.action = na.exclude)
+summary(M_spor_H_stem_ht)
+
+# drop elevation poly 3 and YSR poly 2
+M <- lmer(Stem_ht_mm ~ YSR + poly(Elevation,2) + DomSpecies + poly(sp_prop,2) + (1|Site) + (1|Quadrat.f), data = spor_H_rest, na.action = na.exclude)
+summary(M)
+
+# check for collinearity between predictors
+check_collinearity(M) # some VIF are >5 (moderate collinearity)
+
+# drop DomSpecies, which has the highest VIF
+M <- lmer(Stem_ht_mm ~ YSR + poly(Elevation,2) + poly(sp_prop,2) + (1|Site) + (1|Quadrat.f), data = spor_H_rest, na.action = na.exclude)
+summary(M)
+
+# now sp prop poly 2 is non-significant, drop it
+M <- lmer(Stem_ht_mm ~ YSR + poly(Elevation,2) + sp_prop + (1|Site) + (1|Quadrat.f), data = spor_H_rest, na.action = na.exclude)
+summary(M)
+
+# residuals plots
+plot(M) # roughly equal variances / just one outlier/low value
+qqnorm(resid(M)) 
+qqline(resid(M)) # mostly ok but high values diverge.. need to decide if OK
+
+# try log-transformed data
+M <- lmer(ln.stem.ht ~ YSR + poly(Elevation,2) + sp_prop + (1|Site) + (1|Quadrat.f), data = spor_H_rest, na.action = na.exclude)
+summary(M)
+
+# residuals plots
+plot(M) # roughly equal variances / just one outlier/low value
+qqnorm(resid(M)) 
+qqline(resid(M)) # not great- high and low values diverge
+
+# try sqrt-transformed data
+M <- lmer(sq.stem.ht ~ YSR + poly(Elevation,2) + sp_prop + (1|Site) + (1|Quadrat.f), data = spor_H_rest, na.action = na.exclude)
+summary(M)
+
+# residuals plots
+plot(M) # roughly equal variances / just one outlier/low value
+qqnorm(resid(M)) 
+qqline(resid(M)) # same as log-transformed
+
+# try robust lmer
+M <- rlmer(Stem_ht_mm ~ YSR + poly(Elevation,2) + sp_prop + (1|Site) + (1|Quadrat.f), data = spor_H_rest, na.action = na.exclude)
+summary(M)
+
+# residuals plots
+plot(M) # roughly equal variances / just one outlier/low value
+qqnorm(resid(M)) 
+qqline(resid(M)) # worse than original
+```
+
+
+```{r Sporobolus stem height - YSR - plot}
+# best model
+M <- lmer(Stem_ht_mm ~ YSR + poly(Elevation,2) + sp_prop + (1|Site) + (1|Quadrat.f), data = spor_H_rest, na.action = na.exclude)
+summary(M)
+
+ggplot(spor_H_rest, aes(x = YSR, y = Stem_ht_mm)) +
+  geom_point() +
+  geom_smooth(method = lm)
+
+# plot predicted values with ggeffects ggemmeans
+predict_YSR <- ggemmeans(M, terms = c("YSR [all]"))
+# view this result
+print(predict_YSR)
+# visualise this result
+plot(predict_YSR, ci = T,add.data = TRUE, dot.alpha = 0.5,  jitter = 0.2)+
+  ggtitle("") +  geom_line(size = 1.2) +
+  labs(y = "Sporobolus stem height", x = "Years since restoration") +
+  theme_classic()
+
+# plot predicted values of Elevation with ggeffects ggemmeans
+predict_YSR <- ggemmeans(M, terms = c("Elevation [all]"))
+# view this result
+print(predict_YSR)
+# visualise this result
+plot(predict_YSR, ci = T,add.data = TRUE, dot.alpha = 0.5,  jitter = 0.2)+
+  ggtitle("") +  geom_line(size = 1.2) +
+  labs(y = "Sporobolus stem height", x = "Elevation") +
+  theme_classic()
+# need to de-standardise elevation scale
+
+ggplot(spor_H_rest, aes(x = sp_prop, y = Stem_ht_mm)) +
+  geom_point() +
+  geom_smooth(method = lm)
+```
+
+
+
+# 3aii. Stem diameter
+
+```{r Sporobolus stem diameter - initial assumptions}
+# test assumptions - linear relationship between predictors and response
+# numeric predictors are species proportional cover and elevation
+plot(spor_H$Stem_dia_mm ~ spor_H$sp_prop) # linearity is fine, but clearly stem diameter is 0- and 1-inflated. Need to figure out if this is an issue and if there's anything I can do about it.
+
+plot(spor_H$Stem_dia_mm ~ spor_H$Elevation) # looks fine
+
+plot(spor_H$Stem_dia_mm ~ spor_H$YSR) # fine
+```
+
+
+```{r Sporobolus stem diameter - restoration status - Model building}
+# create model
+M <- lmer(Stem_dia_mm ~ rest_status + Elevation + DomSpecies + sp_prop + (1|Site) + (1|Quadrat.f), data = spor_H, na.action = na.exclude)
+summary(M)
+
+# sp prop is clearly non-significant, drop it first
+M <- lmer(Stem_dia_mm ~ rest_status + Elevation + DomSpecies + (1|Site) + (1|Quadrat.f), data = spor_H, na.action = na.exclude)
+summary(M)
+
+# check more model assumptions
+# check for collinearity between predictors
+check_collinearity(M) # all VIF < 5 (low collinearity)
+
+# residuals plots
+plot(M) # not equal variances / a couple outliers
+qqnorm(resid(M)) 
+qqline(resid(M)) # not good - high values diverge
+
+
+# try using log-transformed stem diameter data given that assumptions are not ok
+M <- lmer(ln.stem.dia ~ rest_status + Elevation + DomSpecies+ (1|Site) + (1|Quadrat.f), data = spor_H, na.action = na.exclude)
+summary(M)
+
+# residuals plots
+plot(M) # roughly equal variances
+qqnorm(resid(M)) 
+qqline(resid(M)) # still not good - probably best option though
+
+
+# try square-root transformed?
+spor_H <- spor_H %>% mutate(sq.stem.dia = sqrt(Stem_dia_mm))
+
+M <- lmer(sq.stem.dia ~ rest_status + Elevation + DomSpecies + (1|Site) + (1|Quadrat.f), data = spor_H, na.action = na.exclude)
+summary(M)
+
+# residuals plots
+plot(M) # good
+qqnorm(resid(M)) 
+qqline(resid(M)) # still not very good. could be due to inflation. try a different model type?
+```
+
+
+```{r Sporobolus stem diameter - restoration status - plot}
+# plot
+ggplot(spor_H, aes(x = Elevation, y = Stem_dia_mm)) +
+  geom_point() +
+  stat_smooth(method="lm")
+
+boxplot(spor_H$Stem_dia_mm ~ spor_H$rest_status)
+
+boxplot(spor_H$Stem_dia_mm ~ spor_H$DomSpecies)
+
+boxplot(spor_H$Stem_dia_mm ~ spor_H$Site)
+```
+
+
+
+
+```{r Sporobolus stem diameter - YSR - Model building}
+# create model
+M1 <- lmer(Stem_dia_mm ~ YSR + poly(Elevation,2) + DomSpecies + poly(sp_prop,2) + (1|Site) + (1|Quadrat.f), data = spor_H_rest, na.action = na.exclude)
+summary(M1)
+
+# check for collinearity between predictors
+check_collinearity(M1) # some VIF are >5 (moderate collinearity)
+
+# sp_prop has slightly higher VIF, drop sp_prop
+M2 <- lmer(Stem_dia_mm ~ YSR + poly(Elevation,2) + DomSpecies + (1|Site) + (1|Quadrat.f), data = spor_H_rest, na.action = na.exclude)
+summary(M2)
+
+# residuals plots
+plot(M2) # some high values/outliers/non-equal variances
+qqnorm(resid(M2)) 
+qqline(resid(M2)) # mostly ok but high values diverge.. not great
+
+# try log-transformed data
+M3 <- lmer(ln.stem.dia ~ YSR + poly(Elevation,2) + DomSpecies + (1|Site) + (1|Quadrat.f), data = spor_H_rest, na.action = na.exclude)
+summary(M3)
+
+# residuals plots
+plot(M3) # roughly equal variances / just one outlier/low value
+qqnorm(resid(M3)) 
+qqline(resid(M3)) # maybe better than original?
+
+# try sqrt-transformed data
+M4 <- lmer(sq.stem.dia ~ YSR + poly(Elevation,2) + DomSpecies + (1|Site) + (1|Quadrat.f), data = spor_H_rest, na.action = na.exclude)
+summary(M4)
+
+# residuals plots
+plot(M5) # roughly equal variances / just one outlier/low value
+qqnorm(resid(M5)) 
+qqline(resid(M5)) # worse than ln-transformed
+
+
+# model with YSR as a polynomial
+M6 <- lmer(ln.stem.dia ~ poly(YSR,2) + poly(Elevation,2) + DomSpecies + (1|Site) + (1|Quadrat.f), data = spor_H_rest, na.action = na.exclude)
+summary(M6)
+
+# residuals plots
+plot(M6) # roughly equal variances / just one outlier/low value
+qqnorm(resid(M6)) 
+qqline(resid(M6)) # not good! can't use this
+```
+
+
+```{r Sporobolus stem diameter - YSR - plot}
+# best model?
+M4 <- lmer(ln.stem.dia ~ YSR + poly(Elevation,2) + DomSpecies + (1|Site) + (1|Quadrat.f), data = spor_H_rest, na.action = na.exclude)
+summary(M4)
+
+ggplot(spor_H_rest, aes(x = YSR, y = ln.stem.dia)) +
+  geom_point() +
+  geom_smooth(method = lm)
+
+# plot predicted values with ggeffects ggemmeans
+predict_YSR <- ggemmeans(M4, terms = c("YSR [all]"))
+# view this result
+print(predict_YSR)
+# visualise this result
+plot(predict_YSR, ci = T,add.data = TRUE, dot.alpha = 0.5,  jitter = 0.2)+
+  ggtitle("") +  geom_line(size = 1.2) +
+  scale_y_continuous(breaks = log(pretty(exp(spor_H_rest$ln.stem.dia))), labels = pretty(exp(spor_H_rest$ln.stem.dia))) +
+  labs(y = "Sporobolus stem diameter (mm)", x = "Years since restoration") +
+  theme_classic()
+
+# plot natural stem diameters
+ggplot(spor_H_nat, aes(x = Site, y = ln.stem.dia)) +
+  geom_boxplot() +
+  geom_jitter(width=0.1) +
+    scale_y_continuous(breaks = log(pretty(exp(spor_H_nat$ln.stem.dia))), labels = pretty(exp(spor_H_nat$ln.stem.dia))) +
+    labs(y = "Sporobolus stem diameter (mm)", x = "Site") +
+  theme_classic() 
+
+# elevation
+ggplot(spor_H_rest, aes(x = Elevation, y = ln.stem.dia)) +
+  geom_point() +
+  geom_smooth(span = 1)
+
+# dominant species
+ggplot(spor_H_rest, aes(x = DomSpecies, y = ln.stem.dia)) +
+  geom_boxplot()  +
+  geom_point() +
+    labs(y = "Log stem diameter") +
+  theme_classic()
+
+# need to back-transform and label these properly
+```
+
+
+# 3aiii. Sporobolus stem density 
+- Stem density ~ YSR + Elevation + DomSpecies + SpeciesProportion + (1|Site)
 - stem density is a positive integer value so should be able to conform to a roughly normal distribution
 
 First assumption: linear relationship between predictors and response variable
-
-```{r Sporobolus stem density - check assumptions - linear relationship }
-# numeric predictors are YSR and elevation
-plot(spor_comm$total_stems ~ spor_comm$YSR) # not obviously non-linear
-plot(spor_comm$total_stems ~ spor_comm$Elevation) # not obviously non-linear
-
-# therefore linear relationship assumption is OK
-```
-
-
-```{r Sporobolus stem density - model}
-M <- lmer(total_stems ~ rest_status/YSR + Elevation + Estuary + (1|Site), data = spor_comm, na.action = na.exclude)
-# check whether this model makes sense and the correct way to include YSR as a fixed factor nested within rest_status
-# this model gives a warning message about dropping a variable unless we assign "restoration ages" to the natural sites
-summary(M)
-
-M1 <- lmer(sq.stem.dens ~ rest_status/YSR + Elevation + Estuary + (1|Site), data = spor_comm, na.action = na.exclude)
-# check whether this model makes sense and whether rest_status:rest_year is the correct way to add rest_year as a fixed factor nested within rest_status
-# this model gives a warning message about dropping a variable unless we assign "restoration ages" to the natural sites
-summary(M1)
-
-M2 <- lmer(sq.stem.dens ~ YSR + Elevation + Estuary + (1|Site), data = spor_comm, na.action = na.exclude)
-# check whether this model makes sense and whether rest_status:rest_year is the correct way to add rest_year as a fixed factor nested within rest_status
-# this model gives a warning message about dropping a variable unless we assign "restoration ages" to the natural sites
-summary(M2)
-
-# Hunter only
-spor_comm_H <- spor_comm %>% subset(Estuary == "Hunter")
-
-M2 <- lmer(sq.stem.dens ~ rest_status/YSR + Elevation + (1|Site), data = spor_comm_H, na.action = na.exclude)
-# check whether this model makes sense and whether rest_status:rest_year is the correct way to add rest_year as a fixed factor nested within rest_status
-# this model gives a warning message about dropping a variable unless we assign "restoration ages" to the natural sites
-summary(M2)
-
-# Hunter only, restored only 
-spor_comm_H_res <- spor_comm_H %>% subset(rest_status == "1")
-
-M3 <- lmer(sq.stem.dens ~ YSR + Elevation + (1|YSR), data = spor_comm_H_res, na.action = na.exclude)
-# I've included YSR as a fixed and random factor as we are interested in it as a fixed numeric factor but it also represents random differences between sites. I've excluded site because it's correlated with YSR, particularly here where there are no natural sites
-summary(M3)
-
-# not sure if I can do restored only including both estuaries given that there is only one restoration site in the Maroochy estuary
-```
 
 Other assumptions:
 - model residuals are normally distributed
 - model residuals have equal variances
 - model residuals are independent
 
-```{r Sporobolus stem density - check residuals assumptions}
-# check for collinearity between predictors
-check_collinearity(M) # VIF < 5 (low collinearity) - good.
+```{r Sporoblus stem density - initial assumptions}
+# test assumptions - linear relationship between predictors and response
+# numeric predictors are species proportional cover and elevation
+plot(spor_comm_H$total_stems ~ spor_comm_H$sp_prop) # potentially non-linear
+ggplot(spor_comm_H, aes(x = sp_prop, y = total_stems)) +
+  geom_point() +
+  geom_smooth(span = 1) +
+  geom_smooth(method = lm) # polynomial is a better fit, try that first
 
-# residuals plots
-plot(M) # equal variances assumption is OK
-qqnorm(resid(M)) 
-qqline(resid(M)) # not great but not terrible
+plot(spor_comm_H$total_stems ~ spor_comm_H$Elevation) # not obviously non-linear
 
-# check for collinearity between predictors
-check_collinearity(M1) # VIF < 5 (low collinearity) - good.
-
-# residuals plots
-plot(M1) # looks like equal variances
-qqnorm(resid(M1)) 
-qqline(resid(M1)) # pretty close to normal
-
-# confirm if this is good enough
-# use sqrt transformed rather than non-transformed
+plot(spor_comm_H$total_stems ~ spor_comm_H$YSR) # looks potentially non-linear
+ggplot(spor_comm_H, aes(x = YSR, y = total_stems)) +
+  geom_point() +
+  geom_smooth(span = 2) +
+  geom_smooth(method = lm) # non-linear is a better fit
 ```
 
-```{r Sporobolus stem density - plot}
-# plot elevation against stem density at each estuary
-(mm_plot <- ggplot(spor_comm, aes(x = Elevation, y = sq.stem.dens, colour = Estuary)) +
-      facet_wrap(~Estuary, nrow=2) +   # a panel for each mountain range
-      geom_point(alpha = 0.5) +
-      theme_classic() +
-      #geom_line(data = cbind(spor, pred = predict(M1)), aes(y = pred), size = 1) +  # adding predicted line from mixed model 
-      theme(legend.position = "none",
-            panel.spacing = unit(2, "lines"))  # adding space between panels
-)
-# looks like a trend in Hunter but not Maroochy
+
+```{r Sporoblus stem density - restoration status - model}
+# create model
+M_spor_H_stem_dens <- lmer(total_stems ~ rest_status + Elevation + DomSpecies + sp_prop + (1|Site), data = spor_comm_H, na.action = na.exclude)
+# do I need to specify nesting here or will the model figure out due to the unique labelling of factors?
+summary(M_spor_H_stem_dens)
+
+# looks like elevation and species proportion influence Sporobolus stem density, but not restoration status (exploratory plots looked like restoration status did have an influence, but older sites were similar to natural sites, so wouldn't necessarily show up in this binary model)
+
+# create a simplified model with only the significant factors
+M_spor_H_stem_dens <- lmer(total_stems ~ Elevation + sp_prop + (1|Site), data = spor_comm_H, na.action = na.exclude)
+summary(M_spor_H_stem_dens)
+# elevation is no longer significant?
 
 
-(mm_plot <- ggplot(spor_comm, aes(x = YSR, y = sq.stem.dens, colour = Estuary)) +   
+# check more model assumptions
+# check for collinearity between predictors
+check_collinearity(M_spor_H_stem_dens) # VIF < 5 (low collinearity) - good.
+
+# residuals plots
+plot(M_spor_H_stem_dens) # equal variances assumption is not ok
+qqnorm(resid(M_spor_H_stem_dens)) 
+qqline(resid(M_spor_H_stem_dens)) # not great but not terrible
+
+
+# try with sq stem density
+M_spor_H_stem_dens <- lmer(sq.stem.dens ~ Elevation + sp_prop + (1|Site), data = spor_comm_H, na.action = na.exclude)
+summary(M_spor_H_stem_dens)
+# elevation is no longer significant?
+
+
+# check more model assumptions
+# check for collinearity between predictors
+check_collinearity(M_spor_H_stem_dens) # VIF < 5 (low collinearity) - good.
+
+# residuals plots
+plot(M_spor_H_stem_dens) # not good
+qqnorm(resid(M_spor_H_stem_dens)) 
+qqline(resid(M_spor_H_stem_dens)) # great
+
+
+# remove sp_prop from model? as it's logically correlated with stem density
+M_spor_H_stem_dens <- lmer(total_stems ~ rest_status + Elevation + DomSpecies + (1|Site), data = spor_comm_H, na.action = na.exclude)
+# do I need to specify nesting here or will the model figure out due to the unique labelling of factors?
+summary(M_spor_H_stem_dens)
+
+# only DomSpecies sporobolus is significant - which again makes sense as there will be more stems when it's dominant
+# not really happy with any of these models..
+```
+
+
+```{r Sporoblus stem density - restoration status - plot}
+# plot
+ggplot(spor_comm_H, aes(x = Elevation, y = total_stems)) +
+  geom_point() +
+  geom_smooth(method = lm)
+
+ggplot(spor_comm_H, aes(x = sp_prop, y = total_stems)) +
+  geom_point() +
+  geom_smooth(method = lm)
+
+boxplot(spor_comm_H$total_stems ~ spor_comm_H$rest_status)
+```
+
+
+```{r Sporoblus stem density - YSR - model}
+M <- lmer(total_stems ~ poly(YSR,2) + Elevation + DomSpecies + poly(sp_prop,2) + (1|Site), data = spor_comm_H_res, na.action = na.exclude)
+summary(M)
+
+# everything except DomSpecies is significant. But sp_prop should probably be excluded.
+
+M2 <- lmer(total_stems ~ poly(YSR,2) + Elevation + DomSpecies + (1|Site), data = spor_comm_H_res, na.action = na.exclude)
+summary(M2)
+
+# check more model assumptions
+# check for collinearity between predictors
+check_collinearity(M2) # all VIF are <5 (low collinearity)
+
+# residuals plots
+plot(M2) # not equal variances
+qqnorm(resid(M2)) 
+qqline(resid(M2)) # normality is great!
+
+# try sqrt transform
+M3 <- lmer(sq.stem.dens ~ poly(YSR,2) + Elevation + DomSpecies + (1|Site), data = spor_comm_H_res, na.action = na.exclude)
+summary(M3)
+
+plot(M3) # good
+qqnorm(resid(M3)) 
+qqline(resid(M3)) # a couple diverging values, but good enough
+```
+
+
+```{r Sporoblus stem density - YSR - plot}
+# final model
+M3 <- lmer(sq.stem.dens ~ poly(YSR,2) + Elevation + DomSpecies + (1|Site), data = spor_comm_H_res, na.action = na.exclude)
+summary(M3)
+
+# plot - YSR
+ggplot(spor_comm_H_res, aes(x = YSR, y = sq.stem.dens)) +   
       geom_point(alpha = 0.5, na.rm = TRUE) +
-      geom_smooth(method = "lm", na.rm = TRUE) +
-      theme_classic()) 
-# plot years since restoration against log canopy height 
+      stat_smooth(span = 2) +
+      theme_classic()
 
-
-(mm_plot <- ggplot(spor_comm_H, aes(x = YSR, y = sq.stem.dens)) +   
-      geom_point(alpha = 0.5, na.rm = TRUE) +
-      geom_smooth(method = "lm", na.rm = TRUE) +
-      theme_classic()) 
-
-(mm_plot <- ggplot(spor_comm_H_res, aes(x = YSR, y = sq.stem.dens)) +   
-      geom_point(alpha = 0.5, na.rm = TRUE) +
-      geom_smooth(method = "lm", na.rm = TRUE) +
-      theme_classic()) 
-
-spor_comm_H %>% subset(rest_status == "0") %>% 
-  ggplot(., aes(x = Site, y=sq.stem.dens)) +
-  geom_boxplot() +
+# plot predicted values with ggeffects ggemmeans
+predict_YSR <- ggemmeans(M3, terms = c("YSR [all]"))
+# view this result
+print(predict_YSR)
+# visualise this result
+plot(predict_YSR, ci = T, add.data = TRUE, dot.alpha = 0.5,  jitter = 0.2)+
+  ggtitle("") +  geom_line(size = 1.2)  +
+  scale_y_continuous(breaks = sqrt(pretty((spor_H_rest$sq.stem.dens)^2)), labels = pretty((spor_H_rest$sq.stem.dens)^2)) +
+  labs(y = "Sporobolus stems per square metre", x = "Years since restoration") +
   theme_classic()
+
+# plot natural only
+ggplot(spor_comm_H_nat, aes(x = Site, y = sq.stem.dens)) +
+  geom_boxplot() +
+  geom_jitter(width=0.1) +
+     scale_y_continuous(breaks = sqrt(pretty((spor_comm_H_nat$sq.stem.dens)^2)), labels = pretty((spor_comm_H_nat$sq.stem.dens)^2)) +
+    labs(y = "Sporobolus stems per square metre", x = "Site") +
+  theme_classic() 
+
+ggplot(spor_comm_H_res, aes(x = Elevation, y = total_stems)) +
+  geom_point() +
+  geom_smooth(method = lm)
+
+ggplot(spor_comm_H_res, aes(x = sp_prop, y = total_stems)) +
+  geom_point() +
+  geom_smooth(method = lm)
+
+ggplot(spor_comm_H_res, aes(x = YSR, y = total_stems)) +
+  geom_point() +
+  geom_smooth(method = lm)
 ```
 
+
+# 3aiv - Sporobolus quantitative variables (multivariate)
+
+
+Need to standardise these variables (centred on 0 with SD of 1) in order to model them together?
+
+Need to account for the fact that stem density is measured at a quadrat level and stem height and diameter are measured at stem level.
+
+```{r Sporobolus stem height diameter and density - Multivariate model}
+
+```
+
+
+
+# 3av - Sporobolus % species cover
 
 Sporobolus % species cover
 - Total cover ~ rest_status*YSR + Elevation + (1|Estuary) + (1|Site)
@@ -577,18 +1179,13 @@ M <- glmmTMB(sp_cover_prop ~ YSR + Elevation + Estuary + (1|YSR), data = spor_co
 summary(M)
 ```
 
-```{r Sporobolus species cover/overall cover model}
-spor_comm <- spor_comm %>% mutate(sp_cov_tot_prop = (`Sp_cover_%`/`Total_cover_%`) - 0.001 )
 
-# when YSR has NA values, this model comes up with an error
-M <- glmmTMB(sp_cov_tot_prop ~ rest_status/YSR + Elevation + Estuary + (1|Site), data = spor_comm, family = beta_family(link = "logit"), na.action = na.exclude)
-# check whether this model makes sense and the correct way to include YSR as a fixed factor nested within rest_status
-summary(M)
+```{r sporobolus % cover univariate}
+ggplot(spor_comm_H, aes(x = YSR, y = `Sp_cover_%`)) +
+  geom_point() +
+  geom_smooth(method = lm)
 
-# excluding restoration status (and therefore natural sites) from the model removes the error
-M <- glmmTMB(sp_cov_tot_prop ~ YSR + Elevation + Estuary + (1|YSR), data = spor_comm, family = beta_family(link = "logit"), na.action = na.exclude)
-# check whether this model makes sense and the correct way to include YSR as a fixed factor nested within rest_status
-summary(M)
+boxplot(spor_comm_H$`Sp_cover_%` ~ spor_comm_H$rest_status)
 ```
 
 
@@ -609,6 +1206,8 @@ spor_comm %>% subset(rest_status == "0") %>%
 ```
 
 
+# 3avi - Sporobous buds and flowers
+
 Sporobolus buds and flowers - binary response variables
 
 ```{r Sporobolus buds and flowers - visualise distributions}
@@ -616,6 +1215,7 @@ hist(spor_comm$Buds) # all zeroes - nothing to model
 hist(spor_comm$Flowers) # almost all zeroes (only 5 quadrats with flowers) - not enough data to model
 ```
 
+# 3avii - Sporobolus seeding
 
 Sporobolus seeding - ordinal categorical response variable
 
@@ -637,218 +1237,6 @@ summary(m_spor_seeds)
 
 
 
-
-
-# 3a again - Sporobolus new models
-
-```{r Sporobolus modelling - data prep}
-# new dataframe for Sporobolus Hunter only
-spor_H <- spor %>% subset(Estuary == "Hunter")
-spor_comm_H <- spor_comm  %>% subset(Estuary == "Hunter")
-```
-
-
-1. Sporobolus stem density, height and diameter
-
-1a. Natural vs restored
-
-Explanatory variables:
-- restoration status (binary)
-- Elevation (continuous)
-- Site (random, nested in restoration status)
-- Quadrat (for stem height and diameter, unless we average them) (random, nested in Site in restoration status)
-- Dominant species (categorical)
-- species proportional cover (continuous)
-
-1ai. Hunter estuary
-
-
-```{r Sporobolus continuous depedent variables - check correlations}
-plot(spor_H$total_stems ~ spor_H$Stem_dia_mm) # not correlated
-plot(spor_H$Stem_ht_mm ~ spor_H$Stem_dia_mm) # not correlated
-plot(spor_H$total_stems ~ spor_H$Stem_ht_mm) # not correlated
-
-# therefore can model all three variables, as none are correlated
-```
-
-Should we only include Dominant Species of interest?
-
-```{r Sporobolus stem height - univariate model}
-# test assumptions - linear relationship between predictors and response
-# numeric predictors are species proportional cover and elevation
-plot(spor_H$Stem_ht_mm ~ spor_H$sp_prop) # not obviously non-linear, but clearly stem height is 1-inflated. Need to figure out if this is an issue and if there's anything I can do about it.
-plot(spor_H$Stem_ht_mm ~ spor_H$Elevation) # looks non-linear
-ggplot(spor_H, aes(x = Elevation, y = Stem_ht_mm)) +
-  geom_point() +
-  geom_smooth(span = 0.5)
-# therefore use a generalised linear model with a non-linear method or include elevation as a non-linear predictor variable. Maybe a cubic function?
-
-
-# create model
-M_spor_H_stem_ht <- lmer(Stem_ht_mm ~ rest_status + poly(Elevation,3) + DomSpecies + sp_prop + (1|Site) + (1|Quadrat.f), data = spor_H, na.action = na.exclude)
-# do I need to specify nesting here or will the model figure out due to the unique labelling of factors?
-summary(M_spor_H_stem_ht)
-
-# 3rd order polynomial elevation was non-significant, so include as a 2nd order polynomial
-M_spor_H_stem_ht <- lmer(Stem_ht_mm ~ rest_status + poly(Elevation,2) + DomSpecies + sp_prop + (1|Site) + (1|Quadrat.f), data = spor_H, na.action = na.exclude)
-summary(M_spor_H_stem_ht)
-
-# looks like elevation and Juncus dominance influence Sporobolus stem height, but not restoration status (consistent with exploratory plots about restoration status)
-
-# create a simplified model with only the significant factors
-M_spor_H_stem_ht <- lmer(Stem_ht_mm ~ poly(Elevation,2) + DomSpecies + (1|Site) + (1|Quadrat.f), data = spor_H, na.action = na.exclude)
-summary(M_spor_H_stem_ht)
-
-
-# check more model assumptions
-
-
-
-
-
-# plot
-ggplot(spor_H, aes(x = Elevation, y = Stem_ht_mm)) +
-  geom_point() +
-  #geom_smooth(span = 1)
-  stat_smooth(method="lm", se=TRUE, fill=NA,
-                formula=y ~ poly(x, 2, raw=TRUE))
-
-boxplot(spor_H$Stem_ht_mm ~ spor_H$rest_status)
-
-boxplot(spor_H$Stem_ht_mm ~ spor_H$DomSpecies)
-```
-
-
-```{r Sporoblus stem density - univariate model}
-# test assumptions - linear relationship between predictors and response
-# numeric predictors are species proportional cover and elevation
-plot(spor_comm_H$total_stems ~ spor_comm_H$sp_prop) # potentially non-linear
-ggplot(spor_comm_H, aes(x = sp_prop, y = total_stems)) +
-  geom_point() +
-  geom_smooth(span = 1) +
-  geom_smooth(method = lm) # close enough to linear
-
-plot(spor_comm_H$total_stems ~ spor_comm_H$Elevation) # not obviously non-linear
-
-
-# create model
-M_spor_H_stem_dens <- lmer(total_stems ~ rest_status + Elevation + DomSpecies + sp_prop + (1|Site), data = spor_comm_H, na.action = na.exclude)
-# do I need to specify nesting here or will the model figure out due to the unique labelling of factors?
-summary(M_spor_H_stem_dens)
-
-# looks like elevation and species proportion influence Sporobolus stem density, but not restoration status (exploratory plots looked like restoration status did have an influence, but older sites were similar to natural sites, so wouldn't necessarily show up in this binary model)
-
-# create a simplified model with only the significant factors
-M_spor_H_stem_dens <- lmer(total_stems ~ Elevation + sp_prop + (1|Site), data = spor_comm_H, na.action = na.exclude)
-summary(M_spor_H_stem_dens)
-# elevation is no longer significant?
-
-
-# check more model assumptions
-
-
-
-
-
-# plot
-ggplot(spor_comm_H, aes(x = Elevation, y = total_stems)) +
-  geom_point() +
-  geom_smooth(method = lm)
-
-ggplot(spor_comm_H, aes(x = sp_prop, y = total_stems)) +
-  geom_point() +
-  geom_smooth(method = lm)
-
-boxplot(spor_comm_H$total_stems ~ spor_comm_H$rest_status)
-
-
-# might not make sense to include species proportion in the model as it is logically correlated with stem density... rerun without?
-```
-
-how to interpret random factors??
-
-
-
-1b. Restoration age
-
-1bi. Hunter estuary
-
-
-```{r Sporoblus stem density - univariate model}
-# test assumptions - linear relationship between predictors and response
-# numeric predictors are species proportional cover and elevation
-plot(spor_comm_H$total_stems ~ spor_comm_H$sp_prop) # potentially non-linear
-ggplot(spor_comm_H, aes(x = sp_prop, y = total_stems)) +
-  geom_point() +
-  geom_smooth(span = 1) +
-  geom_smooth(method = lm) # close enough to linear
-
-plot(spor_comm_H$total_stems ~ spor_comm_H$Elevation) # not obviously non-linear
-
-
-# create model
-M_spor_H_stem_dens <- lmer(total_stems ~ YSR + Elevation + DomSpecies + sp_prop + (1|Site), data = spor_comm_H, na.action = na.exclude)
-# do I need to specify nesting here or will the model figure out due to the unique labelling of factors?
-summary(M_spor_H_stem_dens)
-
-# YSR is non-significant
-
-# looks like elevation and species proportion influence Sporobolus stem density, but not restoration status (exploratory plots looked like restoration status did have an influence, but older sites were similar to natural sites, so wouldn't necessarily show up in this binary model)
-
-# create a simplified model with only the significant factors
-M_spor_H_stem_dens <- lmer(total_stems ~ Elevation + sp_prop + (1|Site), data = spor_comm_H, na.action = na.exclude)
-summary(M_spor_H_stem_dens)
-# elevation is no longer significant?
-
-
-# check more model assumptions
-
-
-
-
-
-# plot
-ggplot(spor_comm_H, aes(x = Elevation, y = total_stems)) +
-  geom_point() +
-  geom_smooth(method = lm)
-
-ggplot(spor_comm_H, aes(x = sp_prop, y = total_stems)) +
-  geom_point() +
-  geom_smooth(method = lm)
-
-ggplot(spor_comm_H, aes(x = YSR, y = total_stems)) +
-  geom_point() +
-  geom_smooth(method = lm)
-
-
-# might not make sense to include species proportion in the model as it is logically correlated with stem density... rerun without?
-```
-
-
-
-```{r stem height}
-ggplot(spor_H, aes(x = YSR, y = Stem_ht_mm)) +
-  geom_point() +
-  geom_smooth(method = lm)
-```
-
-
-```{r sporobolus % cover univariate}
-ggplot(spor_comm_H, aes(x = YSR, y = `Sp_cover_%`)) +
-  geom_point() +
-  geom_smooth(method = lm)
-
-boxplot(spor_comm_H$`Sp_cover_%` ~ spor_comm_H$rest_status)
-```
-
-
-Need to standardise these variables (centred on 0 with SD of 1) in order to model them together?
-
-Need to account for the fact that stem density is measured at a quadrat level and stem height and diameter are measured at stem level.
-
-```{r Sporobolus stem height, diameter and density - Multivariate model}
-
-```
 
 
 # 3b - Sarcocornia
