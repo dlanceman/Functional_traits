@@ -17,17 +17,33 @@ library(readxl)
 library(tidyverse)
 ```
 
-```{r Get data - mangrove tree data}
+```{r Get data - mangrove data}
 # set working directory
 setwd("C:/Users/z5204897/OneDrive - UNSW/Desktop/PhD/Data_analysis/Project/Functional_traits")
 
-# input mangrove data
+# input mangrove tree data
 mantree <- read_excel("Data/Functional_traits_combined_data.xlsx", sheet = "Mangrove_tree") %>% 
   arrange(Date, Time) %>% 
   mutate(total_trees = Trees * 100/Quadrat_size_m2, 
          total_saplings = Saplings * 100/Quadrat_size_m2,
          total_hollows = Hollows * 100/Quadrat_size_m2,
          # add columns for total tree, seedling and hollow counts per 1m2 for each species to standardise  counts
+         Buds = case_when(  # reassign Buds as a numeric variable
+           Buds == "Yes" ~ 1,
+           Buds == "No" ~ 0
+         ),
+         Flowers_live = case_when(  # reassign Flowers_live as a numeric variable
+           Flowers_live == "Yes" ~ 1,
+           Flowers_live == "No" ~ 0
+         ),
+         Flowers_dead = case_when(  # reassign Flowers_dead as a numeric variable
+           Flowers_dead == "Yes" ~ 1,
+           Flowers_dead == "No" ~ 0
+         ),
+         Fruits = case_when(  # reassign Fruits as a numeric variable
+           Fruits == "Yes" ~ 1,
+           Fruits == "No" ~ 0
+         ),
          rest_year = case_when(
            Site == "HS" ~ as.numeric("2008"),
            Site == "CC" ~ as.numeric("1990"),
@@ -37,6 +53,20 @@ mantree <- read_excel("Data/Functional_traits_combined_data.xlsx", sheet = "Mang
            Site == "YCW" ~ as.numeric("2018")
          )) # add a column for restoration years
 # double check with Will years for each
+
+# mangrove subquadrat data
+manq <- read_excel("Data/Functional_traits_combined_data.xlsx", sheet = "Mangrove_quadrat") %>% 
+  arrange(Date, Time) %>% 
+  filter(Pneu_dia_mm > 2.5) %>% # excluding unrealistic data point
+  mutate(rest_year = case_when(
+           Site == "HS" ~ as.numeric("2008"),
+           Site == "CC" ~ as.numeric("1990"),
+           Site == "CF" ~ as.numeric("1993"),
+           Site == "DLW" ~ as.numeric("2014"),
+           Site == "CCW" ~ as.numeric("2007"), # don't know the exact year, need to investigate
+           Site == "YCW" ~ as.numeric("2018")
+         ),
+         pneu_h_d = Pneu_ht_mm/Pneu_dia_mm) # add a column for restoration years
 ```
 
 ```{r Get data - mangrove leaf data}
@@ -54,7 +84,10 @@ manherb <- read_excel("Data/Functional_traits_combined_data.xlsx", sheet = "Mang
 ```{r Explore quadrat level traits}
 # plot by observation order
 plot(mantree$`Canopy_cover_%`)
-# need to change reproductive data into binary variables 0/1
+plot(mantree$Buds)
+plot(mantree$Flowers_live)
+plot(mantree$Flowers_dead)
+plot(mantree$Fruits)
 plot(mantree$total_trees)
 plot(mantree$total_saplings)
 plot(mantree$total_hollows)

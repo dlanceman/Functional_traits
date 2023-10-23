@@ -59,7 +59,7 @@ salt <- read_excel("Data/Functional_traits_combined_data.xlsx", sheet = "Saltmar
            Buds == "Unknown" ~ NA,
            Buds == "NA" ~ NA
          ),
-         Flowers = case_when(  # reassign Buds as a numeric variable
+         Flowers = case_when(  # reassign Flowers as a numeric variable
            Flowers == "Yes" ~ 1,
            Flowers == "No" ~ 0,
            Flowers == "Unknown" ~ NA,

@@ -1,0 +1,601 @@
+---
+title: "Mangrove models"
+author: "Dana Lanceman"
+date: "2023-10-23"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+# 0. Set up
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r Load packages}
+#install.packages("readxl")
+#install.packages("tidyverse")
+#install.packages("lme4")
+#install.packages("MuMIn")
+#install.packages("car")
+#install.packages("performance")
+#install.packages("glmmTMB")
+#install.packages("bbmle")
+#install.packages("GLMMadaptive")
+#install.packages("ggeffects")
+#install.packages("emmeans")
+#install.packages("robustlmm")
+
+library(readxl)
+library(tidyverse)
+library(lme4)
+library(MuMIn)
+library(car)
+library(performance)
+library(glmmTMB)
+library(bbmle)
+library(GLMMadaptive)
+library(ggeffects)
+library(emmeans)
+library(robustlmm)
+```
+
+
+```{r Get data - mangrove tree data}
+# set working directory
+setwd("C:/Users/z5204897/OneDrive - UNSW/Desktop/PhD/Data_analysis/Project/Functional_traits")
+
+# input mangrove data
+mantree <- read_excel("Data/Functional_traits_combined_data.xlsx", sheet = "Mangrove_tree") %>% 
+  arrange(Date, Time) %>% 
+  mutate(total_trees = Trees * 100/Quadrat_size_m2, 
+         total_saplings = Saplings * 100/Quadrat_size_m2,
+         total_hollows = Hollows * 100/Quadrat_size_m2,
+         # add columns for total tree, seedling and hollow counts per 1m2 for each species to standardise  counts
+         Buds = case_when(  # reassign Buds as a numeric variable
+           Buds == "Yes" ~ 1,
+           Buds == "No" ~ 0
+         ),
+         Flowers_live = case_when(  # reassign Flowers_live as a numeric variable
+           Flowers_live == "Yes" ~ 1,
+           Flowers_live == "No" ~ 0
+         ),
+         Flowers_dead = case_when(  # reassign Flowers_dead as a numeric variable
+           Flowers_dead == "Yes" ~ 1,
+           Flowers_dead == "No" ~ 0
+         ),
+         Fruits = case_when(  # reassign Fruits as a numeric variable
+           Fruits == "Yes" ~ 1,
+           Fruits == "No" ~ 0
+         ),
+         rest_status = case_when(
+           Site == "HS" ~ as.numeric("1"),
+           Site == "CC" ~ as.numeric("1"),
+           Site == "CF" ~ as.numeric("1"),
+           Site == "DLW" ~ as.numeric("1"),
+           Site == "YCW" ~ as.numeric("1"),
+           Site == "CCW" ~ as.numeric("1"),
+           .default = as.numeric("0"), # add a column for restoration status where 1 = restored and 0 = natural
+         ),
+         rest_year = case_when(
+           Site == "HS" ~ as.numeric("2008"),
+           Site == "CC" ~ as.numeric("1990"),
+           Site == "CF" ~ as.numeric("1993"),
+           Site == "DLW" ~ as.numeric("2014"),
+           Site == "CCW" ~ as.numeric("2007"), # don't know the exact year, need to investigate
+           Site == "YCW" ~ as.numeric("2018")
+         ), # add a column for restoration years
+         YSR = case_when(
+           Site == "HS" ~ as.numeric("15"),
+           Site == "CC" ~ as.numeric("33"),
+           Site == "CF" ~ as.numeric("30"),
+           Site == "DLW" ~ as.numeric("9"),
+           Site == "CCW" ~ as.numeric("16"),
+           Site == "YCW" ~ as.numeric("5"))) # add a column for years since restoration
+# double check with Will years for each
+
+# mangrove subquadrat data
+manq <- read_excel("Data/Functional_traits_combined_data.xlsx", sheet = "Mangrove_quadrat") %>% 
+  arrange(Date, Time) %>% 
+  filter(Pneu_dia_mm > 2.5) %>% # excluding unrealistic data point
+  mutate(rest_status = case_when(
+           Site == "HS" ~ as.numeric("1"),
+           Site == "CC" ~ as.numeric("1"),
+           Site == "CF" ~ as.numeric("1"),
+           Site == "DLW" ~ as.numeric("1"),
+           Site == "YCW" ~ as.numeric("1"),
+           Site == "CCW" ~ as.numeric("1"),
+           .default = as.numeric("0"), # add a column for restoration status where 1 = restored and 0 = natural
+         ),
+         rest_year = case_when(
+           Site == "HS" ~ as.numeric("2008"),
+           Site == "CC" ~ as.numeric("1990"),
+           Site == "CF" ~ as.numeric("1993"),
+           Site == "DLW" ~ as.numeric("2014"),
+           Site == "CCW" ~ as.numeric("2007"), # don't know the exact year, need to investigate
+           Site == "YCW" ~ as.numeric("2018")
+         ),  # add a column for restoration years
+         YSR = case_when(
+           Site == "HS" ~ as.numeric("15"),
+           Site == "CC" ~ as.numeric("33"),
+           Site == "CF" ~ as.numeric("30"),
+           Site == "DLW" ~ as.numeric("9"),
+           Site == "CCW" ~ as.numeric("16"),
+           Site == "YCW" ~ as.numeric("5")), # add a column for years since restoration
+         pneu_h_d = Pneu_ht_mm/Pneu_dia_mm)
+
+# mangrove leaf herbivory data
+manherb <- read_excel("Data/Functional_traits_combined_data.xlsx", sheet = "Mangrove_herb") %>% 
+  rowwise() %>% 
+  mutate(Herb_av = mean(c_across(Leaf_1:Leaf_5), na.rm = TRUE))
+```
+
+```{r Data manipulation}
+# outliers
+# upon inspection of the DEM, it looks like the original RTK value (1.096) of CF3 is not accurate. Adopt the DEM value (0.732) for elevation of CF3 instead. This is probably also an overestimate due to tree cover but it's the best we have to work with.
+mantree$Elevation[11:15] <- 0.732
+manq$Elevation[31:50] <- 0.732
+
+# rescale/standardise elevation
+mantree$Elevation <- scale(mantree$Elevation, center = TRUE, scale = TRUE)
+manq$Elevation <- scale(manq$Elevation, center = TRUE, scale = TRUE)
+
+# data transformations
+mantree <- mantree %>% mutate(ln_total_trees = log(total_trees),
+                              sq_total_trees = sqrt(total_trees),
+                              ln_total_sap = log(total_saplings + 0.01),
+                              sq_total_sap = sqrt(total_saplings))
+
+manq <- manq %>% mutate(ln_seedling = log(`Seedlings_30-100cm_1x1` + 0.01),
+                        sq_seedling = sqrt(`Seedlings_30-100cm_1x1`))
+```
+
+```{r Subset data}
+# Community-level data - delete duplicate columns
+mantree_comm <- mantree %>% distinct(Combo, .keep_all = TRUE)
+mantree_comm <- mantree_comm[,-c(17:21,23)] # remove irrelevant columns
+manq_comm <- manq %>% distinct(Combo,Pneu_0.5x0.5, .keep_all = TRUE)
+# currently including one line per subquadrat, which means quadrat needs to be a variable in the models unless we average across each subquadrat
+
+# Hunter only
+mantree_H <- mantree %>% subset(mantree$Estuary == "Hunter")
+mantree_comm_H <- mantree_comm %>% subset(mantree_comm$Estuary == "Hunter")
+manq_H <- manq %>% subset(manq$Estuary == "Hunter")
+manq_comm_H <- manq_comm %>% subset(manq_comm$Estuary == "Hunter")
+
+# Grey mangroves only
+mantree_grey <- mantree %>% subset(mantree$Species == "Grey")
+
+# restored sites only
+mantree_rest <- mantree %>% subset(mantree$rest_status == 1)
+mantree_comm_rest <- mantree_comm %>% subset(mantree_comm$rest_status == 1)
+mantree_H_rest <- mantree_H %>% subset(mantree_H$rest_status == 1)
+mantree_comm_H_rest <- mantree_comm_H %>% subset(mantree_comm_H$rest_status == 1)
+manq_rest <- manq %>% subset(manq$rest_status == 1)
+manq_comm_rest <- manq_comm %>% subset(manq_comm$rest_status == 1)
+manq_H_rest <- manq_H %>% subset(manq_H$rest_status == 1)
+manq_comm_H_rest <- manq_comm_H %>% subset(manq_comm_H$rest_status == 1)
+mantree_grey_rest <- mantree_grey %>% subset(mantree_grey$rest_status == 1)
+
+# natural sites only
+mantree_nat <- mantree %>% subset(mantree$rest_status == 0)
+mantree_comm_nat <- mantree_comm %>% subset(mantree_comm$rest_status == 0)
+mantree_H_nat <- mantree_H %>% subset(mantree_H$rest_status == 0)
+mantree_comm_H_nat <- mantree_comm_H %>% subset(mantree_comm_H$rest_status == 0)
+manq_nat <- manq %>% subset(manq$rest_status == 0)
+manq_comm_nat <- manq_comm %>% subset(manq_comm$rest_status == 0)
+manq_H_nat <- manq_H %>% subset(manq_H$rest_status == 0)
+manq_comm_H_nat <- manq_comm_H %>% subset(manq_comm_H$rest_status == 0)
+mantree_grey_nat <- mantree_grey %>% subset(mantree_grey$rest_status == 0)
+```
+
+# A. Hunter only (therefore grey mangroves only too)
+
+# 1. Population structure models
+- number of trees, number of large saplings, number of seedlings (multiplied out) (multivariate count)
+
+Start with univariate models.
+
+# 1a. Number of trees
+
+Number of trees
+- total trees ~ YSR + Elevation + (1|Site)
+
+```{r Number of trees - Check initial assumptions}
+# check linear relationship between predictors and response
+plot(mantree_comm_H$total_trees ~ mantree_comm_H$YSR) # looks fine
+plot(mantree_comm_H$total_trees ~ mantree_comm_H$Elevation) # looks fine
+
+# check for collinearity of predictors
+plot(mantree_comm_H$Elevation ~ mantree_comm_H$YSR) # should be fine. Only 3 values of YSR
+
+# check total trees distribution
+hist(mantree_comm_H$total_trees, breaks = 10) # highly right skewed
+hist(mantree_comm_H$ln_total_trees, breaks = 10) # much closer to normal
+hist(mantree_comm_H$Elevation, breaks = 10) # somewhat left skewed 
+```
+
+```{r Number of trees - restoration status - model}
+M <- lmer(total_trees ~ rest_status + Elevation + (1|Site), data = mantree_comm_H, na.action = na.exclude)
+summary(M)
+
+# check model assumptions
+# check for collinearity between predictors
+check_collinearity(M) # VIF < 5 (low collinearity) - good.
+
+# residuals plots
+plot(M) # one extreme value
+qqnorm(resid(M))
+qqline(resid(M)) # one extreme value
+
+# try log-transformed data
+M1 <- lmer(ln_total_trees ~ rest_status + Elevation + (1|Site), data = mantree_comm_H, na.action = na.exclude)
+summary(M1)
+
+# residuals plots
+plot(M1) # equal variances is ok
+qqnorm(resid(M1))
+qqline(resid(M1)) # normality is ok but not amazing
+
+# try sqrt-transformed data
+M2 <- lmer(sq_total_trees ~ rest_status + Elevation + (1|Site), data = mantree_comm_H, na.action = na.exclude)
+summary(M2)
+
+# residuals plots
+plot(M2) # equal variances is not great, log was better
+qqnorm(resid(M2))
+qqline(resid(M2)) # not great, log was better 
+
+# therefore use log-transformed data, but double check if it's ok
+```
+
+```{r Number of trees - restoration status - plot}
+# best model
+M1 <- lmer(ln_total_trees ~ rest_status + Elevation + (1|Site), data = mantree_comm_H, na.action = na.exclude)
+summary(M1)
+
+# plot differences in restoration status
+boxplot(mantree_comm_H$ln_total_trees ~ mantree_comm_H$rest_status)
+
+# plot sites
+# reorder Sites in ascending order of the response variable
+new_order <- with(mantree_comm_H, reorder(Site, ln_total_trees, median, na.rm=T)) 
+# boxplot
+ggplot(mantree_comm_H, aes(x = new_order, y = ln_total_trees)) +
+  geom_boxplot() +
+  geom_jitter(width=0.1) +
+    scale_y_continuous(breaks = log(pretty(exp(mantree_comm_H$ln_total_trees))), labels = pretty(exp(mantree_comm_H$ln_total_trees))) +
+    labs(y = "Trees per 100m2", x = "Site") +
+  theme_classic() 
+
+# plot elevation
+ggplot(mantree_comm_H, aes(x = Elevation, y = ln_total_trees)) +
+  geom_point() +
+  geom_smooth(span = 1000)
+```
+
+# 1b. Number of large saplings
+
+Number of large saplings
+- total saplings ~ YSR + Elevation + (1|Site)
+
+```{r Number of large saplings - Check initial assumptions}
+# check linear relationship between predictors and response
+plot(mantree_comm_H$total_saplings ~ mantree_comm_H$YSR) # looks fine
+plot(mantree_comm_H$total_saplings ~ mantree_comm_H$Elevation) # looks fine
+
+# check total saplings distribution
+hist(mantree_comm_H$total_saplings, breaks = 10) # highly right skewed
+hist(mantree_comm_H$ln_total_trees, breaks = 10) # much closer to normal
+hist(mantree_comm_H$Elevation, breaks = 10) # somewhat left skewed 
+```
+
+```{r Number of large saplings - restoration status - model}
+M <- lmer(total_saplings ~ rest_status + Elevation + (1|Site), data = mantree_comm_H, na.action = na.exclude)
+summary(M)
+
+# check model assumptions
+# check for collinearity between predictors
+check_collinearity(M) # VIF < 5 (low collinearity) - good.
+
+# residuals plots
+plot(M) # one extreme value
+qqnorm(resid(M))
+qqline(resid(M)) # one extreme value
+
+# try log-transformed data
+M1 <- lmer(ln_total_sap ~ rest_status + Elevation + (1|Site), data = mantree_comm_H, na.action = na.exclude)
+summary(M1)
+
+# residuals plots
+plot(M1) # equal variances is not great
+qqnorm(resid(M1))
+qqline(resid(M1)) # normality is not great
+
+# try sqrt-transformed data
+M2 <- lmer(sq_total_trees ~ rest_status + Elevation + (1|Site), data = mantree_comm_H, na.action = na.exclude)
+summary(M2)
+
+# residuals plots
+plot(M2) # equal variances is mostly ok except one outlier
+qqnorm(resid(M2))
+qqline(resid(M2)) # not good 
+
+# therefore none of the models are great, may need to go non-parametric/non-normal. The non-transformed model actually looks best so use it for now.
+```
+
+```{r Number of large saplings - restoration status - plot}
+# best model
+M <- lmer(total_saplings ~ rest_status + Elevation + (1|Site), data = mantree_comm_H, na.action = na.exclude)
+summary(M)
+
+# plot differences in restoration status
+boxplot(mantree_comm_H$total_saplings ~ mantree_comm_H$rest_status)
+
+# plot sites
+# reorder Sites in ascending order of the response variable
+new_order <- with(mantree_comm_H, reorder(Site, total_saplings, median, na.rm=T)) 
+# boxplot
+ggplot(mantree_comm_H, aes(x = new_order, y = total_saplings)) +
+  geom_boxplot() +
+  geom_jitter(width=0.1) +
+    labs(y = "Trees per 100m2", x = "Site") +
+  theme_classic() 
+
+# plot elevation
+ggplot(mantree_comm_H, aes(x = Elevation, y = total_saplings)) +
+  geom_point() +
+  geom_smooth(span = 1000)
+```
+
+# 1c. Seedlings
+
+```{r Seedlings - initial assumptions}
+# check linear relationship between predictors and response
+plot(manq_comm_H$`Seedlings_30-100cm_1x1` ~ manq_comm_H$YSR) # looks fine
+plot(manq_comm_H$`Seedlings_30-100cm_1x1` ~ manq_comm_H$Elevation) # looks fine, one large seedling value
+
+# check seedlings distribution
+hist(manq_comm_H$`Seedlings_30-100cm_1x1`, breaks = 10) # highly right skewed
+hist(manq_comm_H$ln_seedling, breaks = 20) # not good, massive break in data
+hist(manq_comm_H$sq_seedling, breaks = 10) # very right skewed still.
+hist(manq_comm_H$Elevation, breaks = 10) # somewhat left skewed 
+```
+
+```{r Seedlings - restoration status - model}
+M <- lmer(`Seedlings_30-100cm_1x1` ~ rest_status + Elevation + (1|Site) + (1|Site/Quadrat), data = manq_comm_H, na.action = na.exclude)
+# fit is singular
+summary(M)
+
+# check model assumptions
+# check for collinearity between predictors
+check_collinearity(M) # VIF < 5 (low collinearity) - good.
+
+# residuals plots
+plot(M) # one extreme value
+qqnorm(resid(M))
+qqline(resid(M)) # not normal
+
+# try log-transformed data
+M1 <- lmer(ln_seedling ~ rest_status + Elevation + (1|Site) + (1|Site/Quadrat), data = manq_comm_H, na.action = na.exclude)
+summary(M1)
+
+# residuals plots
+plot(M1) # weird looking..
+qqnorm(resid(M1))
+qqline(resid(M1)) # ok
+
+# try sqrt-transformed data
+M2 <- lmer(sq_seedling ~ rest_status + Elevation + (1|Site) + (1|Site/Quadrat), data = manq_comm_H, na.action = na.exclude)
+summary(M2)
+
+# residuals plots
+plot(M2) # equal variances is mostly ok except one outlier
+qqnorm(resid(M2))
+qqline(resid(M2)) # mostly ok except one outlier
+
+```
+
+```{r Seedlings - restoration status - plot}
+# best model
+M2 <- lmer(sq_seedling ~ rest_status + Elevation + (1|Site) + (1|Site/Quadrat), data = manq_comm_H, na.action = na.exclude)
+summary(M2)
+
+# plot differences in restoration status
+boxplot(manq_comm_H$sq_seedling ~ manq_comm_H$rest_status)
+
+# plot sites
+# reorder Sites in ascending order of the response variable
+new_order <- with(manq_comm_H, reorder(Site, sq_seedling, median, na.rm=T)) 
+# boxplot
+ggplot(manq_comm_H, aes(x = new_order, y = sq_seedling)) +
+  geom_boxplot() +
+  geom_jitter(width=0.1) +
+    scale_y_continuous(breaks = sqrt(pretty((mantree_comm_H$ln_total_trees)^2)), labels = pretty((mantree_comm_H$ln_total_trees)^2)) +
+    labs(y = "Seedlings per 1m2", x = "Site") +
+  theme_classic() 
+
+# plot elevation
+ggplot(manq_comm_H, aes(x = Elevation, y = sq_seedling)) +
+  geom_point() +
+  geom_smooth(span = 1000)
+```
+
+# 6. Morphology models
+
+- mangrove tree height, DBH and basal circumference
+
+```{r Morphology - test for correlation between response variables}
+plot(mantree$Height_m ~ mantree$DBH_cm) # they are correlated, but there is a lot of variability too
+plot(mantree$Height_m ~ mantree$Basal_circ_cm) # they are correlated, but there is a lot of variability too
+plot(mantree$DBH_cm ~ mantree$Basal_circ_cm) # they are correlated, but there is some variability too
+# potentially do some sort of correlation test to test whether it's ok to model both DBH and basal circumference
+```
+
+# 6a. Mangrove tree height
+
+
+# C. Hunter and Maroochy together (for YSR)
+
+```{r Number of trees - YSR - model}
+M <- lmer(total_trees ~ YSR + Elevation + Estuary + (1|Site), data = mantree_comm_rest, na.action = na.exclude)
+summary(M)
+```
+
+```{r Number of trees - YSR - plot}
+# plot sites
+# reorder Sites in ascending order of the response variable
+new_order <- with(mantree_comm, reorder(Site, total_trees, median, na.rm=T)) 
+# boxplot
+ggplot(mantree_comm, aes(x = new_order, y = total_trees)) +
+  geom_boxplot() +
+  geom_jitter(width=0.1) +
+    labs(y = "Trees per 100m2", x = "Site") +
+  theme_classic() 
+```
+
+
+```{r Number of saplings - YSR - model}
+M <- lmer(total_saplings ~ poly(YSR,2) + Elevation + Estuary + (1|Site), data = mantree_comm_rest, na.action = na.exclude)
+summary(M)
+
+# check model assumptions
+# check for collinearity between predictors
+check_collinearity(M) # VIF < 5 (low collinearity) - good.
+
+# residuals plots
+plot(M) # fine
+qqnorm(resid(M))
+qqline(resid(M)) # roughly fine, one slightly extreme value
+```
+
+
+```{r Number of saplings - YSR - plot}
+# plot YSR
+ggplot(mantree_comm, aes(x = YSR, y = total_saplings)) +
+  geom_point() +
+  stat_smooth(span = 1)
+
+# plot predicted values with ggeffects ggemmeans - looks weird and predicts negative values..
+predict_YSR <- ggemmeans(M, terms = c("YSR [all]"))
+# view this result
+print(predict_YSR)
+# visualise this result
+plot(predict_YSR, ci = T,add.data = TRUE, dot.alpha = 0.5,  jitter = 0.2)+
+  ggtitle("") +  geom_line(size = 1.2) +
+  labs(y = "Number of saplings", x = "Years since restoration") +
+  theme_classic()
+
+# plot natural sites
+ggplot(mantree_comm_nat, aes(x = Site, y = total_saplings)) +
+  geom_boxplot() +
+  geom_jitter(width=0.1) +
+    labs(y = "Number of saplings per 100m2", x = "Site") +
+  theme_classic() 
+
+# plot sites
+# reorder Sites in ascending order of the response variable
+new_order <- with(mantree_comm, reorder(Site, total_saplings, median, na.rm=T)) 
+# boxplot
+ggplot(mantree_comm, aes(x = new_order, y = total_saplings)) +
+  geom_boxplot() +
+  geom_jitter(width=0.1) +
+    labs(y = "Saplings per 100m2", x = "Site") +
+  theme_classic() 
+```
+
+```{r Number of seedlings - YSR - model}
+M <- lmer(`Seedlings_30-100cm_1x1` ~ YSR + Elevation + (1|Site) + (1|Site/Quadrat), data = manq_comm_rest, na.action = na.exclude)
+summary(M)
+# error
+
+M2 <- lmer(sq_seedling ~ YSR + Elevation + (1|Site) + (1|Site/Quadrat), data = manq_comm_rest, na.action = na.exclude)
+# error
+summary(M2)
+```
+
+```{r Number of seedlings - YSR - plot}
+# plot YSR
+ggplot(manq_comm_rest, aes(x = YSR, y = sq_seedling)) +
+  geom_point() +
+  stat_smooth(span = 1)
+```
+
+```{r Hollows - YSR - plot}
+# plot YSR
+ggplot(mantree_comm_rest, aes(x = YSR, y = Hollows)) +
+  geom_point() +
+  stat_smooth(span = 1) + 
+  theme_classic()
+
+# plot natural sites
+ggplot(mantree_comm_nat, aes(x = Site, y = Hollows)) +
+  geom_boxplot() +
+  geom_jitter(width=0.1) +
+    labs(y = "Number of hollows", x = "Site") +
+  theme_classic() 
+```
+
+```{r Canopy cover - YSR - plot}
+# plot YSR
+ggplot(mantree_comm_rest, aes(x = YSR, y = `Canopy_cover_%`)) +
+  geom_point() +
+  stat_smooth(span = 10) + 
+  theme_classic()
+
+# plot natural sites
+ggplot(mantree_comm_nat, aes(x = Site, y = `Canopy_cover_%`)) +
+  geom_boxplot() +
+  geom_jitter(width=0.1) +
+    labs(y = "Number of hollows", x = "Site") +
+  theme_classic() 
+```
+
+
+```{r Tree height - YSR - plot}
+# plot YSR
+ggplot(mantree_grey_rest, aes(x = YSR, y = Height_m)) +
+  geom_point() +
+  stat_smooth(span = 1) + 
+  theme_classic()
+
+# plot natural sites
+ggplot(mantree_grey_nat, aes(x = Site, y = Height_m)) +
+  geom_boxplot() +
+  geom_jitter(width=0.1) +
+    labs(y = "Tree height (m)", x = "Site") +
+  theme_classic() 
+```
+
+```{r DBH - YSR - plot}
+# plot YSR
+ggplot(mantree_grey_rest, aes(x = YSR, y = DBH_cm)) +
+  geom_point() +
+  stat_smooth(span = 1) + 
+  theme_classic()
+
+# plot natural sites
+ggplot(mantree_grey_nat, aes(x = Site, y = DBH_cm)) +
+  geom_boxplot() +
+  geom_jitter(width=0.1) +
+    labs(y = "DBH (cm)", x = "Site") +
+  theme_classic() 
+```
+
+```{r Basal circumference - YSR - plot}
+# plot YSR
+ggplot(mantree_grey_rest, aes(x = YSR, y = Basal_circ_cm)) +
+  geom_point() +
+  stat_smooth(span = 1) + 
+  theme_classic()
+
+# plot natural sites
+ggplot(mantree_grey_nat, aes(x = Site, y = Basal_circ_cm)) +
+  geom_boxplot() +
+  geom_jitter(width=0.1) +
+    labs(y = "DBH (cm)", x = "Site") +
+  theme_classic() 
+```
+
