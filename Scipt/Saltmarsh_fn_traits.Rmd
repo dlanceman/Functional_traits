@@ -170,6 +170,9 @@ boxplot(Stem_dia_mm ~ new_order, data = spor)
 # plot relationships between variables
 plot(spor$Stem_ht_mm, spor$Stem_dia_mm)
 plot(spor$total_stems, spor$`Sp_cover_%`)
+
+# explore relationships
+plot(spor$total_stems/spor$`Sp_cover_%` ~ spor$YSR)
 ```
 
 ```{r By species - Sarcocornia}
@@ -313,6 +316,24 @@ For linear mixed effects models, these are:
 We also need to identify any unrealistic outliers in the dataset so they can be removed prior to analysis. These are identified below using cleveland plots.
 
 Normality of response variables is not required but is checked below using histograms, boxplots and cleveland plots.
+
+
+Notes on interpreting diagnostic plots:
+
+- plot():
+    - linearity of residuals: is the mean of the residuals approximately zero for each value of the predictor?
+    - equal variances: is there an equal spread of data points along fitted values?
+    - asymmetry of residuals: are positive and negative tails similar in amplitude?
+    - see https://stats.stackexchange.com/questions/242517/interpretation-of-residual-plot-for-mixed-effect-linear-model
+    
+- linear model for predictor variables:
+    - no non-linear trends in the plot
+
+- qqnorm plot:
+    - approx x = y plot, no strong deviations
+    
+- values with strong leverage:
+    - all values have similar leverage
 
 ```{r Identify outliers and explore distributions - side-by-side Cleveland plot and boxplot}
 cleveland_plot <- function(vector,axislab){
@@ -550,23 +571,3 @@ M <- lmer(sq.stem.dens ~ rest_status + rest_status:rest_year + Elevation + Estua
 summary(M)
 ```
 
-
-# 6. Test model assumptions
-
-
-Notes on interpreting diagnostic plots:
-
-- plot():
-    - linearity of residuals: is the mean of the residuals approximately zero for each value of the predictor?
-    - equal variances: is there an equal spread of data points along fitted values?
-    - asymmetry of residuals: are positive and negative tails similar in amplitude?
-    - see https://stats.stackexchange.com/questions/242517/interpretation-of-residual-plot-for-mixed-effect-linear-model
-    
-- linear model for predictor variables:
-    - no non-linear trends in the plot
-
-- qqnorm plot:
-    - approx x = y plot, no strong deviations
-    
-- values with strong leverage:
-    - all values have similar leverage

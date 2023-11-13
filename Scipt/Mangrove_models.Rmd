@@ -27,6 +27,7 @@ knitr::opts_chunk$set(echo = TRUE)
 #install.packages("ggeffects")
 #install.packages("emmeans")
 #install.packages("robustlmm")
+#install.packages("viridis")
 
 library(readxl)
 library(tidyverse)
@@ -40,6 +41,7 @@ library(GLMMadaptive)
 library(ggeffects)
 library(emmeans)
 library(robustlmm)
+library(viridis)
 ```
 
 
@@ -53,7 +55,7 @@ mantree <- read_excel("Data/Functional_traits_combined_data.xlsx", sheet = "Mang
   mutate(total_trees = Trees * 100/Quadrat_size_m2, 
          total_saplings = Saplings * 100/Quadrat_size_m2,
          total_hollows = Hollows * 100/Quadrat_size_m2,
-         # add columns for total tree, seedling and hollow counts per 1m2 for each species to standardise  counts
+         # add columns for total tree, seedling and hollow counts per 1m2 for each species to standardise  counts for plots
          Buds = case_when(  # reassign Buds as a numeric variable
            Buds == "Yes" ~ 1,
            Buds == "No" ~ 0
@@ -80,7 +82,7 @@ mantree <- read_excel("Data/Functional_traits_combined_data.xlsx", sheet = "Mang
            .default = as.numeric("0"), # add a column for restoration status where 1 = restored and 0 = natural
          ),
          rest_year = case_when(
-           Site == "HS" ~ as.numeric("2008"),
+           Site == "HS" ~ as.numeric("2011"),
            Site == "CC" ~ as.numeric("1990"),
            Site == "CF" ~ as.numeric("1993"),
            Site == "DLW" ~ as.numeric("2014"),
@@ -88,7 +90,7 @@ mantree <- read_excel("Data/Functional_traits_combined_data.xlsx", sheet = "Mang
            Site == "YCW" ~ as.numeric("2018")
          ), # add a column for restoration years
          YSR = case_when(
-           Site == "HS" ~ as.numeric("15"),
+           Site == "HS" ~ as.numeric("12"),
            Site == "CC" ~ as.numeric("33"),
            Site == "CF" ~ as.numeric("30"),
            Site == "DLW" ~ as.numeric("9"),
@@ -110,7 +112,7 @@ manq <- read_excel("Data/Functional_traits_combined_data.xlsx", sheet = "Mangrov
            .default = as.numeric("0"), # add a column for restoration status where 1 = restored and 0 = natural
          ),
          rest_year = case_when(
-           Site == "HS" ~ as.numeric("2008"),
+           Site == "HS" ~ as.numeric("2011"),
            Site == "CC" ~ as.numeric("1990"),
            Site == "CF" ~ as.numeric("1993"),
            Site == "DLW" ~ as.numeric("2014"),
@@ -118,7 +120,7 @@ manq <- read_excel("Data/Functional_traits_combined_data.xlsx", sheet = "Mangrov
            Site == "YCW" ~ as.numeric("2018")
          ),  # add a column for restoration years
          YSR = case_when(
-           Site == "HS" ~ as.numeric("15"),
+           Site == "HS" ~ as.numeric("12"),
            Site == "CC" ~ as.numeric("33"),
            Site == "CF" ~ as.numeric("30"),
            Site == "DLW" ~ as.numeric("9"),
@@ -130,6 +132,13 @@ manq <- read_excel("Data/Functional_traits_combined_data.xlsx", sheet = "Mangrov
 manherb <- read_excel("Data/Functional_traits_combined_data.xlsx", sheet = "Mangrove_herb") %>% 
   rowwise() %>% 
   mutate(Herb_av = mean(c_across(Leaf_1:Leaf_5), na.rm = TRUE))
+# do we want to take averages or have one row for every measurement??
+
+# mangrove leaf weight and area data
+manleaf <- read_excel("Data/Functional_traits_combined_data.xlsx", sheet = "Mangrove_leaf") %>% 
+  rowwise() %>% 
+  mutate(Value_av = mean(c_across(Leaf_1:Leaf_5), na.rm = TRUE))
+# do we want to take averages or have one row for every measurement??
 ```
 
 ```{r Data manipulation}
@@ -137,6 +146,8 @@ manherb <- read_excel("Data/Functional_traits_combined_data.xlsx", sheet = "Mang
 # upon inspection of the DEM, it looks like the original RTK value (1.096) of CF3 is not accurate. Adopt the DEM value (0.732) for elevation of CF3 instead. This is probably also an overestimate due to tree cover but it's the best we have to work with.
 mantree$Elevation[11:15] <- 0.732
 manq$Elevation[31:50] <- 0.732
+# there is a grey mangrove height measurement listed as 1m, which is too short to be a tree so must be a transcription error. Removing this data cell.
+mantree$Height_m[15] <- NA 
 
 # rescale/standardise elevation
 mantree$Elevation <- scale(mantree$Elevation, center = TRUE, scale = TRUE)
@@ -294,6 +305,10 @@ hist(mantree_comm_H$Elevation, breaks = 10) # somewhat left skewed
 
 ```{r Number of large saplings - restoration status - model}
 M <- lmer(total_saplings ~ rest_status + Elevation + (1|Site), data = mantree_comm_H, na.action = na.exclude)
+
+# include restoration status x site interaction?
+M <- lm(total_saplings ~ rest_status*Site + Elevation, data = mantree_comm_H, na.action = na.exclude)
+
 summary(M)
 
 # check model assumptions
@@ -423,7 +438,7 @@ ggplot(manq_comm_H, aes(x = Elevation, y = sq_seedling)) +
   geom_smooth(span = 1000)
 ```
 
-# 6. Morphology models
+# 2. Morphology models
 
 - mangrove tree height, DBH and basal circumference
 
@@ -434,13 +449,17 @@ plot(mantree$DBH_cm ~ mantree$Basal_circ_cm) # they are correlated, but there is
 # potentially do some sort of correlation test to test whether it's ok to model both DBH and basal circumference
 ```
 
-# 6a. Mangrove tree height
+# 2a. Mangrove tree height
 
 
-# C. Hunter and Maroochy together (for YSR)
+
+
+
+# B. Hunter and Maroochy together (for YSR)
 
 ```{r Number of trees - YSR - model}
 M <- lmer(total_trees ~ YSR + Elevation + Estuary + (1|Site), data = mantree_comm_rest, na.action = na.exclude)
+
 summary(M)
 ```
 
@@ -453,6 +472,28 @@ ggplot(mantree_comm, aes(x = new_order, y = total_trees)) +
   geom_boxplot() +
   geom_jitter(width=0.1) +
     labs(y = "Trees per 100m2", x = "Site") +
+  theme_classic() 
+
+# violin plot
+ggplot(mantree_comm_rest, aes(x=YSR, y=total_trees, fill=Estuary, group = YSR)) +
+    geom_violin(width=1.4) +
+  geom_jitter() +
+    scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A") +
+    theme_classic() +
+    theme(legend.text = element_text(size = 20),
+          legend.title = element_text(size = 24),
+          axis.text = element_text(size = 24),
+          axis.title = element_text(size = 28)) +
+  xlab("Years since restoration") +
+  ylab("Number of mangrove trees") +
+  xlim(0,35)
+# print at 1820 x 789
+
+# plot natural sites
+ggplot(mantree_comm_nat, aes(x = Site, y = total_trees)) +
+  geom_boxplot() +
+  geom_jitter(width=0.1) +
+    labs(y = "Number of trees per 100m2", x = "Site") +
   theme_classic() 
 ```
 
@@ -473,10 +514,41 @@ qqline(resid(M)) # roughly fine, one slightly extreme value
 
 
 ```{r Number of saplings - YSR - plot}
-# plot YSR
+# plot YSR - smoothed line plot
 ggplot(mantree_comm, aes(x = YSR, y = total_saplings)) +
   geom_point() +
-  stat_smooth(span = 1)
+  stat_smooth(span = 1) +
+  theme_classic()
+
+# box plot
+ggplot(mantree_comm_rest, aes(x=YSR, y=total_saplings, fill=Estuary, group = YSR)) +
+    geom_boxplot() +
+  geom_jitter() +
+    scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A") +
+    theme_classic() +
+    theme(legend.text = element_text(size = 20),
+          legend.title = element_text(size = 24),
+          axis.text = element_text(size = 24),
+          axis.title = element_text(size = 28)) +
+  xlab("Years since restoration") +
+  ylab("Number of mangrove saplings") +
+  xlim(0,35)
+# print at 1820 x 789
+
+# violin plot
+ggplot(mantree_comm_rest, aes(x=YSR, y=total_saplings, fill=Estuary, group = YSR)) +
+    geom_violin(width=1.4) +
+  geom_jitter() +
+    scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A") +
+    theme_classic() +
+    theme(legend.text = element_text(size = 20),
+          legend.title = element_text(size = 24),
+          axis.text = element_text(size = 24),
+          axis.title = element_text(size = 28)) +
+  xlab("Years since restoration") +
+  ylab("Number of mangrove saplings") +
+  xlim(0,35)
+# print at 1820 x 789
 
 # plot predicted values with ggeffects ggemmeans - looks weird and predicts negative values..
 predict_YSR <- ggemmeans(M, terms = c("YSR [all]"))
@@ -488,12 +560,35 @@ plot(predict_YSR, ci = T,add.data = TRUE, dot.alpha = 0.5,  jitter = 0.2)+
   labs(y = "Number of saplings", x = "Years since restoration") +
   theme_classic()
 
-# plot natural sites
-ggplot(mantree_comm_nat, aes(x = Site, y = total_saplings)) +
-  geom_boxplot() +
-  geom_jitter(width=0.1) +
-    labs(y = "Number of saplings per 100m2", x = "Site") +
-  theme_classic() 
+# plot natural sites - violin plot
+ggplot(mantree_comm_nat, aes(x=Site, y=total_saplings, fill=Estuary, group = Site)) +
+    geom_violin(width=1) +
+  geom_jitter(width = 0.2) +
+    scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A") +
+    theme_classic() +
+    theme(legend.text = element_text(size = 20),
+          legend.title = element_text(size = 24),
+          axis.text = element_text(size = 24),
+          axis.title = element_text(size = 28)) +
+  xlab("Site") +
+  ylab("") +
+  ylim(0,440)
+# print at default
+
+# plot natural sites - boxplot
+ggplot(mantree_comm_nat, aes(x=Site, y=total_saplings, fill=Estuary, group = Site)) +
+    geom_boxplot(width = 0.4) +
+  geom_jitter(width = 0.2) +
+    scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A") +
+    theme_classic() +
+    theme(legend.text = element_text(size = 20),
+          legend.title = element_text(size = 24),
+          axis.text = element_text(size = 24),
+          axis.title = element_text(size = 28)) +
+  xlab("Site") +
+  ylab("") +
+  ylim(0,440)
+# print at default
 
 # plot sites
 # reorder Sites in ascending order of the response variable
@@ -559,7 +654,9 @@ ggplot(mantree_comm_nat, aes(x = Site, y = `Canopy_cover_%`)) +
 ggplot(mantree_grey_rest, aes(x = YSR, y = Height_m)) +
   geom_point() +
   stat_smooth(span = 1) + 
-  theme_classic()
+  theme_classic()  +
+  xlim(0,35) +
+  ylim(0,10.4)
 
 # plot natural sites
 ggplot(mantree_grey_nat, aes(x = Site, y = Height_m)) +
@@ -567,6 +664,37 @@ ggplot(mantree_grey_nat, aes(x = Site, y = Height_m)) +
   geom_jitter(width=0.1) +
     labs(y = "Tree height (m)", x = "Site") +
   theme_classic() 
+
+# plot restoring sites  - violin plot
+ggplot(mantree_grey_rest, aes(x=YSR, y=Height_m, fill=Estuary, group = YSR)) +
+    geom_violin(width=1.4) +
+  geom_jitter() +
+    scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A") +
+    theme_classic() +
+    theme(legend.text = element_text(size = 20),
+          legend.title = element_text(size = 24),
+          axis.text = element_text(size = 24),
+          axis.title = element_text(size = 28)) +
+  xlab("Years since restoration") +
+  ylab("Tree height (m)") +
+  xlim(0,35) +
+  ylim(0,10.4)
+# print at 1820 x 789
+
+# plot natural sites - violin plot
+ggplot(mantree_grey_nat, aes(x=Site, y=Height_m, fill=Estuary, group = Site)) +
+    geom_violin(width=0.2) +
+  geom_jitter(width = 0.1) +
+    scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A") +
+    theme_classic() +
+    theme(legend.text = element_text(size = 20),
+          legend.title = element_text(size = 24),
+          axis.text = element_text(size = 24),
+          axis.title = element_text(size = 28)) +
+  xlab("Site") +
+  ylab("") +
+  ylim(0,10.4)
+# print at default
 ```
 
 ```{r DBH - YSR - plot}
@@ -598,4 +726,52 @@ ggplot(mantree_grey_nat, aes(x = Site, y = Basal_circ_cm)) +
     labs(y = "DBH (cm)", x = "Site") +
   theme_classic() 
 ```
+
+
+
+
+# 3. Multivariate models
+
+Community traits
+
+Community composition
+```{r}
+
+```
+
+
+Groundcover
+```{r}
+
+```
+
+
+Species traits
+
+Reproduction
+```{r}
+
+```
+
+
+Tree traits
+
+Number of stems
+
+Diameter at breast height
+
+Basal circumference
+
+Tree height
+			
+			
+Leaf traits 
+
+Leaf dry matter content
+
+SLA
+
+leaf herbivory
+
+
 

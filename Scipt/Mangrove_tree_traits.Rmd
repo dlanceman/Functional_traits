@@ -67,6 +67,10 @@ manq <- read_excel("Data/Functional_traits_combined_data.xlsx", sheet = "Mangrov
            Site == "YCW" ~ as.numeric("2018")
          ),
          pneu_h_d = Pneu_ht_mm/Pneu_dia_mm) # add a column for restoration years
+
+# outliers
+# there is a grey mangrove height measurement listed as 1m, which is too short to be a tree so must be a transcription error. Removing this data cell.
+mantree$Height_m[15] <- NA 
 ```
 
 ```{r Get data - mangrove leaf data}
@@ -183,6 +187,10 @@ boxplot(Basal_circ_cm ~ new_order, data = orange)
 
 new_order <- with(orange, reorder(Site, Height_m, median, na.rm=T)) 
 boxplot(Height_m ~ new_order, data = orange)
+```
+
+```{r Explore correlations between traits}
+plot(mantree$Saplings ~ mantree$`Canopy_cover_%`)
 ```
 
 

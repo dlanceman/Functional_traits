@@ -29,7 +29,11 @@ This R script tests different types of modelling that can be applied to our salt
 #install.packages("ggeffects")
 #install.packages("emmeans")
 #install.packages("robustlmm")
+#install.packages("mvabund")
+#install.packages("plyr")
+#install.packages("ecostats")
 
+library(plyr)
 library(readxl)
 library(tidyverse)
 library(lme4)
@@ -42,6 +46,11 @@ library(GLMMadaptive)
 library(ggeffects)
 library(emmeans)
 library(robustlmm)
+library(mvabund)
+require(tweedie)
+require(statmod)
+library(ecostats)
+
 ```
 
 
@@ -52,7 +61,8 @@ setwd("C:/Users/z5204897/OneDrive - UNSW/Desktop/PhD/Data_analysis/Project/Funct
 # input saltmarsh data
 salt <- read_excel("Data/Functional_traits_combined_data.xlsx", sheet = "Saltmarsh") %>% 
   arrange(Date, Time) %>% 
-  mutate(total_stems = Stems * 10000/Quad_length_cm^2, # add column for total stem count per 1m2 for each species to standardise stem counts
+  mutate(Quadrat_area = Quad_length_cm^2, # add a column for quadrat area to use as an offset
+    total_stems = round(Stems * 10000/Quad_length_cm^2), # add column for total stem count per 1m2 for each species to standardise stem counts for plots. Round makes it an integer.
          Buds = case_when(  # reassign Buds as a numeric variable
            Buds == "Yes" ~ 1,
            Buds == "No" ~ 0,
@@ -65,6 +75,18 @@ salt <- read_excel("Data/Functional_traits_combined_data.xlsx", sheet = "Saltmar
            Flowers == "Unknown" ~ NA,
            Flowers == "NA" ~ NA
          ),
+        Seeds = case_when( # standardise Seeds wording
+          Seeds == "Yes" ~ "Yes",
+          Seeds == "Seeds" ~ "Yes",
+          Seeds == "No" ~ "No",
+          Seeds == "Lots" ~ "Lots",
+          Seeds == "Some" ~ "Some",
+          Seeds == "some" ~ "Some",
+          Seeds == "Few" ~ "Few",
+          Seeds == "Very few" ~ "Very few",
+          Seeds == "NA" ~ NA,
+          Seeds == "Unknown" ~ NA
+          ),
          rest_status = case_when(
            Site == "AE" ~ as.numeric("1"),
            Site == "HS" ~ as.numeric("1"),
@@ -77,7 +99,7 @@ salt <- read_excel("Data/Functional_traits_combined_data.xlsx", sheet = "Saltmar
          ),
          rest_year = case_when(
            Site == "AE" ~ as.numeric("2017"),
-           Site == "HS" ~ as.numeric("2008"),
+           Site == "HS" ~ as.numeric("2011"),
            Site == "TA" ~ as.numeric("2007"),
            Site == "TB" ~ as.numeric("2012"),
            Site == "CC" ~ as.numeric("1990"),
@@ -86,7 +108,7 @@ salt <- read_excel("Data/Functional_traits_combined_data.xlsx", sheet = "Saltmar
          ), # add a column for restoration years
          YSR = case_when(
            Site == "AE" ~ as.numeric("6"),
-           Site == "HS" ~ as.numeric("15"),
+           Site == "HS" ~ as.numeric("12"),
            Site == "TA" ~ as.numeric("16"),
            Site == "TB" ~ as.numeric("11"),
            Site == "CC" ~ as.numeric("33"),
@@ -109,6 +131,7 @@ salt <- salt %>%
   ungroup() %>%
   select(-MaxSpeciesCover) # Remove MaxSpeciesCover colummn
 
+
 # For quadrats that have ended up listing two species as jointly dominant, manually edit these to include whichever of these species is "bulkier" as dominant
 # i.e. Juncus > Triglochin, Sarcocornia > GSG, Juncus > Sporobolus
 
@@ -129,6 +152,9 @@ salt$Quadrat <- as.character(salt$Quadrat)
 salt$Quadrat.f <- factor(interaction(salt$Site, salt$Quadrat, sep = ":"))
 salt$Quadrat.f <- as.character(salt$Quadrat.f)
 
+
+# load saltmarsh community composition data
+salt_comm_comp <- read_excel("Data/salt_comm_comp.xlsx", sheet = "alldata")
 ```
 
 
@@ -228,6 +254,15 @@ pneu_comm <- pneu_comm[,-c(19,20)] # remove irrelevant rows
   
 ```
 
+```{r New variables}
+# turn species cover into a proportion between 0 and 1 instead of between 0 and 100
+spor_comm <- spor_comm %>% mutate(sp_cover_prop = `Sp_cover_%`/100 -0.001)
+# also included a tiny offset since it doesn't like values of exactly 1 - must be below 1.
+sarc_comm <- sarc_comm %>% mutate(sp_cover_prop = `Sp_cover_%`/100 -0.001)
+trig_comm <- trig_comm %>% mutate(sp_cover_prop = `Sp_cover_%`/100 -0.001)
+```
+
+
 Create datasets for just restored data and just natural data
 ```{r Subsetting dataframes}
 salt_H <- salt %>% subset(Estuary == "Hunter")
@@ -268,7 +303,13 @@ spor_comm_H_nat <- spor_comm_H %>% subset(rest_status == "0")
 sarc_comm_H_nat <- sarc_comm_H %>% subset(rest_status == "0")
 trig_comm_H_nat <- trig_comm_H %>% subset(rest_status == "0")
 pneu_comm_H_nat <- pneu_comm_H %>% subset(rest_status == "0")
+
+# community composition
+salt_comm_comp_H <- salt_comm_comp %>% subset(Estuary == "Hunter")
+salt_comm_comp_H_res <- salt_comm_comp_H %>% subset(rest_status == "1")
+salt_comm_comp_H_nat <- salt_comm_comp_H %>% subset(rest_status == "0")
 ```
+
 
 
 # A. Hunter only
@@ -287,32 +328,21 @@ First assumption: linear relationship between predictors and response variable
 
 ```{r Tallest canopy height - check assumptions - linear relationship }
 # numeric predictors are YSR and elevation
-plot(salt_comm$Canopy_ht_cm ~ salt_comm$YSR) # possibly non-linear
-plot(salt_comm$Canopy_ht_cm ~ salt_comm$Elevation) # possibly non-linear
+plot(salt_comm_rest_H$Canopy_ht_cm ~ salt_comm_rest_H$YSR) # possibly non-linear
+plot(salt_comm_rest_H$Canopy_ht_cm ~ salt_comm_rest_H$Elevation) # possibly non-linear
 ```
 
 
 ```{r Tallest canopy height - model}
-M <- lmer(Canopy_ht_cm ~ YSR + DomSpecies + Elevation + (1|Site), data = salt_comm_rest_H, na.action = na.exclude)
-summary(M)
-
-# YSR is significant
-# DomSpeciesPhragmites is significant, DomSpeciesSarcocornia is significant, DomSpeciesSporobolus is significant, DomSpeciesSuaeda is significant, DomSpeciesTriglochin is significant, DomSpeciesunvegetated is significant
-# Site explains 117/372 = 31% of the variance not explained by fixed effects
-
-M1 <- lmer(ln.canopy.ht ~ YSR + DomSpecies + Elevation + (1|Site), data = salt_comm_rest_H, na.action = na.exclude)
-# check whether this model makes sense and whether rest_status:rest_year is the correct way to add rest_year as a fixed factor nested within rest_status
-# this model gives a warning message about dropping a variable unless we assign "restoration ages" to the natural sites
+# try a model with polynomial variables
+M1 <- lmer(Canopy_ht_cm ~ poly(YSR,2) + DomSpecies + poly(Elevation,2) + (1|Site), data = salt_comm_rest_H, na.action = na.exclude)
 summary(M1)
 
-# elevation is significant in this model
-
-# try a model with polynomial variables
-M2 <- lmer(Canopy_ht_cm ~ poly(YSR,2) + DomSpecies + poly(Elevation,2) + (1|Site), data = salt_comm_rest_H, na.action = na.exclude)
-summary(M2)
-
 # estimate > st error for 2nd order polynomial YSR & 1st order polynomial
-# 1st order elevation is significant here
+# 1st order elevation is significant here, but 2nd order isn't, so remove it
+
+M2 <- lmer(Canopy_ht_cm ~ poly(YSR,2) + DomSpecies + Elevation + (1|Site), data = salt_comm_rest_H, na.action = na.exclude)
+summary(M2)
 
 # try a model with polynomial variables and log transform
 M3 <- lmer(ln.canopy.ht ~ poly(YSR,2) + DomSpecies + poly(Elevation,2) + (1|Site), data = salt_comm_rest_H, na.action = na.exclude)
@@ -320,8 +350,8 @@ summary(M3)
 
 # remove non-significant factors - polynomial elevation
 
-M3 <- lmer(ln.canopy.ht ~ poly(YSR,2) + DomSpecies + Elevation + (1|Site), data = salt_comm_rest_H, na.action = na.exclude)
-summary(M3)
+M4 <- lmer(ln.canopy.ht ~ poly(YSR,2) + DomSpecies + Elevation + (1|Site), data = salt_comm_rest_H, na.action = na.exclude)
+summary(M4)
 ```
 
 Other assumptions:
@@ -330,43 +360,44 @@ Other assumptions:
 - model residuals are independent
 
 ```{r Tallest canopy height - check residuals assumptions}
-# check for collinearity between predictors
-check_collinearity(M) # VIF < 5 (low collinearity) - good.
-
-# residuals plots
-plot(M) # roughly equal variances
-qqnorm(resid(M)) 
-qqline(resid(M)) # not normal
-
-# try M1 with log-transformed response variable
+# try M1 
 # check for collinearity between predictors
 check_collinearity(M1) # VIF < 5 (low collinearity) - good.
 
 # residuals plots
-plot(M1) # roughly equal variances / slightly worse than before
+plot(M1) # roughly equal variances
 qqnorm(resid(M1)) 
-qqline(resid(M1)) # closer to normal, but not great (high values diverge)
+qqline(resid(M1)) # not great (high values diverge)
 
-# try M2 with polynomial variables
+# try M2
 # check for collinearity between predictors
 check_collinearity(M2) # VIF < 5 (low collinearity) - good.
 
 # residuals plots
-plot(M2) # roughly equal variances / slightly worse than before
+plot(M2) # roughly equal variances 
 qqnorm(resid(M2)) 
-qqline(resid(M2)) # not great
+qqline(resid(M2)) # not great - similar to before
 
 # try M3 
 # check for collinearity between predictors
 check_collinearity(M3) # VIF < 5 (low collinearity) - good.
 
 # residuals plots
-plot(M3) # roughly equal variances / slightly worse than before
+plot(M3) # roughly equal variances 
 qqnorm(resid(M3)) 
-qqline(resid(M3)) # not good at all. don't use this one.
+qqline(resid(M3)) # high and low values diverge but somewhat better than non-transformed
 
 # use log transformed rather than non-transformed
 # confirm if this is good enough
+
+# try M4
+# check for collinearity between predictors
+check_collinearity(M4) # VIF < 5 (low collinearity) - good.
+
+# residuals plots
+plot(M4) # good
+qqnorm(resid(M4)) 
+qqline(resid(M4)) # same as M3
 ```
 
 ```{r Tallest canopy height - plot}
@@ -379,12 +410,13 @@ ggplot(salt_comm_rest_H, aes(x = YSR, y = ln.canopy.ht)) +
       theme_classic()
 
 # plot predicted values with ggeffects ggemmeans
-predict_YSR <- ggemmeans(M2, terms = c("YSR [all]"))
+predict_YSR <- ggemmeans(M4, terms = c("YSR [all]"))
 # view this result
 print(predict_YSR)
 # visualise this result
 plot(predict_YSR, ci = T,add.data = TRUE, dot.alpha = 0.5,  jitter = 0.2)+
   ggtitle("") +  geom_line(size = 1.2) +
+    scale_y_continuous(breaks = log(pretty(exp(salt_comm$ln.canopy.ht))), labels = pretty(exp(salt_comm$ln.canopy.ht))) +
   labs(y = "Tallest stem height (cm)", x = "Years since restoration") +
   theme_classic()
 
@@ -424,11 +456,20 @@ Total cover
 - Total cover ~ YSR + DomSpecies + Elevation + (1|Site)
 - beta distribution (proportional data with 2 categories - cover and non cover)
 
+```{r Total cover - Plot relationships between variables}
+plot(salt_comm_rest_H$total_cover_prop ~ salt_comm_rest_H$YSR) # possibly non-linear
+plot(salt_comm_rest_H$total_cover_prop ~ salt_comm_rest_H$Elevation) # probably linear
+```
+
 
 ```{r Total cover - model}
 M <- glmmTMB(total_cover_prop ~ YSR + DomSpecies + Elevation + (1|Site), data = salt_comm_rest_H, family = beta_family(link = "logit"), na.action = na.exclude)
 summary(M)
-# YSR is near-significant
+
+# with polynomial YSR
+M1 <- glmmTMB(total_cover_prop ~ poly(YSR,2) + DomSpecies + Elevation + (1|Site), data = salt_comm_rest_H, family = beta_family(link = "logit"), na.action = na.exclude)
+summary(M1)
+# poly YSR are significant
 # unvegetated is very signficant which makes sense
 # elevation is significant
 ```
@@ -454,12 +495,74 @@ plot(predict_YSR, ci = T,add.data = TRUE, dot.alpha = 0.5,  jitter = 0.2)+
   labs(y = "Total cover (proportion)", x = "Years since restoration") +
   theme_classic()
 
-# plot natural boxplots
-ggplot(salt_comm_nat_H, aes(x = Site, y = total_cover_prop)) +
-  geom_boxplot()  +
-  geom_point() +
-    labs(y = "Canopy height (cm)") +
+# plot polynomial M1
+predict_YSR <- ggemmeans(M1, terms = c("YSR [all]"))
+# view this result
+print(predict_YSR)
+# visualise this result
+plot(predict_YSR, ci = T,add.data = TRUE, dot.alpha = 0.5,  jitter = 0.2)+
+  ggtitle("") +  geom_line(size = 1.2) +
+  labs(y = "Total cover (proportion)", x = "Years since restoration") +
   theme_classic()
+
+# plot restoring sites  - violin plot
+ggplot(salt_comm_rest_H, aes(x=YSR, y=total_cover_prop, group = YSR, fill = Estuary)) +
+    geom_violin(width=1.4) +
+  geom_jitter()  +
+    scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A") +
+    theme_classic() +
+    theme(legend.position = "none",
+          axis.text = element_text(size = 24),
+          axis.title = element_text(size = 28)) +
+  xlab("Years since restoration") +
+  ylab("Saltmarsh cover (proportion)") +
+  xlim(0,35) + 
+  ylim(0,1)
+# print at 1500 x 789
+
+# plot restoring sites  - box plot
+ggplot(salt_comm_rest_H, aes(x=YSR, y=total_cover_prop, group = YSR, fill = Estuary)) +
+    geom_boxplot(width = 1.5) +
+  geom_jitter()  +
+    scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A") +
+    theme_classic() +
+    theme(legend.position = "none",
+          axis.text = element_text(size = 24),
+          axis.title = element_text(size = 28)) +
+  xlab("Years since restoration") +
+  ylab("Saltmarsh cover (proportion)") +
+  xlim(0,35) + 
+  ylim(0,1)
+# print at 1500 x 789
+# export at 2200 x 800
+
+# plot natural sites - violin plot
+ggplot(salt_comm_nat_H, aes(x=Site, y=total_cover_prop, fill=Estuary, group = Site)) +
+    geom_violin(width=0.2) +
+  geom_jitter(width = 0.1)  +
+    scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A") +
+    theme_classic() +
+    theme(legend.position = "none",
+          axis.text = element_text(size = 24),
+          axis.title = element_text(size = 28)) +
+  xlab("Site") +
+  ylab("")  +
+  ylim(0,1)
+# print at 700 x 789
+
+# plot natural sites - box plot
+ggplot(salt_comm_nat_H, aes(x=Site, y=total_cover_prop, fill=Estuary, group = Site)) +
+    geom_boxplot(width=0.4) +
+  geom_jitter(width = 0.1)  +
+    scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A") +
+    theme_classic() +
+    theme(legend.position = "none",
+          axis.text = element_text(size = 24),
+          axis.title = element_text(size = 28)) +
+  xlab("Site") +
+  ylab("")  +
+  ylim(0,1)
+# print at 700 x 789
 
 # Elevation
 ggplot(salt_comm_rest_H, aes(x = Elevation, y = total_cover_prop)) +   
@@ -541,7 +644,6 @@ M3 <- glmmTMB(Burrows_0.5x0.5 ~ poly(YSR,2) + Elevation + DomSpecies + (1|Site),
 summary(M3)
 ```
 
-Not sure how to best plot this.
 
 ```{r Burrows - plot}
 # Years since restoration
@@ -616,9 +718,11 @@ Should we only include Dominant Species of interest?
 # 3ai. Sporobolus stem height
 
 ```{r Sporobolus stem height - initial assumptions}
+hist(spor_H$Stem_ht_mm)
+
 # test assumptions - linear relationship between predictors and response
 # numeric predictors are species proportional cover and elevation
-plot(spor_H$Stem_ht_mm ~ spor_H$sp_prop) # potentially slightly non-linear, and clearly stem height is 1-inflated. Need to figure out if this is an issue and if there's anything I can do about it.
+plot(spor_H$Stem_ht_mm ~ spor_H$sp_prop) # potentially slightly non-linear, and clearly species proportion is 1-inflated. Need to figure out if this is an issue and if there's anything I can do about it.
 ggplot(spor_H, aes(x = sp_prop, y = Stem_ht_mm)) +
   geom_point() +
   geom_smooth(span = 1) 
@@ -746,7 +850,7 @@ M <- lmer(Stem_ht_mm ~ YSR + poly(Elevation,2) + sp_prop + (1|Site) + (1|Quadrat
 summary(M)
 
 # residuals plots
-plot(M) # roughly equal variances / just one outlier/low value
+plot(M) # looks good
 qqnorm(resid(M)) 
 qqline(resid(M)) # mostly ok but high values diverge.. need to decide if OK
 
@@ -766,21 +870,21 @@ summary(M)
 # residuals plots
 plot(M) # roughly equal variances / just one outlier/low value
 qqnorm(resid(M)) 
-qqline(resid(M)) # same as log-transformed
+qqline(resid(M)) # similar to log-transformed
 
 # try robust lmer
 M <- rlmer(Stem_ht_mm ~ YSR + poly(Elevation,2) + sp_prop + (1|Site) + (1|Quadrat.f), data = spor_H_rest, na.action = na.exclude)
 summary(M)
 
 # residuals plots
-plot(M) # roughly equal variances / just one outlier/low value
+plot(M) # roughly equal variances
 qqnorm(resid(M)) 
 qqline(resid(M)) # worse than original
 ```
 
 
 ```{r Sporobolus stem height - YSR - plot}
-# best model
+# best model - need to see if any model is good enough though
 M <- lmer(Stem_ht_mm ~ YSR + poly(Elevation,2) + sp_prop + (1|Site) + (1|Quadrat.f), data = spor_H_rest, na.action = na.exclude)
 summary(M)
 
@@ -819,9 +923,12 @@ ggplot(spor_H_rest, aes(x = sp_prop, y = Stem_ht_mm)) +
 # 3aii. Stem diameter
 
 ```{r Sporobolus stem diameter - initial assumptions}
+hist(spor_H$Stem_dia_mm)
+hist(spor_H$sp_prop)
+
 # test assumptions - linear relationship between predictors and response
 # numeric predictors are species proportional cover and elevation
-plot(spor_H$Stem_dia_mm ~ spor_H$sp_prop) # linearity is fine, but clearly stem diameter is 0- and 1-inflated. Need to figure out if this is an issue and if there's anything I can do about it.
+plot(spor_H$Stem_dia_mm ~ spor_H$sp_prop) # linearity is fine, but clearly sp. proportions is 1-inflated. Need to figure out if this is an issue and if there's anything I can do about it.
 
 plot(spor_H$Stem_dia_mm ~ spor_H$Elevation) # looks fine
 
@@ -859,8 +966,6 @@ qqline(resid(M)) # still not good - probably best option though
 
 
 # try square-root transformed?
-spor_H <- spor_H %>% mutate(sq.stem.dia = sqrt(Stem_dia_mm))
-
 M <- lmer(sq.stem.dia ~ rest_status + Elevation + DomSpecies + (1|Site) + (1|Quadrat.f), data = spor_H, na.action = na.exclude)
 summary(M)
 
@@ -900,7 +1005,7 @@ M2 <- lmer(Stem_dia_mm ~ YSR + poly(Elevation,2) + DomSpecies + (1|Site) + (1|Qu
 summary(M2)
 
 # residuals plots
-plot(M2) # some high values/outliers/non-equal variances
+plot(M2) # roughly equal variances
 qqnorm(resid(M2)) 
 qqline(resid(M2)) # mostly ok but high values diverge.. not great
 
@@ -909,37 +1014,27 @@ M3 <- lmer(ln.stem.dia ~ YSR + poly(Elevation,2) + DomSpecies + (1|Site) + (1|Qu
 summary(M3)
 
 # residuals plots
-plot(M3) # roughly equal variances / just one outlier/low value
+plot(M3) # roughly equal variances 
 qqnorm(resid(M3)) 
-qqline(resid(M3)) # maybe better than original?
+qqline(resid(M3)) # terrible
 
 # try sqrt-transformed data
 M4 <- lmer(sq.stem.dia ~ YSR + poly(Elevation,2) + DomSpecies + (1|Site) + (1|Quadrat.f), data = spor_H_rest, na.action = na.exclude)
 summary(M4)
 
 # residuals plots
-plot(M5) # roughly equal variances / just one outlier/low value
-qqnorm(resid(M5)) 
-qqline(resid(M5)) # worse than ln-transformed
-
-
-# model with YSR as a polynomial
-M6 <- lmer(ln.stem.dia ~ poly(YSR,2) + poly(Elevation,2) + DomSpecies + (1|Site) + (1|Quadrat.f), data = spor_H_rest, na.action = na.exclude)
-summary(M6)
-
-# residuals plots
-plot(M6) # roughly equal variances / just one outlier/low value
-qqnorm(resid(M6)) 
-qqline(resid(M6)) # not good! can't use this
+plot(M4) # roughly equal variances
+qqnorm(resid(M4)) 
+qqline(resid(M4)) # not great, ok..
 ```
 
 
 ```{r Sporobolus stem diameter - YSR - plot}
-# best model?
-M4 <- lmer(ln.stem.dia ~ YSR + poly(Elevation,2) + DomSpecies + (1|Site) + (1|Quadrat.f), data = spor_H_rest, na.action = na.exclude)
+# best model? but not good...
+M4 <- lmer(sq.stem.dia ~ YSR + poly(Elevation,2) + DomSpecies + (1|Site) + (1|Quadrat.f), data = spor_H_rest, na.action = na.exclude)
 summary(M4)
 
-ggplot(spor_H_rest, aes(x = YSR, y = ln.stem.dia)) +
+ggplot(spor_H_rest, aes(x = YSR, y = sq.stem.dia)) +
   geom_point() +
   geom_smooth(method = lm)
 
@@ -950,7 +1045,7 @@ print(predict_YSR)
 # visualise this result
 plot(predict_YSR, ci = T,add.data = TRUE, dot.alpha = 0.5,  jitter = 0.2)+
   ggtitle("") +  geom_line(size = 1.2) +
-  scale_y_continuous(breaks = log(pretty(exp(spor_H_rest$ln.stem.dia))), labels = pretty(exp(spor_H_rest$ln.stem.dia))) +
+  scale_y_continuous(breaks = sqrt(pretty((spor_H_rest$ln.stem.dia)^2)), labels = pretty((spor_H_rest$ln.stem.dia)^2)) +
   labs(y = "Sporobolus stem diameter (mm)", x = "Years since restoration") +
   theme_classic()
 
@@ -1108,8 +1203,10 @@ summary(M3)
 # plot - YSR
 ggplot(spor_comm_H_res, aes(x = YSR, y = sq.stem.dens)) +   
       geom_point(alpha = 0.5, na.rm = TRUE) +
-      stat_smooth(span = 2) +
-      theme_classic()
+      stat_smooth(span = 2)  +
+  scale_y_continuous(breaks = sqrt(pretty((spor_H_rest$sq.stem.dens)^2)), labels = pretty((spor_H_rest$sq.stem.dens)^2)) +
+      theme_classic() +
+  xlim(0,35)
 
 # plot predicted values with ggeffects ggemmeans
 predict_YSR <- ggemmeans(M3, terms = c("YSR [all]"))
@@ -1122,13 +1219,64 @@ plot(predict_YSR, ci = T, add.data = TRUE, dot.alpha = 0.5,  jitter = 0.2)+
   labs(y = "Sporobolus stems per square metre", x = "Years since restoration") +
   theme_classic()
 
-# plot natural only
-ggplot(spor_comm_H_nat, aes(x = Site, y = sq.stem.dens)) +
-  geom_boxplot() +
-  geom_jitter(width=0.1) +
-     scale_y_continuous(breaks = sqrt(pretty((spor_comm_H_nat$sq.stem.dens)^2)), labels = pretty((spor_comm_H_nat$sq.stem.dens)^2)) +
-    labs(y = "Sporobolus stems per square metre", x = "Site") +
-  theme_classic() 
+# plot restoring sites  - violin plot
+ggplot(spor_comm_H_res, aes(x=YSR, y=sq.stem.dens, group = YSR, fill = Estuary)) +
+    geom_violin(width=1.4) +
+  geom_jitter() +
+     scale_y_continuous(breaks = sqrt(pretty((spor_comm_H_res$sq.stem.dens)^2)), labels = pretty((spor_comm_H_res$sq.stem.dens)^2), limits = c(0,90)) +
+    scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A") +
+    theme_classic() +
+    theme(legend.position = "none",
+          axis.text = element_text(size = 24),
+          axis.title = element_text(size = 28)) +
+  xlab("Years since restoration") +
+  ylab("Sporobolus stem density (stems/m2)") +
+  xlim(0,35) 
+# print at 1500 x 789
+
+# plot natural sites - violin plot
+ggplot(spor_comm_H_nat, aes(x=Site, y=sq.stem.dens, fill=Estuary, group = Site)) +
+    geom_violin(width=0.2) +
+  geom_jitter(width = 0.1) +
+     scale_y_continuous(breaks = sqrt(pretty((spor_comm_H_nat$sq.stem.dens)^2)), labels = pretty((spor_comm_H_nat$sq.stem.dens)^2), limits = c(0,90)) +
+    scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A") +
+    theme_classic() +
+    theme(legend.position = "none",
+          axis.text = element_text(size = 24),
+          axis.title = element_text(size = 28)) +
+  xlab("Site") +
+  ylab("") 
+# print at 700 x 789
+
+# plot restoring sites  - box plot
+ggplot(spor_comm_H_res, aes(x=YSR, y=sq.stem.dens, group = YSR, fill = Estuary)) +
+    geom_boxplot(width = 1.5) +
+  geom_jitter() +
+     scale_y_continuous(breaks = sqrt(pretty((spor_comm_H_res$sq.stem.dens)^2)), labels = pretty((spor_comm_H_res$sq.stem.dens)^2), limits = c(0,90)) +
+    scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A") +
+    theme_classic() +
+    theme(legend.position = "none",
+          axis.text = element_text(size = 24),
+          axis.title = element_text(size = 28)) +
+  xlab("Years since restoration") +
+  ylab("Sporobolus stem density (stems/m2)") +
+  xlim(0,35) 
+# print at 1500 x 789
+# export at 2200 x 800
+
+# plot natural sites - box plot
+ggplot(spor_comm_H_nat, aes(x=Site, y=sq.stem.dens, fill=Estuary, group = Site)) +
+    geom_boxplot(width=0.4) +
+  geom_jitter(width = 0.1) +
+     scale_y_continuous(breaks = sqrt(pretty((spor_comm_H_nat$sq.stem.dens)^2)), labels = pretty((spor_comm_H_nat$sq.stem.dens)^2), limits = c(0,90)) +
+    scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A") +
+    theme_classic() +
+    theme(legend.position = "none",
+          axis.text = element_text(size = 24),
+          axis.title = element_text(size = 28)) +
+  xlab("Site") +
+  ylab("") 
+# print at 700 x 789
 
 ggplot(spor_comm_H_res, aes(x = Elevation, y = total_stems)) +
   geom_point() +
@@ -1164,10 +1312,6 @@ Sporobolus % species cover
 - beta distribution (proportional data with 2 categories - cover and non cover)
 
 ```{r Sporobolus species cover - model}
-# turn species cover into a proportion between 0 and 1 instead of between 0 and 100
-spor_comm <- spor_comm %>% mutate(sp_cover_prop = `Sp_cover_%`/100 -0.001)
-# also included a tiny offset since it doesn't like values of exactly 1 - must be below 1.
-
 # when YSR has NA values, this model comes up with an error
 M <- glmmTMB(sp_cover_prop ~ rest_status/YSR + Elevation + Estuary + (1|Site), data = spor_comm, family = beta_family(link = "logit"), na.action = na.exclude)
 # check whether this model makes sense and the correct way to include YSR as a fixed factor nested within rest_status
@@ -1193,16 +1337,45 @@ Other assumptions (??)
 
 
 ```{r Sporobolus species cover - plot}
-(mm_plot <- ggplot(spor_comm, aes(x = YSR, y = sp_cover_prop)) +   
+ggplot(spor_comm_H, aes(x = YSR, y = sp_cover_prop)) +   
       geom_point(alpha = 0.5) +
     geom_smooth() + # meaningless
-      theme_classic()) 
+      theme_classic()
 # older sites have consistently higher cover, compared with more varied cover at younger sites
 
-spor_comm %>% subset(rest_status == "0") %>% 
+spor_comm_H %>% subset(rest_status == "0") %>% 
   ggplot(., aes(x = Site, y=sp_cover_prop)) +
   geom_boxplot() +
   theme_classic()
+
+# plot restoring sites  - violin plot
+ggplot(spor_comm_H_res, aes(x=YSR, y=sp_cover_prop, group = YSR, fill = Estuary)) +
+    geom_violin(width=1.4) +
+  geom_jitter()  +
+    scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A") +
+    theme_classic() +
+    theme(legend.position = "none",
+          axis.text = element_text(size = 24),
+          axis.title = element_text(size = 28)) +
+  xlab("Years since restoration") +
+  ylab("Sporobolus species cover (proportion)") +
+  xlim(0,35) +
+  ylim(0,1)
+# print at 1500 x 789
+
+# plot natural sites - violin plot
+ggplot(spor_comm_H_nat, aes(x=Site, y=sp_cover_prop, fill=Estuary, group = Site)) +
+    geom_violin(width=0.2) +
+  geom_jitter(width = 0.1)  +
+    scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A") +
+    theme_classic() +
+    theme(legend.position = "none",
+          axis.text = element_text(size = 24),
+          axis.title = element_text(size = 28)) +
+  xlab("Site") +
+  ylab("") +
+  ylim(0,1)
+# print at 700 x 789
 ```
 
 
@@ -1323,6 +1496,227 @@ trig_comm$Seeds[trig_comm$Buds == 0] # there are 23 cases when Buds are not pres
 
 
 
+# 4. Multivariate models
+
+Community traits
+
+```{r Community composition}
+# remove columns that only have zeroes
+salt_comm_comp_H_res[,1:25] %>% colSums() # the last four columns are all zeroes
+salt_comm_comp_H_res <- salt_comm_comp_H_res[,c(1:21,26:31)]
+
+SaltComm <- mvabund(salt_comm_comp_H_res[,1:21])
+
+# check out spread of data
+par(mar = c(2, 10, 2, 2)) # adjusts the margins
+boxplot(salt_comm_comp_H_res[,1:21], horizontal = TRUE, las = 2, main = "Percent cover")
+# large differences in variance, therefore check out mean-variance relationship
+
+# check out mean-variance relationship
+meanvar.plot(SaltComm)
+# strong mean-variance relationship (close to linear but slightly curved like a negative quadratic function), therefore use a model that appropriately accounts for this
+
+# roughly visualise data
+plot(SaltComm ~ as.factor(salt_comm_comp_H_res$YSR))
+
+# fit a tweedie model for percentage cover data
+fit_cover <- manyany(SaltComm ~ YSR + Elevation, "glm", data = salt_comm_comp_H_res, family=tweedie(link = 0), var.power=1.1)
+# errors
+```
+
+Species traits
+
+```{r Stem density}
+# note, currently: STEM DENSITY MULTIPLIED OUT - NO OFFSETS
+# also can't currently included species proportions as a predictor because you would need one row for each species.
+
+# create a new dataframe with just stem density data
+stem_dens <- salt[,c(5,6,7,11,13,14,24:32)]
+
+# remove replicates from measuring multiple stems for each species per quadrat (but only one stem density measurement)
+# first create a column for every unique site/quadrat/species combination
+stem_dens$unique <- factor(interaction(stem_dens$Combo, stem_dens$Species, sep = ":"))
+stem_dens_unique <- stem_dens %>% distinct(unique, .keep_all = TRUE) 
+
+# transform this to wide format with a column for each species' stem density. Not sure how this works with offsets. Let's start without and then figure out there
+stem_dens_wide <- stem_dens_unique %>% pivot_wider(id_cols = c(Estuary, Site, Quadrat, Combo, Elevation, rest_status, YSR, DomSpecies), names_from = Species, values_from = total_stems)
+
+# fill NA values with zeroes
+stem_dens_wide[,9:33] <- stem_dens_wide[,9:33] %>% replace(is.na(.), 0)
+
+# subset for only Hunter and only restored
+stem_dens_wide_H_res <- stem_dens_wide %>% subset(Estuary == "Hunter") %>% subset(rest_status == 1)
+
+# remove columns that only have zeroes
+stem_dens_wide_H_res[,9:33] %>% colSums() # the last four columns are all zeroes
+stem_dens_wide_H_res <- stem_dens_wide_H_res[,1:29]
+
+# set up mvabund with stem density columns - these are 9-29
+stemdens_mvabund <- mvabund(stem_dens_wide_H_res[,9:29])
+
+# look at spread of data
+par(mar = c(2, 10, 2, 2)) # adjusts the margins
+boxplot(stem_dens_wide_H_res[,9:29], horizontal = TRUE, las = 2, main = "Stem density")
+
+# look at mean-variance relationship
+meanvar.plot(stemdens_mvabund) # strong linear relationship
+
+# explore visually
+plot(stemdens_mvabund ~ as.factor(stem_dens_wide_H_res$YSR), cex.axis = 0.8, cex = 0.8)
+
+# count data so model with poisson or negative binomial distribution
+stemdens_mod1 <- manyglm(stemdens_mvabund ~ YSR + Elevation + DomSpecies, data = stem_dens_wide_H_res, family = "poisson")
+
+# check model assumptions
+plot(stemdens_mod1) # NOT OK!! there is a big trend...
+
+# try a negative binomial model
+stemdens_mod2 <- manyglm(stemdens_mvabund ~ YSR + Elevation + DomSpecies, data = stem_dens_wide_H_res) # default family is negative binomial
+
+# check model assumptions
+plot(stemdens_mod2) # zero inflated but much much better!
+
+# use model to test hypotheses
+anova(stemdens_mod2)
+
+# get more specifics
+anova(stemdens_mod2, p.uni = "adjusted")
+
+# also do I keep all the Species even though I don't care about most of them or should I subset just for the species I care about?
+```
+
+
+```{r Reproduction (presence/absence)}
+# note: can't currently include species proportions as a predictor because you would need one row for each species.
+
+# create a new dataframe with just reproduction data
+reprod <- salt[,c(5,6,7,11,16:18,24,25,28,30:32)]
+
+# recode seeds as a binary presence/absence variable
+reprod$Seeds %>% unique() # view unique values
+reprod <- reprod %>% mutate(Seeds = case_when(
+  Seeds == "No" ~ 0,
+  Seeds == "Yes" ~ 1,
+  Seeds == "Lots" ~ 1,
+  Seeds == "Some" ~ 1,
+  Seeds == "Few" ~ 1,
+  Seeds == "Very few" ~ 1,
+  Seeds == "NA" ~ NA
+))
+
+# only keep species that I care about (saltmarsh species)
+reprod$Species %>% unique() # get list of Species
+reprod <- reprod %>% filter(Species == "Sarcocornia" | Species == "Sporobolus" | Species == 
+                              "Triglochin" | Species == "Suaeda" | Species == "Bolboschoenus" | Species == "Phragmites" | Species == "Juncus_kraussii" | Species == "Juncus acutus" | Species == "Juncus_sp1" | Species == "Juncus_sp2")
+
+
+# remove replicates from measuring multiple stems for each species per quadrat (but only one reproduction value)
+# first create a column for every unique site/quadrat/species combination
+reprod$unique <- factor(interaction(reprod$Combo, reprod$Species, sep = ":"))
+reprod_unique <- reprod %>% distinct(unique, .keep_all = TRUE) 
+
+# make data longer with one row for reproduction type and another for presence/absence
+reprod_long <- reprod_unique %>% pivot_longer(cols = c("Buds", "Flowers", "Seeds"), names_to = "reprod_type", values_to = "Reproduction")
+
+# transform this to wide format with a column for each species' reproduction. 
+reprod_wide <- reprod_long %>% pivot_wider(id_cols = c(Estuary, Site, Quadrat, Combo, Elevation, YSR, rest_status, reprod_type, DomSpecies), names_from = Species, values_from = Reproduction)
+
+# subset for only Hunter and only restored
+reprod_wide_H_res <- reprod_wide %>% subset(Estuary == "Hunter") %>% subset(rest_status == 1)
+
+# remove columns that only have zeroes
+reprod_wide_H_res[,10:18] %>% colSums(na.rm = TRUE) # the last two columns are zeroes
+reprod_wide_H_res <- reprod_wide_H_res[,1:16]
+
+# set up mvabund with stem density columns - these are 9-29
+reprod_mvabund <- mvabund(reprod_wide_H_res[,10:16])
+
+# look at spread of data - boxplots are not ideal for binary data...
+par(mar = c(2, 10, 2, 2)) # adjusts the margins
+boxplot(reprod_wide_H_res[,10:16], horizontal = TRUE, las = 2, main = "Reproduction")
+
+# look at mean-variance relationship - not sure this is relevant for binary data...
+#meanvar.plot(reprod_mvabund) 
+
+# explore visually - hard to interpret with binary data
+plot(reprod_mvabund ~ as.factor(reprod_wide_H_res$YSR), cex.axis = 0.8, cex = 0.8)
+
+# count data so model with poisson or negative binomial distribution
+# This is coming up with errors, even though all categorical variables have multiple levels. Coming up with fatal errors when I experiment removing variables.
+
+#reprod_mod1 <- manyglm(reprod_mvabund ~ YSR + Elevation + DomSpecies + reprod_type, data = reprod_wide_H_res, family = "binomial", na.rm = TRUE)
+
+
+
+
+# check model assumptions
+plot(reprod_mod1) 
+
+# use model to test hypotheses
+anova(reprod_mod1)
+
+# get more specifics
+anova(reprod_mod1, p.uni = "adjusted")
+```
+
+
+Stem traits
+
+Stem height - need a multivariate model so the below (half finished) code shouldn't be used
+```{r Stem height}
+# note: can't currently included species proportions as a predictor because you would need one row for each species.
+
+# create a new dataframe with just stem height data
+stem_height <- salt[,c(5,6,7,11,19,24,25,28,30:32,34)]
+
+# transform this to wide format with a column for each species' stem density. Not sure how this works with offsets. Let's start without and then figure out there
+stem_ht_wide <- stem_ht_unique %>% pivot_wider(id_cols = c(Estuary, Site, Quadrat, Combo, Elevation, rest_status, YSR, DomSpecies), names_from = Species, values_from = Stem_ht_mm)
+
+# don't fill NA values with zeroes - doesn't make sense for stem heights!
+#stem_ht_wide[,9:33] <- stem_ht_wide[,9:33] %>% replace(is.na(.), 0)
+
+# subset for only Hunter and only restored
+stem_ht_wide_H_res <- stem_ht_wide %>% subset(Estuary == "Hunter") %>% subset(rest_status == 1)
+
+# remove columns that only have zeroes
+stem_ht_wide_H_res[,9:33] %>% colSums() # the last four columns are all zeroes
+stem_ht_wide_H_res <- stem_ht_wide_H_res[,1:29]
+
+# set up mvabund with stem density columns - these are 9-29
+stemht_mvabund <- mvabund(stem_ht_wide_H_res[,9:29])
+
+# look at spread of data
+par(mar = c(2, 10, 2, 2)) # adjusts the margins
+boxplot(stem_ht_wide_H_res[,9:29], horizontal = TRUE, las = 2, main = "Stem height")
+
+# look at mean-variance relationship
+meanvar.plot(stemht_mvabund, na.rm = TRUE) # not working
+
+# explore visually
+plot(stemht_mvabund ~ as.factor(stem_ht_wide_H_res$YSR), cex.axis = 0.8, cex = 0.8)
+
+# count data so model with poisson or negative binomial distribution
+stemht_mod1 <- manyglm(stemht_mvabund ~ YSR + Elevation + DomSpecies, data = stem_ht_wide_H_res, family = "poisson")
+
+# check model assumptions
+plot(stemdens_mod1) # NOT OK!! there is a big trend...
+
+# try a negative binomial model
+stemdens_mod2 <- manyglm(stemht_mvabund ~ YSR + Elevation + DomSpecies, data = stem_ht_wide_H_res) # default family is negative binomial
+
+# check model assumptions
+plot(stemdens_mod2) # zero inflated but much much better!
+
+# use model to test hypotheses
+anova(stemdens_mod2)
+
+# get more specifics
+anova(stemdens_mod2, p.uni = "adjusted")
+```
+
+```{r Stem diameter}
+
+```
 
 
 
