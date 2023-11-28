@@ -32,6 +32,8 @@ This R script tests different types of modelling that can be applied to our salt
 #install.packages("mvabund")
 #install.packages("plyr")
 #install.packages("ecostats")
+#install.packages("viridis")
+#install.packages("betareg")
 
 library(plyr)
 library(readxl)
@@ -50,7 +52,8 @@ library(mvabund)
 require(tweedie)
 require(statmod)
 library(ecostats)
-
+library(viridis)
+library(betareg)
 ```
 
 
@@ -178,7 +181,7 @@ Outlier removal - these were checked in the Saltmarsh_fn_traits script.
 
 ```{r Remove unrealistic outliers}
 salt[443,20] <- NA # remove triglochin measurement with unrealistic stem diameter >4mm
-salt[c(738-744), 20] <- NA # remove triglochin measurements with unrealistic stem diameter >4mm
+salt[c(738:744), 20] <- NA # remove triglochin measurements with unrealistic stem diameter >4mm
 salt[802,19] <- NA # remove triglochin measurement with unrealistic stem height 556mm
 salt[1271,19] <- NA # remove triglochin measurement with unrealistic stem height 860mm
 salt[112,20] <- NA # remove pneumatophore measurement with unrealistic diameter 1mm
@@ -219,6 +222,12 @@ pneu$sq.sp.cover <- sqrt(pneu$`Sp_cover_%`)
 pneu$sq.stem.dens <- sqrt(pneu$total_stems)
 ```
 
+Check distribution of explanatory variables
+```{r Check distribution of explanatory variables}
+hist(salt$YSR)
+hist(log(salt$YSR))
+```
+
 
 Also not sure if this is needed for this particular model, but it can be useful to rescale explanatory variables so they have a constant mean of 0 and standard deviation of 1.
 ```{r Rescale/standardise explanatory variables}
@@ -235,19 +244,19 @@ Duplicate deletion - for community-level variables, there are several rows for e
 
 ```{r Duplicate deletion - community-level variables}
 salt_comm <- salt %>% distinct(Combo, .keep_all = TRUE) 
-salt_comm <- salt_comm[,-c(11:20,22,26,31)] # remove irrelevant rows
+salt_comm <- salt_comm[,-c(11:20,22,26,27,34)] # remove irrelevant rows
 # turn total cover into a proportion between 0 and 1 instead of between 0 and 100
 salt_comm <- salt_comm %>% mutate(total_cover_prop = `Total_cover_%`/100 -0.001)
 # also included a tiny offset since it doesn't like values of exactly 1 - must be below 1.
 
 spor_comm <- spor %>% distinct(Combo, .keep_all = TRUE) 
-spor_comm <- spor_comm[,-c(19,20,33:36)] # remove irrelevant rows
+spor_comm <- spor_comm[,-c(19,20,34:37)] # remove irrelevant rows
 
 sarc_comm <- sarc %>% distinct(Combo, .keep_all = TRUE) 
-sarc_comm <- sarc_comm[,-c(19,20,33)] # remove irrelevant rows
+sarc_comm <- sarc_comm[,-c(19,20,34)] # remove irrelevant rows
 
 trig_comm <- trig %>% distinct(Combo, .keep_all = TRUE) 
-trig_comm <- trig_comm[,-c(19,20,34)] # remove irrelevant rows
+trig_comm <- trig_comm[,-c(19,20,35)] # remove irrelevant rows
 
 pneu_comm <- pneu %>% distinct(Combo, .keep_all = TRUE) 
 pneu_comm <- pneu_comm[,-c(19,20)] # remove irrelevant rows
@@ -310,6 +319,27 @@ salt_comm_comp_H_res <- salt_comm_comp_H %>% subset(rest_status == "1")
 salt_comm_comp_H_nat <- salt_comm_comp_H %>% subset(rest_status == "0")
 ```
 
+Before running models, we need to make sure none of our dependent variables are strongly correlated. If so, we cannot include all variables in analysis.
+
+Our dependent variables of interest are:
+- 	Community composition (multivariate) (can't really test for relationships here as it's a matrix)
+-   Total cover (univariate)
+-   Stem density
+-   Stem diameter
+-   Stem height
+-   Reproduction (presence/absence) (can't really test for relationships here as they're binary variables?)
+
+Exclude variables if their correlation coefficient is >0.8 (is this correct? and what can I cite for this?)
+
+```{r Test for correlations between dependent variables}
+# correlation matrix of correlation coefficients
+cor(salt[,c(9,10,19,20,27)], use = "pairwise.complete.obs") # all correlation coefficients are >0.8, therefore retain all variables
+
+# plot correlations between variables
+# plot a bunch of correlation plots at once
+salt_numeric <- salt[,c(9,10,19,20,27)]
+plot(salt_numeric)
+```
 
 
 # A. Hunter only
@@ -453,25 +483,39 @@ salt_comm_rest_H %>%
 # 2b - Total cover 
 
 Total cover
-- Total cover ~ YSR + DomSpecies + Elevation + (1|Site)
+- Total cover ~ YSR + DomSpecies + Elevation 
 - beta distribution (proportional data with 2 categories - cover and non cover)
+- not a mixed model
 
 ```{r Total cover - Plot relationships between variables}
 plot(salt_comm_rest_H$total_cover_prop ~ salt_comm_rest_H$YSR) # possibly non-linear
-plot(salt_comm_rest_H$total_cover_prop ~ salt_comm_rest_H$Elevation) # probably linear
+plot(salt_comm_rest_H$total_cover_prop ~ salt_comm_rest_H$Elevation) # possibly non-linear
 ```
 
 
 ```{r Total cover - model}
-M <- glmmTMB(total_cover_prop ~ YSR + DomSpecies + Elevation + (1|Site), data = salt_comm_rest_H, family = beta_family(link = "logit"), na.action = na.exclude)
+# is there a benefit of using betareg instead of glm? does glm take beta_family properly?
+# this is currently not working
+M <- betareg(total_cover_prop ~ YSR + DomSpecies + Elevation, data = salt_comm_rest_H, na.action = na.exclude, link = "logit")
 summary(M)
 
-# with polynomial YSR
-M1 <- glmmTMB(total_cover_prop ~ poly(YSR,2) + DomSpecies + Elevation + (1|Site), data = salt_comm_rest_H, family = beta_family(link = "logit"), na.action = na.exclude)
+#with both linear
+M <- glm(total_cover_prop ~ YSR + DomSpecies + Elevation, data = salt_comm_rest_H, family = quasibinomial(link = "logit"), na.action = na.exclude)
+summary(M)
+
+# with polynomial YSR and Elevation
+M1 <- glm(total_cover_prop ~ poly(YSR,2) + DomSpecies + poly(Elevation,2), data = salt_comm_rest_H, family = beta_family(link = "logit"), na.action = na.exclude)
 summary(M1)
 # poly YSR are significant
-# unvegetated is very signficant which makes sense
-# elevation is significant
+# unvegetated is very significant which makes sense - should this be excluded?
+# elevation is significant, but only the first order, therefore run again without polynomial
+
+M2 <- glm(total_cover_prop ~ poly(YSR,2) + DomSpecies + Elevation, data = salt_comm_rest_H, family = beta_family(link = "logit"), na.action = na.exclude)
+summary(M2)
+
+# try YSR as a logarithmic variable
+M3 <- glm(total_cover_prop ~ log(YSR) + DomSpecies + poly(Elevation,2), data = salt_comm_rest_H, family = beta_family(link = "logit"), na.action = na.exclude)
+summary(M3)
 ```
 
 Other assumptions (??)
@@ -480,12 +524,12 @@ Other assumptions (??)
 # Years since restoration
 ggplot(salt_comm_rest_H, aes(x = YSR, y = total_cover_prop)) +   
       geom_point(alpha = 0.5, na.rm = TRUE) +
-      geom_smooth(method = lm) +
+      stat_smooth(span = 10) +
     labs(y = "Total cover (proportion)", x = "Years since restoration") +
       theme_classic()
 # all look very similar
 
-# plot predicted values with ggeffects ggemmeans
+# plot predicted values with ggeffects ggemmeans - linear
 predict_YSR <- ggemmeans(M, terms = c("YSR [all]"))
 # view this result
 print(predict_YSR)
@@ -495,8 +539,8 @@ plot(predict_YSR, ci = T,add.data = TRUE, dot.alpha = 0.5,  jitter = 0.2)+
   labs(y = "Total cover (proportion)", x = "Years since restoration") +
   theme_classic()
 
-# plot polynomial M1
-predict_YSR <- ggemmeans(M1, terms = c("YSR [all]"))
+# plot predicted values with ggeffects ggemmeans - polynomial
+predict_YSR <- ggemmeans(M2, terms = c("YSR [all]"))
 # view this result
 print(predict_YSR)
 # visualise this result
@@ -504,6 +548,17 @@ plot(predict_YSR, ci = T,add.data = TRUE, dot.alpha = 0.5,  jitter = 0.2)+
   ggtitle("") +  geom_line(size = 1.2) +
   labs(y = "Total cover (proportion)", x = "Years since restoration") +
   theme_classic()
+
+# plot predicted values with ggeffects ggemmeans with YSR as a log variable
+predict_YSR <- ggemmeans(M3, terms = c("YSR [all]"))
+# view this result
+print(predict_YSR)
+# visualise this result
+plot(predict_YSR, ci = T,add.data = TRUE, dot.alpha = 0.5,  jitter = 0.2)+
+  ggtitle("") +  geom_line(size = 1.2) +
+  labs(y = "Total cover (proportion)", x = "Years since restoration") +
+  theme_classic()
+# this probably looks the most realistic, but not sure if that's the basis of choosing a technique?
 
 # plot restoring sites  - violin plot
 ggplot(salt_comm_rest_H, aes(x=YSR, y=total_cover_prop, group = YSR, fill = Estuary)) +
@@ -577,6 +632,11 @@ ggplot(salt_comm_rest_H, aes(x = Elevation, y = total_cover_prop)) +
 
 #2c - burrows
 
+```{r Burrows - Plot relationships between variables}
+plot(salt_comm_rest_H$Burrows_0.5x0.5 ~ salt_comm_rest_H$YSR) # relatively linear
+plot(salt_comm_rest_H$Burrows_0.5x0.5 ~ salt_comm_rest_H$Elevation) # relatively linear
+```
+
 ```{r Zero-inflation testing and model approach}
 # test for zero-inflation
 
@@ -584,7 +644,7 @@ ggplot(salt_comm_rest_H, aes(x = Elevation, y = total_cover_prop)) +
 # 58% of our data are zeroes
 
 # check if this number of zeroes can be predicted under a poisson model
-M1 <- glmmTMB(Burrows_0.5x0.5 ~ poly(YSR,2) + DomSpecies + Elevation + (1|Site),
+M1 <- glm(Burrows_0.5x0.5 ~ poly(YSR,2) + DomSpecies + Elevation,
           family = 'poisson',
           data = salt_comm_rest_H)
 
@@ -596,14 +656,14 @@ N  <- nrow(salt_comm_rest_H)
 p  <- length(coef(M1))   
 sum(E2^2) / (N - p)
 
-# 5.75 > 1 - evidence of overdispersion
+# 6.71 > 1 - evidence of overdispersion
 
 # check if this number of zeroes can be predicted under a negative binomial model
 # without restoration status for now
 
 ## Check which type of negative binomial to use!!
 
-M2 <- glmmTMB(Burrows_0.5x0.5 ~ poly(YSR,2) + Elevation + DomSpecies + (1|Site),
+M2 <- glm(Burrows_0.5x0.5 ~ poly(YSR,2) + Elevation + DomSpecies,
           family = 'nbinom1',
           data = salt_comm_rest_H)
 
@@ -615,9 +675,9 @@ N  <- nrow(salt_comm_rest_H)
 p  <- length(coef(M2))   
 sum(E2^2) / (N - p)
 
-# 2.10 > 1 therefore still highly overdispersed
+# 1.06e+18 >>> 1 therefore highly overdispersed
 
-M3 <- glmmTMB(Burrows_0.5x0.5 ~ poly(YSR,2) + Elevation + DomSpecies + (1|Site),
+M3 <- glm(Burrows_0.5x0.5 ~ poly(YSR,2) + Elevation + DomSpecies,
           family = 'nbinom2',
           data = salt_comm_rest_H)
 
@@ -629,10 +689,12 @@ N  <- nrow(salt_comm_rest_H)
 p  <- length(coef(M3))   
 sum(E2^2) / (N - p)
 
-# 0.86 therefore underdispersed / kind of close to even!
+# 1.93 therefore closer to even..
 
 # compare the different models
 AICtab(M1, M2, M3)
+# why doesn't this work anymore?
+# model was better as a mixed model but site was confounded with YSR. model has worse dispersion when YSR is non-polynomial
 # lower values indicate a better model fit. M2 (negative binomial 1) has the best fit. However it is overdispersed. M3 is relatively close to M2 and has close to even dispersion so use it.
 ```
 

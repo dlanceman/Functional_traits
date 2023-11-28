@@ -97,7 +97,10 @@ mantree <- read_excel("Data/Functional_traits_combined_data.xlsx", sheet = "Mang
            Site == "CCW" ~ as.numeric("16"),
            Site == "YCW" ~ as.numeric("5"))) # add a column for years since restoration
 # double check with Will years for each
+```
 
+
+```{r Get data - mangrove subquadrat data}
 # mangrove subquadrat data
 manq <- read_excel("Data/Functional_traits_combined_data.xlsx", sheet = "Mangrove_quadrat") %>% 
   arrange(Date, Time) %>% 
@@ -127,18 +130,40 @@ manq <- read_excel("Data/Functional_traits_combined_data.xlsx", sheet = "Mangrov
            Site == "CCW" ~ as.numeric("16"),
            Site == "YCW" ~ as.numeric("5")), # add a column for years since restoration
          pneu_h_d = Pneu_ht_mm/Pneu_dia_mm)
+```
 
+
+```{r Get data - mangrove leaf data}
 # mangrove leaf herbivory data
 manherb <- read_excel("Data/Functional_traits_combined_data.xlsx", sheet = "Mangrove_herb") %>% 
   rowwise() %>% 
   mutate(Herb_av = mean(c_across(Leaf_1:Leaf_5), na.rm = TRUE))
 # do we want to take averages or have one row for every measurement??
 
+
 # mangrove leaf weight and area data
 manleaf <- read_excel("Data/Functional_traits_combined_data.xlsx", sheet = "Mangrove_leaf") %>% 
   rowwise() %>% 
-  mutate(Value_av = mean(c_across(Leaf_1:Leaf_5), na.rm = TRUE))
+  mutate(Value_av = mean(c_across(Leaf_1:Leaf_5), na.rm = TRUE),
+         Estuary = case_when( # make an estuary variable
+           Site == "YCW" ~ "Maroochy",
+           .default = "Hunter"
+         ),
+         YSR = case_when(
+           Site == "HS" ~ as.numeric("12"),
+           Site == "CC" ~ as.numeric("33"),
+           Site == "CF" ~ as.numeric("30"),
+           Site == "YCW" ~ as.numeric("5")
+         ),
+         rest_status = case_when(
+           Site == "AI" ~ 0,
+           Site == "SI" ~ 0,
+           .default = 1
+         ))
 # do we want to take averages or have one row for every measurement??
+
+manleaf_wide <- manleaf %>% pivot_wider(id_cols = c(Site, Combo, Quadrat, Tree, Tree_sapling, Species, Estuary, YSR, rest_status), names_from = "Measure", values_from = "Value_av") # column for each dry and fresh weight
+manleaf_wide <- manleaf_wide %>% mutate(dfratio = Dry_weight/Fresh_weight)
 ```
 
 ```{r Data manipulation}
@@ -175,6 +200,7 @@ mantree_H <- mantree %>% subset(mantree$Estuary == "Hunter")
 mantree_comm_H <- mantree_comm %>% subset(mantree_comm$Estuary == "Hunter")
 manq_H <- manq %>% subset(manq$Estuary == "Hunter")
 manq_comm_H <- manq_comm %>% subset(manq_comm$Estuary == "Hunter")
+manleaf_wide_H <- manleaf_wide %>% subset(manleaf_wide$Estuary == "Hunter")
 
 # Grey mangroves only
 mantree_grey <- mantree %>% subset(mantree$Species == "Grey")
@@ -189,6 +215,8 @@ manq_comm_rest <- manq_comm %>% subset(manq_comm$rest_status == 1)
 manq_H_rest <- manq_H %>% subset(manq_H$rest_status == 1)
 manq_comm_H_rest <- manq_comm_H %>% subset(manq_comm_H$rest_status == 1)
 mantree_grey_rest <- mantree_grey %>% subset(mantree_grey$rest_status == 1)
+manleaf_wide_rest <- manleaf_wide %>% subset(manleaf_wide$rest_status == 1)
+manleaf_wide_H_rest <- manleaf_wide_H %>% subset(manleaf_wide_H$rest_status == 1)
 
 # natural sites only
 mantree_nat <- mantree %>% subset(mantree$rest_status == 0)
@@ -200,6 +228,14 @@ manq_comm_nat <- manq_comm %>% subset(manq_comm$rest_status == 0)
 manq_H_nat <- manq_H %>% subset(manq_H$rest_status == 0)
 manq_comm_H_nat <- manq_comm_H %>% subset(manq_comm_H$rest_status == 0)
 mantree_grey_nat <- mantree_grey %>% subset(mantree_grey$rest_status == 0)
+manleaf_wide_nat <- manleaf_wide %>% subset(manleaf_wide$rest_status == 0)
+
+# mangrove leaves - trees only
+manleaf_wide_t <- manleaf_wide %>% subset(manleaf_wide$Tree_sapling == "Tree")
+manleaf_wide_H_t <- manleaf_wide_H %>% subset(manleaf_wide_H$Tree_sapling == "Tree")
+manleaf_wide_rest_t <- manleaf_wide_rest %>% subset(manleaf_wide_rest$Tree_sapling == "Tree")
+manleaf_wide_nat_t <- manleaf_wide_nat %>% subset(manleaf_wide_nat$Tree_sapling == "Tree")
+manleaf_wide_H_rest_t <- manleaf_wide_H_rest %>% subset(manleaf_wide_H_rest$Tree_sapling == "Tree")
 ```
 
 # A. Hunter only (therefore grey mangroves only too)
@@ -458,9 +494,19 @@ plot(mantree$DBH_cm ~ mantree$Basal_circ_cm) # they are correlated, but there is
 # B. Hunter and Maroochy together (for YSR)
 
 ```{r Number of trees - YSR - model}
+# plot relationships between variables
+plot(mantree_comm_rest$total_trees ~ mantree_comm_rest$YSR) # not obviously non-linear
+plot(mantree_comm_rest$total_trees ~ mantree_comm_rest$Elevation) # not obviously non-linear
+
 M <- lmer(total_trees ~ YSR + Elevation + Estuary + (1|Site), data = mantree_comm_rest, na.action = na.exclude)
 
 summary(M)
+
+# need to include an offset...
+
+M1 <- glm(total_trees ~ YSR + Elevation + Estuary, data = mantree_comm_rest, na.action = na.exclude)
+
+summary(M1)
 ```
 
 ```{r Number of trees - YSR - plot}
@@ -499,8 +545,22 @@ ggplot(mantree_comm_nat, aes(x = Site, y = total_trees)) +
 
 
 ```{r Number of saplings - YSR - model}
+# plot relationships between variables
+plot(mantree_comm_rest$total_saplings ~ mantree_comm_rest$YSR) # looks non-linear
+plot(mantree_comm_rest$total_saplings ~ mantree_comm_rest$Elevation) # not obviously non-linear
+
 M <- lmer(total_saplings ~ poly(YSR,2) + Elevation + Estuary + (1|Site), data = mantree_comm_rest, na.action = na.exclude)
 summary(M)
+
+# need to include offset!
+
+# not a mixed model
+M1 <- glm(total_saplings ~ poly(YSR,2) + Elevation + Estuary, data = mantree_comm_rest, na.action = na.exclude)
+summary(M1)
+
+# with interactions
+M2 <- glm(total_saplings ~ poly(YSR,2) * Elevation * Estuary, data = mantree_comm_rest, na.action = na.exclude)
+summary(M2) # no significant interactions so run model without interactions
 
 # check model assumptions
 # check for collinearity between predictors
@@ -728,6 +788,73 @@ ggplot(mantree_grey_nat, aes(x = Site, y = Basal_circ_cm)) +
 ```
 
 
+```{r Mangrove leaf dry weight - YSR - plot}
+# plot YSR
+ggplot(manleaf_wide_rest_t, aes(x = YSR, y = Dry_weight)) +
+  geom_point() +
+  stat_smooth(span = 1) + 
+  theme_classic()
+
+# plot natural sites
+ggplot(manleaf_wide_nat_t, aes(x = Site, y = Dry_weight)) +
+  geom_boxplot() +
+  geom_jitter(width=0.1) +
+    labs(y = "Dry weight (g)", x = "Site") +
+  theme_classic() 
+
+# plot all sites
+ggplot(manleaf_wide_t, aes(x = Site, y = Dry_weight, fill = as.factor(rest_status))) +
+  geom_boxplot() +
+  geom_jitter(width=0.1) +
+    labs(y = "Dry weight (g)", x = "Site") +
+  theme_classic() 
+```
+
+
+```{r Mangrove leaf fresh weight - YSR - plot}
+# plot YSR
+ggplot(manleaf_wide_rest_t, aes(x = YSR, y = Fresh_weight)) +
+  geom_point() +
+  stat_smooth(span = 1) + 
+  theme_classic()
+
+# plot natural sites
+ggplot(manleaf_wide_nat, aes(x = Site, y = Fresh_weight)) +
+  geom_boxplot() +
+  geom_jitter(width=0.1) +
+    labs(y = "Fresh weight (g)", x = "Site") +
+  theme_classic() 
+
+# plot all sites
+ggplot(manleaf_wide_t, aes(x = Site, y = Fresh_weight, fill = as.factor(rest_status))) +
+  geom_boxplot() +
+  geom_jitter(width=0.1) +
+    labs(y = "Fresh weight (g)", x = "Site") +
+  theme_classic() 
+```
+
+
+```{r Mangrove leaf dry:fresh ratio - YSR - plot}
+# plot YSR
+ggplot(manleaf_wide_rest_t, aes(x = YSR, y = dfratio)) +
+  geom_point() +
+  stat_smooth(span = 1) + 
+  theme_classic()
+
+# plot natural sites
+ggplot(manleaf_wide_nat_t, aes(x = Site, y = dfratio)) +
+  geom_boxplot() +
+  geom_jitter(width=0.1) +
+    labs(y = "Dry:fresh weight ratio", x = "Site") +
+  theme_classic() 
+
+# plot all sites
+ggplot(manleaf_wide_t, aes(x = Site, y = dfratio, fill = as.factor(rest_status))) +
+  geom_boxplot() +
+  geom_jitter(width=0.1) +
+    labs(y = "Dry:fresh weight ratio", x = "Site") +
+  theme_classic() 
+```
 
 
 # 3. Multivariate models
