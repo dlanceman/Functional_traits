@@ -34,6 +34,8 @@ This R script tests different types of modelling that can be applied to our salt
 #install.packages("ecostats")
 #install.packages("viridis")
 #install.packages("betareg")
+#install.packages("ggpubr")
+#install.packages("countreg", repos="http://R-Forge.R-project.org", type = "binary")
 
 library(plyr)
 library(readxl)
@@ -54,6 +56,8 @@ require(statmod)
 library(ecostats)
 library(viridis)
 library(betareg)
+library(ggpubr)
+library(countreg)
 ```
 
 
@@ -129,10 +133,10 @@ salt <- salt %>%
   group_by(Combo) %>% 
   mutate(
     MaxSpeciesCover = max(`Sp_cover_%`),
-    DomSpecies = ifelse(100 - `Total_cover_%` > MaxSpeciesCover, "unvegetated", #Species[which.max(`Sp_cover_%`)] # old code, but computes the first occurrence of the max cover so doesn't deal with "ties"
+    DomSpecies = ifelse(100 - `Total_cover_%` > MaxSpeciesCover, "unvegetated", 
                         paste(unique(Species[`Sp_cover_%` == MaxSpeciesCover]), collapse = ", "))) %>% # Calculate the species with maximum cover for each Quadrat, and list multiple if it's a tie
   ungroup() %>%
-  select(-MaxSpeciesCover) # Remove MaxSpeciesCover colummn
+  dplyr::select(-MaxSpeciesCover) # Remove MaxSpeciesCover colummn
 
 
 # For quadrats that have ended up listing two species as jointly dominant, manually edit these to include whichever of these species is "bulkier" as dominant
@@ -269,6 +273,33 @@ spor_comm <- spor_comm %>% mutate(sp_cover_prop = `Sp_cover_%`/100 -0.001)
 # also included a tiny offset since it doesn't like values of exactly 1 - must be below 1.
 sarc_comm <- sarc_comm %>% mutate(sp_cover_prop = `Sp_cover_%`/100 -0.001)
 trig_comm <- trig_comm %>% mutate(sp_cover_prop = `Sp_cover_%`/100 -0.001)
+
+# make a simplified DomSpecies variable where rare DomSpecies are grouped together in class "other"
+salt_comm <- salt_comm %>% mutate(DomSpeciesSimp = case_when(
+  DomSpecies == "Sporobolus" ~ "Sporobolus",
+  DomSpecies == "Sarcocornia" ~ "Sarcocornia",
+  DomSpecies == "Bolboschoenus" ~ "Bolboschoenus",
+  DomSpecies == "Phragmites" ~ "Phragmites",
+  DomSpecies == "unvegetated" ~ "Other",
+  DomSpecies == "Juncus_kraussii" ~ "Other",
+  DomSpecies == "Aster" ~ "Other",
+  DomSpecies == "Triglochin" ~ "Other",
+  DomSpecies == "Suaeda" ~ "Other",
+  DomSpecies == "Juncus_sp1" ~ "Other",
+  DomSpecies == "Juncus_sp2" ~ "Other"
+))
+
+
+# try even simpler with DomSpeciesSuperSimp - only Sporobolus, Sarcocornia or Other
+salt_comm <- salt_comm %>% mutate(DomSpeciesSuperSimp = case_when(
+  DomSpeciesSimp == "Sporobolus" ~ "Sporobolus",
+  DomSpeciesSimp == "Sarcocornia" ~ "Sarcocornia",
+  DomSpeciesSimp == "Bolboschoenus" ~ "Other",
+  DomSpeciesSimp == "Phragmites" ~ "Other",
+  DomSpeciesSimp == "Other" ~ "Other"
+))
+
+
 ```
 
 
@@ -494,28 +525,47 @@ plot(salt_comm_rest_H$total_cover_prop ~ salt_comm_rest_H$Elevation) # possibly 
 
 
 ```{r Total cover - model}
-# is there a benefit of using betareg instead of glm? does glm take beta_family properly?
-# this is currently not working
-M <- betareg(total_cover_prop ~ YSR + DomSpecies + Elevation, data = salt_comm_rest_H, na.action = na.exclude, link = "logit")
-summary(M)
+# use glm with tweedie distrubution as tweedie is similar to beta distrubtion
+M <- glm(total_cover_prop ~ poly(YSR,2) * DomSpecies * poly(Elevation,2), data = salt_comm_rest_H, family = tweedie(var.power=1.5, link = 0), na.action = na.exclude)
+plot(M) # does not look good. regardless of var.power value. or whether YSR and elevation are included as polynomial or linear variables. or whether interactions are included or not.
 
-#with both linear
-M <- glm(total_cover_prop ~ YSR + DomSpecies + Elevation, data = salt_comm_rest_H, family = quasibinomial(link = "logit"), na.action = na.exclude)
-summary(M)
+# try binomial? although I don't think this is appropriate for non-integer data.
+M1 <- glm(total_cover_prop ~ poly(YSR,2) * DomSpecies * poly(Elevation,2), data = salt_comm_rest_H, family = binomial(link = "logit"), na.action = na.exclude)
+plot(M1) # better fit. normality still not amazing but probably ok and equal variances better.
+summary(M1) # no significance throughout.
 
-# with polynomial YSR and Elevation
-M1 <- glm(total_cover_prop ~ poly(YSR,2) + DomSpecies + poly(Elevation,2), data = salt_comm_rest_H, family = beta_family(link = "logit"), na.action = na.exclude)
-summary(M1)
-# poly YSR are significant
-# unvegetated is very significant which makes sense - should this be excluded?
-# elevation is significant, but only the first order, therefore run again without polynomial
+# try beta regression
+M2 <- betareg(total_cover_prop ~ poly(YSR,2) * poly(Elevation,2) * DomSpecies, data = salt_comm_rest_H, link = "logit", na.action = na.exclude)
+# error here - because of DomSpecies interaction
 
-M2 <- glm(total_cover_prop ~ poly(YSR,2) + DomSpecies + Elevation, data = salt_comm_rest_H, family = beta_family(link = "logit"), na.action = na.exclude)
-summary(M2)
+# beta regression with DomSpecies non-interacting
+M3 <- betareg(total_cover_prop ~ poly(YSR,2) * poly(Elevation,2) + DomSpecies, data = salt_comm_rest_H, link = "logit", na.action = na.exclude)
+plot(M3) # crazy large cooks distance for 7, 42 and 60. This is because these plots have unusual DomSpecies. Need to discuss.
 
-# try YSR as a logarithmic variable
-M3 <- glm(total_cover_prop ~ log(YSR) + DomSpecies + poly(Elevation,2), data = salt_comm_rest_H, family = beta_family(link = "logit"), na.action = na.exclude)
-summary(M3)
+# beta regression without DomSpecies
+M4 <- betareg(total_cover_prop ~ poly(YSR,2) * poly(Elevation,2), data = salt_comm_rest_H, link = "logit", na.action = na.exclude)
+plot(M4) # plots generally look good, except some relatively large cook's distance values (point 7 and 69) - not sure why 69 is large as it has the same total cover as other values. 7 has extremely low total cover but it's realistic.
+summary(M4)
+
+# check whether exclusion of influential points changes parameter estimates
+M5 <- betareg(total_cover_prop ~ poly(YSR,2) * poly(Elevation,2), data = salt_comm_rest_H[-c(7,69),], link = "logit", na.action = na.exclude)
+plot(M5) 
+summary(M5)
+# not massive differences in parameter estimates. Therefore hopefully OK to retain more influential values
+
+
+
+# try DomSpeciesSimp instead that clumps rare DomSpecies into "Other"
+# DomSpecies interaction is still not ok
+
+# beta regression with DomSpecies non-interacting
+M8 <- betareg(total_cover_prop ~ poly(YSR,2) * poly(Elevation,2) + DomSpeciesSimp, data = salt_comm_rest_H, link = "logit", na.action = na.exclude)
+plot(M8) # now point 41 has very high cook's distnace and 7 and 69 are still high...
+
+# try DomSpeciesSuperSimp
+M9 <- betareg(total_cover_prop ~ poly(YSR,2) * poly(Elevation,2) + DomSpeciesSuperSimp, data = salt_comm_rest_H, link = "logit", na.action = na.exclude)
+plot(M9) # still large cook's distance at 7, 41 and 69 but a bit better than before
+
 ```
 
 Other assumptions (??)
@@ -528,37 +578,6 @@ ggplot(salt_comm_rest_H, aes(x = YSR, y = total_cover_prop)) +
     labs(y = "Total cover (proportion)", x = "Years since restoration") +
       theme_classic()
 # all look very similar
-
-# plot predicted values with ggeffects ggemmeans - linear
-predict_YSR <- ggemmeans(M, terms = c("YSR [all]"))
-# view this result
-print(predict_YSR)
-# visualise this result
-plot(predict_YSR, ci = T,add.data = TRUE, dot.alpha = 0.5,  jitter = 0.2)+
-  ggtitle("") +  geom_line(size = 1.2) +
-  labs(y = "Total cover (proportion)", x = "Years since restoration") +
-  theme_classic()
-
-# plot predicted values with ggeffects ggemmeans - polynomial
-predict_YSR <- ggemmeans(M2, terms = c("YSR [all]"))
-# view this result
-print(predict_YSR)
-# visualise this result
-plot(predict_YSR, ci = T,add.data = TRUE, dot.alpha = 0.5,  jitter = 0.2)+
-  ggtitle("") +  geom_line(size = 1.2) +
-  labs(y = "Total cover (proportion)", x = "Years since restoration") +
-  theme_classic()
-
-# plot predicted values with ggeffects ggemmeans with YSR as a log variable
-predict_YSR <- ggemmeans(M3, terms = c("YSR [all]"))
-# view this result
-print(predict_YSR)
-# visualise this result
-plot(predict_YSR, ci = T,add.data = TRUE, dot.alpha = 0.5,  jitter = 0.2)+
-  ggtitle("") +  geom_line(size = 1.2) +
-  labs(y = "Total cover (proportion)", x = "Years since restoration") +
-  theme_classic()
-# this probably looks the most realistic, but not sure if that's the basis of choosing a technique?
 
 # plot restoring sites  - violin plot
 ggplot(salt_comm_rest_H, aes(x=YSR, y=total_cover_prop, group = YSR, fill = Estuary)) +
@@ -576,8 +595,8 @@ ggplot(salt_comm_rest_H, aes(x=YSR, y=total_cover_prop, group = YSR, fill = Estu
 # print at 1500 x 789
 
 # plot restoring sites  - box plot
-ggplot(salt_comm_rest_H, aes(x=YSR, y=total_cover_prop, group = YSR, fill = Estuary)) +
-    geom_boxplot(width = 1.5) +
+S_Cov_rest <- ggplot(salt_comm_rest_H, aes(x=YSR, y=total_cover_prop, group = YSR, fill = Estuary)) +
+    geom_boxplot(width = 2) +
   geom_jitter()  +
     scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A") +
     theme_classic() +
@@ -588,8 +607,9 @@ ggplot(salt_comm_rest_H, aes(x=YSR, y=total_cover_prop, group = YSR, fill = Estu
   ylab("Saltmarsh cover (proportion)") +
   xlim(0,35) + 
   ylim(0,1)
+S_Cov_rest
 # print at 1500 x 789
-# export at 2200 x 800
+# export at 2200 x 800 for preso, 1500 x 800 for paper
 
 # plot natural sites - violin plot
 ggplot(salt_comm_nat_H, aes(x=Site, y=total_cover_prop, fill=Estuary, group = Site)) +
@@ -606,18 +626,24 @@ ggplot(salt_comm_nat_H, aes(x=Site, y=total_cover_prop, fill=Estuary, group = Si
 # print at 700 x 789
 
 # plot natural sites - box plot
-ggplot(salt_comm_nat_H, aes(x=Site, y=total_cover_prop, fill=Estuary, group = Site)) +
+S_Cov_nat <- ggplot(salt_comm_nat_H, aes(x=Site, y=total_cover_prop, fill=Estuary, group = Site)) +
     geom_boxplot(width=0.4) +
   geom_jitter(width = 0.1)  +
     scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A") +
     theme_classic() +
     theme(legend.position = "none",
           axis.text = element_text(size = 24),
+          axis.text.y = element_blank(), # remove y axis labels when combining plot with restored
           axis.title = element_text(size = 28)) +
   xlab("Site") +
   ylab("")  +
   ylim(0,1)
+S_Cov_nat
 # print at 700 x 789
+
+# plot natural and restored together
+ggarrange(S_Cov_rest,S_Cov_nat,ncol =2,nrow=1,widths = c(3,1))
+# print at 1500 x 800
 
 # Elevation
 ggplot(salt_comm_rest_H, aes(x = Elevation, y = total_cover_prop)) +   
@@ -633,6 +659,11 @@ ggplot(salt_comm_rest_H, aes(x = Elevation, y = total_cover_prop)) +
 #2c - burrows
 
 ```{r Burrows - Plot relationships between variables}
+ggplot(data = salt_comm_rest_H, aes(x = Burrows_0.5x0.5)) +
+  geom_histogram() +
+  facet_wrap(~Site)
+
+
 plot(salt_comm_rest_H$Burrows_0.5x0.5 ~ salt_comm_rest_H$YSR) # relatively linear
 plot(salt_comm_rest_H$Burrows_0.5x0.5 ~ salt_comm_rest_H$Elevation) # relatively linear
 ```
@@ -647,65 +678,82 @@ plot(salt_comm_rest_H$Burrows_0.5x0.5 ~ salt_comm_rest_H$Elevation) # relatively
 M1 <- glm(Burrows_0.5x0.5 ~ poly(YSR,2) + DomSpecies + Elevation,
           family = 'poisson',
           data = salt_comm_rest_H)
-
-summary(M1)
-
-## Check for over/underdispersion in the model
-E2 <- resid(M1, type = "pearson")
-N  <- nrow(salt_comm_rest_H)
-p  <- length(coef(M1))   
-sum(E2^2) / (N - p)
-
-# 6.71 > 1 - evidence of overdispersion
+plot(M1) # plot doesn't look good
 
 # check if this number of zeroes can be predicted under a negative binomial model
 # without restoration status for now
 
-## Check which type of negative binomial to use!!
-
 M2 <- glm(Burrows_0.5x0.5 ~ poly(YSR,2) + Elevation + DomSpecies,
           family = 'nbinom1',
           data = salt_comm_rest_H)
-
-summary(M2)
-
-## Check for over/underdispersion in the model
-E2 <- resid(M2, type = "pearson")
-N  <- nrow(salt_comm_rest_H)
-p  <- length(coef(M2))   
-sum(E2^2) / (N - p)
-
-# 1.06e+18 >>> 1 therefore highly overdispersed
+plot(M2) # plot doesn't look good
 
 M3 <- glm(Burrows_0.5x0.5 ~ poly(YSR,2) + Elevation + DomSpecies,
           family = 'nbinom2',
           data = salt_comm_rest_H)
+plot(M3) # plot doesn't look good
 
-summary(M3)
+# try zero inflated poisson with the package pscl
+M4 <- zeroinfl(Burrows_0.5x0.5 ~ poly(YSR,2)* Elevation + DomSpecies, data = salt_comm_rest_H, dist = "poisson", na.action = na.exclude)
+# DomSpecies is not working as an interaction so just including as a separate predictor
+rootogram(M4, main = "ZIP", ylim = c(-5, 15), max = 50)
+qqrplot(M4, main = "ZIP")
 
-## Check for over/underdispersion in the model
-E2 <- resid(M3, type = "pearson")
-N  <- nrow(salt_comm_rest_H)
-p  <- length(coef(M3))   
-sum(E2^2) / (N - p)
 
-# 1.93 therefore closer to even..
+# also try zero-inflated negative binomial model
+M5 <- zeroinfl(Burrows_0.5x0.5 ~ poly(YSR,2)* Elevation + DomSpecies, data = salt_comm_rest_H, dist = "negbin", na.action = na.exclude)
+rootogram(M5, main = "ZINB", ylim = c(-5, 15), max = 50)
+qqrplot(M5, main = "ZINB")
 
-# compare the different models
-AICtab(M1, M2, M3)
-# why doesn't this work anymore?
-# model was better as a mixed model but site was confounded with YSR. model has worse dispersion when YSR is non-polynomial
-# lower values indicate a better model fit. M2 (negative binomial 1) has the best fit. However it is overdispersed. M3 is relatively close to M2 and has close to even dispersion so use it.
+
+# try hurdle negative binomial model
+M6 <- zeroinfl(Burrows_0.5x0.5 ~ poly(YSR,2)* Elevation + DomSpecies, data = salt_comm_rest_H, dist = "negbin", na.action = na.exclude)
+
+rootogram(M6, main = "HNB", ylim = c(-5, 15), max = 50) # smooth curve indicates good fit
+qqrplot(M6, main = "HNB")
+
+
+# zero-inflated negative binomial model (M5) looks like the best fit.
+# however https://rpubs.com/kaz_yos/pscl-2 seems to think this sort of model is best when both structural zeroes (must be zero) and sampling zeroes (could have been other numbers) are present - not sure if this is the case for my data or if it matters?
+# seems like the count part of the model is most relevant for me as my quadrats have a chance of having crabs, they just didn't, whereas the zero-inflated model models what factors contribute to definitely having no crabs, which isn't really ecologically relevant.
+
+summary(M5)
+# not computing standard errors...
+
+# try without DomSpecies to see if that's what's causing the problem.
+M7 <- zeroinfl(Burrows_0.5x0.5 ~ poly(YSR,2)* Elevation , data = salt_comm_rest_H, dist = "negbin", na.action = na.exclude)
+rootogram(M7, main = "ZINB", ylim = c(-5, 15), max = 50)
+qqrplot(M7, main = "ZINB")
+
+summary(M7) # standard errors are produced, therefore looks like DomSpecies is causing the issue. Probably because some values of DomSpecies only have one occurrence. Should we group these into an "other vege" or something?
+
+# interpreting model with coefficients
+expCoef <- exp(coef((M7)))
+expCoef <- matrix(expCoef, ncol = 2)
+
+rownames(expCoef) <- c("(intercept)","poly(YSR,2)1","poly(YSR,2)2","Elevation","poly(YSR,2)1:Elev", "poly(YSR,2)2:Elev")
+colnames(expCoef) <- c("Count_model","Zero_inflation_model")
+expCoef
+
+# trying to interpret the count model. 
+# - the baseline number of crabs is 0.68.
+# - one unit increase in the first "arm" of YSR polynomial corresponds to 282523 x more crabs (???)
+# - one unit increase in the second "arm" of YSR polynomial corresponds to 5.2 x more crabs (non significant)
+# - one unit increase in elevation corresponds to 0.2 less crabs
+# - there is a positive interaction between the first "arm" of YSR and elevation
+# - there is a negative interaction between the second "arm" of YSR and elevation
+
+
+
+# try a version of M5 with DomSpeciesSimp instead
+
+M8 <- zeroinfl(Burrows_0.5x0.5 ~ poly(YSR,2)* Elevation + DomSpeciesSimp, data = salt_comm_rest_H, dist = "negbin", na.action = na.exclude)
+summary(M8) # still comes up with error
+
+# Try DomSpeciesSuperSimp
+M9 <- zeroinfl(Burrows_0.5x0.5 ~ poly(YSR,2)* Elevation + DomSpeciesSuperSimp, data = salt_comm_rest_H, dist = "negbin", na.action = na.exclude)
+summary(M9) # now no error.
 ```
-
-```{r Burrows - M3 - negative binomial 2 model}
-M3 <- glmmTMB(Burrows_0.5x0.5 ~ poly(YSR,2) + Elevation + DomSpecies + (1|Site),
-          family = 'nbinom2',
-          data = salt_comm_rest_H)
-
-summary(M3)
-```
-
 
 ```{r Burrows - plot}
 # Years since restoration
@@ -721,6 +769,41 @@ ggplot(salt_comm_nat_H, aes(x = Site, y = Burrows_0.5x0.5)) +
   geom_point() +
     labs(y = "Burrows") +
   theme_classic()
+
+salt_comm_rest_H$Burrows_ln <- log(salt_comm_rest_H$Burrows_0.5x0.5 + 0.001)
+
+# boxplots - restored sites
+S_Bur_rest <- ggplot(salt_comm_rest_H, aes(x=YSR, y=Burrows_0.5x0.5, group = YSR, fill = Estuary)) +
+    geom_boxplot(width = 2) +
+  geom_jitter()  +
+    scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A") +
+    theme_classic() +
+    theme(legend.position = "none",
+          axis.text = element_text(size = 24),
+          axis.title = element_text(size = 28)) +
+  xlab("Years since restoration") +
+  ylab("Number of burrows") +
+  xlim(0,35)  + ylim(0,62)
+S_Bur_rest
+
+# boxplots - natural sites
+S_Bur_nat <- ggplot(salt_comm_nat_H, aes(x=Site, y=Burrows_0.5x0.5, fill=Estuary, group = Site)) +
+    geom_boxplot(width=0.4) +
+  geom_jitter(width = 0.1)  +
+    scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A") +
+    theme_classic() +
+    theme(legend.position = "none",
+          axis.text = element_text(size = 24),
+          axis.text.y = element_blank(), # remove y axis labels when combining plot with restored
+          axis.title = element_text(size = 28)) +
+  xlab("Site") +
+  ylab("")  +
+  ylim(0,62)
+S_Bur_nat
+
+# plot natural and restored together
+ggarrange(S_Bur_rest,S_Bur_nat,ncol =2,nrow=1,widths = c(3,1))
+# print at 1500 x 800
 
 # predict effects of YSR when controlling for the other factors
 # this plot needs work - not sure what the y axis is??
@@ -1582,7 +1665,7 @@ meanvar.plot(SaltComm)
 plot(SaltComm ~ as.factor(salt_comm_comp_H_res$YSR))
 
 # fit a tweedie model for percentage cover data
-fit_cover <- manyany(SaltComm ~ YSR + Elevation, "glm", data = salt_comm_comp_H_res, family=tweedie(link = 0), var.power=1.1)
+fit_cover <- manyany(SaltComm ~ YSR + Elevation, "glm", data = salt_comm_comp_H_res, family=tweedie(link = 0, var.power=1.1), var.power = 1.1)
 # errors
 ```
 
