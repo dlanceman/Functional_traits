@@ -96,7 +96,6 @@ mantree <- read_excel("Data/Functional_traits_combined_data.xlsx", sheet = "Mang
            Site == "DLW" ~ as.numeric("9"),
            Site == "CCW" ~ as.numeric("16"),
            Site == "YCW" ~ as.numeric("5"))) # add a column for years since restoration
-# double check with Will years for each
 ```
 
 
@@ -145,25 +144,79 @@ manherb <- read_excel("Data/Functional_traits_combined_data.xlsx", sheet = "Mang
 manleaf <- read_excel("Data/Functional_traits_combined_data.xlsx", sheet = "Mangrove_leaf") %>% 
   rowwise() %>% 
   mutate(Value_av = mean(c_across(Leaf_1:Leaf_5), na.rm = TRUE),
-         Estuary = case_when( # make an estuary variable
-           Site == "YCW" ~ "Maroochy",
-           .default = "Hunter"
-         ),
          YSR = case_when(
            Site == "HS" ~ as.numeric("12"),
            Site == "CC" ~ as.numeric("33"),
            Site == "CF" ~ as.numeric("30"),
-           Site == "YCW" ~ as.numeric("5")
+           Site == "YCW" ~ as.numeric("5"),
+           Site == "DLW" ~ as.numeric("9"),
+           Site == "CCW" ~ as.numeric("16"),
          ),
          rest_status = case_when(
            Site == "AI" ~ 0,
            Site == "SI" ~ 0,
+           Site == "VSR" ~ 0,
+           Site == "MWS" ~ 0,
            .default = 1
-         ))
+         )) %>% subset(select = -Quadrat_full)
 # do we want to take averages or have one row for every measurement??
 
-manleaf_wide <- manleaf %>% pivot_wider(id_cols = c(Site, Combo, Quadrat, Tree, Tree_sapling, Species, Estuary, YSR, rest_status), names_from = "Measure", values_from = "Value_av") # column for each dry and fresh weight
-manleaf_wide <- manleaf_wide %>% mutate(dfratio = Dry_weight/Fresh_weight)
+# import machine learning leaf area data
+manleafAI <- read_excel("Data/leafarea_machinelearning.xlsx", sheet = "refined") %>% 
+  mutate(YSR = case_when(
+           Site == "HS" ~ as.numeric("12"),
+           Site == "CC" ~ as.numeric("33"),
+           Site == "CF" ~ as.numeric("30"),
+           Site == "YCW" ~ as.numeric("5"),
+           Site == "DLW" ~ as.numeric("9"),
+           Site == "CCW" ~ as.numeric("16"),
+         ),
+         rest_status = case_when(
+           Site == "AI" ~ 0,
+           Site == "SI" ~ 0,
+           Site == "VSR" ~ 0,
+           Site == "MWS" ~ 0,
+           .default = 1
+         ))
+
+# set up in the same format as the rest of the leaf area data
+manleafAIwide <- manleafAI %>% pivot_wider(id_cols = c(Estuary, Site, Quadrat, Combo, Species, Tree, YSR, rest_status), names_from = "leaf_number", values_from = "area_mm2") %>% 
+  rename("Leaf_1" = "1", # rename leaf columns
+         "Leaf_2" = "2",
+         "Leaf_3" = "3",
+         "Leaf_4" = "4",
+         "Leaf_5" = "5") %>% 
+  mutate(Method = "Machine_learning", # add columns corresponding to the "manleaf" dataframe
+         Measurer = "AI",
+         Measure = "Area",
+         Notes = "",
+         Tree_sapling = "Tree") %>% # need to specify if any of these are saplings
+  rowwise() %>% 
+  mutate(Value_av = mean(c_across(Leaf_1:Leaf_5), na.rm = TRUE))
+
+# edit Method and Measurer for rows where they included manual components
+manleafAIwide$Measurer[c(2,9,10,15,16,21,23,25,26,29,31,34)] <- "AI + Dana"
+manleafAIwide$Method[c(2,9,10,15,16,21,23,25,26,29,31,34)] <- "Machine_Learning + Scan_Manual"
+
+# need to add code to call any saplings saplings
+
+# merge the two leaf area/mass datasets together
+manleafall <- merge(manleaf, manleafAIwide, all = TRUE)
+
+manleafall_wide <- manleafall %>% pivot_wider(id_cols = c(Site, Combo, Quadrat, Tree, Tree_sapling, Species, Estuary, YSR, rest_status), names_from = "Measure", values_from = "Value_av") # column for each dry and fresh weight and area
+manleafall_wide <- manleafall_wide %>% 
+  mutate(dfratio = Dry_weight/Fresh_weight,
+         LMA = Dry_weight/Area)
+
+# CC1-2 has missing data (area and fresh weight) but all other columns are complete
+```
+
+
+```{r Explore data - mangrove leaf data}
+# simple histogram exploration
+hist(manleafall_wide$Area)
+hist(manleafall_wide$LMA)
+hist(manleafall_wide$dfratio)
 ```
 
 ```{r Data manipulation}

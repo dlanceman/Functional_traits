@@ -529,10 +529,9 @@ plot(salt_comm_rest_H$total_cover_prop ~ salt_comm_rest_H$Elevation) # possibly 
 M <- glm(total_cover_prop ~ poly(YSR,2) * DomSpecies * poly(Elevation,2), data = salt_comm_rest_H, family = tweedie(var.power=1.5, link = 0), na.action = na.exclude)
 plot(M) # does not look good. regardless of var.power value. or whether YSR and elevation are included as polynomial or linear variables. or whether interactions are included or not.
 
-# try binomial? although I don't think this is appropriate for non-integer data.
-M1 <- glm(total_cover_prop ~ poly(YSR,2) * DomSpecies * poly(Elevation,2), data = salt_comm_rest_H, family = binomial(link = "logit"), na.action = na.exclude)
-plot(M1) # better fit. normality still not amazing but probably ok and equal variances better.
-summary(M1) # no significance throughout.
+# try with DomSpeciesSuperSimp and not interacting
+M1 <- glm(total_cover_prop ~ poly(YSR,2) * poly(Elevation,2) + DomSpeciesSuperSimp, data = salt_comm_rest_H, family = tweedie(var.power=1.5, link = 0), na.action = na.exclude)
+plot(M1)
 
 # try beta regression
 M2 <- betareg(total_cover_prop ~ poly(YSR,2) * poly(Elevation,2) * DomSpecies, data = salt_comm_rest_H, link = "logit", na.action = na.exclude)
@@ -551,7 +550,7 @@ summary(M4)
 M5 <- betareg(total_cover_prop ~ poly(YSR,2) * poly(Elevation,2), data = salt_comm_rest_H[-c(7,69),], link = "logit", na.action = na.exclude)
 plot(M5) 
 summary(M5)
-# not massive differences in parameter estimates. Therefore hopefully OK to retain more influential values
+# not massive differences in parameter estimates. Therefore hopefully OK to retain more influential values and use M4
 
 
 
@@ -565,7 +564,16 @@ plot(M8) # now point 41 has very high cook's distnace and 7 and 69 are still hig
 # try DomSpeciesSuperSimp
 M9 <- betareg(total_cover_prop ~ poly(YSR,2) * poly(Elevation,2) + DomSpeciesSuperSimp, data = salt_comm_rest_H, link = "logit", na.action = na.exclude)
 plot(M9) # still large cook's distance at 7, 41 and 69 but a bit better than before
+summary(M9)
+# after adjusting p-values by multiplying by 2, it's pretty similar to M4 - no significance, except in DomSpeciesSuperSimpSporobolus - more sporobolus means more cover. (highly significant)
 
+# check whether similar results are obtained when extreme cook's distance values are removed
+M10 <- betareg(total_cover_prop ~ poly(YSR,2) * poly(Elevation,2) + DomSpeciesSuperSimp, data = salt_comm_rest_H[-c(7,41,69),], link = "logit", na.action = na.exclude)
+plot(M10) # cook's distance plot looks much better
+summary(M10) # there are some differences from M9. but the influential values are realistic so should be retained..
+
+# therefore, if we want to include DomSpecies to some extent, use M9, but if not, use M4
+# use M9
 ```
 
 Other assumptions (??)
