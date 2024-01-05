@@ -37,6 +37,8 @@ This R script tests different types of modelling that can be applied to our salt
 #install.packages("ggpubr")
 #install.packages("countreg", repos="http://R-Forge.R-project.org", type = "binary")
 #install.packages("statmod")
+#install.packages("lmerTest")
+#install.packages("sjPlot")
 
 library(plyr)
 library(readxl)
@@ -59,7 +61,8 @@ library(viridis)
 library(betareg)
 library(ggpubr)
 library(countreg)
-library(stat_mod)
+library(lmerTest)
+library(sjPlot)
 ```
 
 
@@ -238,10 +241,10 @@ hist(log(salt$YSR))
 Also not sure if this is needed for this particular model, but it can be useful to rescale explanatory variables so they have a constant mean of 0 and standard deviation of 1.
 ```{r Rescale/standardise explanatory variables}
 salt$Elevation <- scale(salt$Elevation, center = TRUE, scale = TRUE)
-spor$Elevation <- scale(spor$Elevation, center = TRUE, scale = TRUE)
-sarc$Elevation <- scale(sarc$Elevation, center = TRUE, scale = TRUE)
-trig$Elevation <- scale(trig$Elevation, center = TRUE, scale = TRUE)
-pneu$Elevation <- scale(pneu$Elevation, center = TRUE, scale = TRUE)
+#spor$Elevation <- scale(spor$Elevation, center = TRUE, scale = TRUE)
+#sarc$Elevation <- scale(sarc$Elevation, center = TRUE, scale = TRUE)
+#trig$Elevation <- scale(trig$Elevation, center = TRUE, scale = TRUE)
+#pneu$Elevation <- scale(pneu$Elevation, center = TRUE, scale = TRUE)
 
 ```
 
@@ -291,6 +294,20 @@ salt_comm <- salt_comm %>% mutate(DomSpeciesSimp = case_when(
   DomSpecies == "Juncus_sp2" ~ "Other"
 ))
 
+salt <- salt %>% mutate(DomSpeciesSimp = case_when(
+  DomSpecies == "Sporobolus" ~ "Sporobolus",
+  DomSpecies == "Sarcocornia" ~ "Sarcocornia",
+  DomSpecies == "Bolboschoenus" ~ "Bolboschoenus",
+  DomSpecies == "Phragmites" ~ "Phragmites",
+  DomSpecies == "unvegetated" ~ "Other",
+  DomSpecies == "Juncus_kraussii" ~ "Other",
+  DomSpecies == "Aster" ~ "Other",
+  DomSpecies == "Triglochin" ~ "Other",
+  DomSpecies == "Suaeda" ~ "Other",
+  DomSpecies == "Juncus_sp1" ~ "Other",
+  DomSpecies == "Juncus_sp2" ~ "Other"
+))
+
 
 # try even simpler with DomSpeciesSuperSimp - only Sporobolus, Sarcocornia or Other
 salt_comm <- salt_comm %>% mutate(DomSpeciesSuperSimp = case_when(
@@ -301,6 +318,13 @@ salt_comm <- salt_comm %>% mutate(DomSpeciesSuperSimp = case_when(
   DomSpeciesSimp == "Other" ~ "Other"
 ))
 
+salt <- salt %>% mutate(DomSpeciesSuperSimp = case_when(
+  DomSpeciesSimp == "Sporobolus" ~ "Sporobolus",
+  DomSpeciesSimp == "Sarcocornia" ~ "Sarcocornia",
+  DomSpeciesSimp == "Bolboschoenus" ~ "Other",
+  DomSpeciesSimp == "Phragmites" ~ "Other",
+  DomSpeciesSimp == "Other" ~ "Other"
+))
 
 ```
 
@@ -313,11 +337,13 @@ sarc_H <- sarc %>% subset(Estuary == "Hunter")
 trig_H <- trig %>% subset(Estuary == "Hunter")
 pneu_H <- pneu %>% subset(Estuary == "Hunter")
 
+salt_H_rest <- salt_H %>% subset(rest_status == 1)
 spor_H_rest <- spor_H %>% subset(rest_status == 1)
 sarc_H_rest <- sarc_H %>% subset(rest_status == 1)
 trig_H_rest <- trig_H %>% subset(rest_status == 1)
 pneu_H_rest <- pneu_H %>% subset(rest_status == 1)
 
+salt_H_nat <- salt_H %>% subset(rest_status == 0)
 spor_H_nat <- spor_H %>% subset(rest_status == 0)
 sarc_H_nat <- sarc_H %>% subset(rest_status == 0)
 trig_H_nat <- trig_H %>% subset(rest_status == 0)
@@ -878,6 +904,128 @@ p  <- length(coef(M4))
 sum(E2^2) / (N - p)
 
 # 1.62 = overdispersed but not too bad?
+```
+
+# 2d. Overall stem diameters and heights
+
+```{r Overall stem diameters}
+# to work out how the community looks in terms of stem diameters, we need to weight each species' diameters by their proportion. 
+# for this, we'll need to create a wider dataset that has a row for every species' stem diameter and corresponding species proportion in that quadrat.
+# this can be based on the average diameter of each species for each quadrat, so we'd end up with one row per quadrat.
+
+# first, subset the salt dataset for only diameter-related data
+
+salt_dia <- salt[,c(5:7,11,12,20,24,25,28,30:33,35,36)]
+
+# then, widen based on both Stem_dia_mm and sp_prop. Calculate the mean stem diameter during this process (mean sp_prop will be identical to each sp_prop as this value is the same for each quadrat)
+
+salt_dia_wider <- pivot_wider(salt_dia, id_cols = c(Estuary, Site, Quadrat, Quadrat.f, Combo, Elevation, rest_status, YSR, DomSpecies, DomSpeciesSimp, DomSpeciesSuperSimp), names_from = c(Species), values_from = c(Stem_dia_mm, sp_prop), values_fn = mean)
+
+# then, calculate the average stem diameter for each quadrat
+salt_dia_wider <-
+  salt_dia_wider %>% 
+  #rowwise will make sure the sum operation will occur on each row
+  rowwise() %>% 
+  mutate(Stem_dia_average = sum(Stem_dia_mm_Alternanthera*sp_prop_Alternanthera, 
+    Stem_dia_mm_Aster*sp_prop_Aster,
+    Stem_dia_mm_Ambrosia*sp_prop_Ambrosia,
+    Stem_dia_mm_Bolboschoenus*sp_prop_Bolboschoenus,
+    Stem_dia_mm_Cotula*sp_prop_Cotula,
+    Stem_dia_mm_Grass_B * sp_prop_Grass_B,
+    Stem_dia_mm_Grass_C * sp_prop_Grass_C,
+    Stem_dia_mm_Grass_sp_1 * sp_prop_Grass_sp_1,
+    Stem_dia_mm_Grass_sp_2 * sp_prop_Grass_sp_2,
+    Stem_dia_mm_GSG * sp_prop_GSG,
+    Stem_dia_mm_Juncus_acutus * sp_prop_Juncus_acutus,
+    Stem_dia_mm_Juncus_kraussii * sp_prop_Juncus_kraussii,
+    Stem_dia_mm_Juncus_sp1 * sp_prop_Juncus_sp1,
+    Stem_dia_mm_Juncus_sp2 * sp_prop_Juncus_sp2,
+    Stem_dia_mm_Lobelia * sp_prop_Lobelia,
+    Stem_dia_mm_Mangrove_saplings_river * sp_prop_Mangrove_saplings_river,
+    Stem_dia_mm_Mangrove_seedling * sp_prop_Mangrove_seedling,
+    Stem_dia_mm_Pasture_grass * sp_prop_Pasture_grass,
+    Stem_dia_mm_Phragmites * sp_prop_Phragmites,
+    Stem_dia_mm_Pneumatophores * sp_prop_Pneumatophores,
+    Stem_dia_mm_Sarcocornia * sp_prop_Sarcocornia,
+    Stem_dia_mm_Sporobolus * sp_prop_Sporobolus,
+    Stem_dia_mm_Suaeda * sp_prop_Suaeda,
+    Stem_dia_mm_Triglochin * sp_prop_Triglochin,
+    Stem_dia_mm_Watsonia * sp_prop_Watsonia, 
+    na.rm=TRUE))
+
+boxplot(salt_dia_wider$Stem_dia_average ~ salt_dia_wider$YSR)
+boxplot(salt_dia_wider$Stem_dia_average ~ salt_dia_wider$Site) # weighted averages across site
+boxplot(salt$Stem_dia_mm ~ salt$Site) # compare to incorrect averages across site
+
+
+# try modelling?
+
+M1 <- lm(Stem_dia_average ~ YSR * Elevation * DomSpeciesSimp, data = salt_dia_wider)
+plot(M1) # not good
+
+M2 <- lm(log(Stem_dia_average) ~ YSR * Elevation * DomSpeciesSimp, data = salt_dia_wider)
+plot(M2) # pretty good
+summary(M2) # no significant differences
+```
+
+```{r Overall stem heights}
+# similar approach for stem heights!
+
+# first, subset the salt dataset for only height-related data
+
+salt_ht <- salt[,c(5:7,11,12,19,24,25,28,30:33,35,36)]
+
+# then, widen based on both Stem_dia_mm and sp_prop. Calculate the mean stem diameter during this process (mean sp_prop will be identical to each sp_prop as this value is the same for each quadrat)
+
+salt_ht_wider <- pivot_wider(salt_ht, id_cols = c(Estuary, Site, Quadrat, Quadrat.f, Combo, Elevation, rest_status, YSR, DomSpecies, DomSpeciesSimp, DomSpeciesSuperSimp), names_from = c(Species), values_from = c(Stem_ht_mm, sp_prop), values_fn = mean)
+
+# then, calculate the average stem diameter for each quadrat
+salt_ht_wider <-
+  salt_ht_wider %>% 
+  #rowwise will make sure the sum operation will occur on each row
+  rowwise() %>% 
+  mutate(Stem_ht_average = sum(Stem_ht_mm_Alternanthera*sp_prop_Alternanthera, 
+    Stem_ht_mm_Aster*sp_prop_Aster,
+    Stem_ht_mm_Ambrosia*sp_prop_Ambrosia,
+    Stem_ht_mm_Bolboschoenus*sp_prop_Bolboschoenus,
+    Stem_ht_mm_Cotula*sp_prop_Cotula,
+    Stem_ht_mm_Grass_B * sp_prop_Grass_B,
+    Stem_ht_mm_Grass_C * sp_prop_Grass_C,
+    Stem_ht_mm_Grass_sp_1 * sp_prop_Grass_sp_1,
+    Stem_ht_mm_Grass_sp_2 * sp_prop_Grass_sp_2,
+    Stem_ht_mm_GSG * sp_prop_GSG,
+    Stem_ht_mm_Juncus_acutus * sp_prop_Juncus_acutus,
+    Stem_ht_mm_Juncus_kraussii * sp_prop_Juncus_kraussii,
+    Stem_ht_mm_Juncus_sp1 * sp_prop_Juncus_sp1,
+    Stem_ht_mm_Juncus_sp2 * sp_prop_Juncus_sp2,
+    Stem_ht_mm_Lobelia * sp_prop_Lobelia,
+    Stem_ht_mm_Mangrove_saplings_river * sp_prop_Mangrove_saplings_river,
+    Stem_ht_mm_Mangrove_seedling * sp_prop_Mangrove_seedling,
+    Stem_ht_mm_Pasture_grass * sp_prop_Pasture_grass,
+    Stem_ht_mm_Phragmites * sp_prop_Phragmites,
+    Stem_ht_mm_Pneumatophores * sp_prop_Pneumatophores,
+    Stem_ht_mm_Sarcocornia * sp_prop_Sarcocornia,
+    Stem_ht_mm_Sporobolus * sp_prop_Sporobolus,
+    Stem_ht_mm_Suaeda * sp_prop_Suaeda,
+    Stem_ht_mm_Triglochin * sp_prop_Triglochin,
+    Stem_ht_mm_Watsonia * sp_prop_Watsonia, 
+    na.rm=TRUE))
+
+boxplot(salt_ht_wider$Stem_ht_average ~ salt_ht_wider$YSR)
+boxplot(salt_ht_wider$Stem_ht_average ~ salt_ht_wider$Site) # weighted averages across site
+boxplot(salt$Stem_ht_mm ~ salt$Site) # compare to incorrect averages across site
+
+M1 <- lm(Stem_ht_average ~ YSR * Elevation * DomSpeciesSimp, data = salt_ht_wider)
+plot(M1) # not good
+
+M2 <- lm(log(Stem_ht_average) ~ YSR * Elevation * DomSpeciesSimp, data = salt_ht_wider)
+plot(M2) # not great
+
+M3 <- lm(sqrt(Stem_ht_average) ~ YSR * Elevation * DomSpeciesSimp, data = salt_ht_wider)
+plot(M3) # not great
+
+# none are probably good enough but test M2 for interest
+summary(M2) # lots of potential significance
 ```
 
 
@@ -1691,6 +1839,8 @@ trig_comm$Seeds[trig_comm$Buds == 0] # there are 23 cases when Buds are not pres
 
 Community traits
 
+# 4a. Community composition
+
 ```{r Community composition}
 # remove columns that only have zeroes
 salt_comm_comp_H_res[,1:25] %>% colSums() # the last four columns are all zeroes
@@ -1739,12 +1889,14 @@ anova(mod_null, mod_rest)
 
 Species traits
 
+# 4b. Stem density
+
 ```{r Stem density}
 # note, currently: STEM DENSITY MULTIPLIED OUT - NO OFFSETS
 # also can't currently included species proportions as a predictor because you would need one row for each species.
 
 # create a new dataframe with just stem density data
-stem_dens <- salt[,c(5,6,7,11,13,14,24:32)]
+stem_dens <- salt[,c(5,6,7,11,13,14,24:32,35,36)]
 
 # remove replicates from measuring multiple stems for each species per quadrat (but only one stem density measurement)
 # first create a column for every unique site/quadrat/species combination
@@ -1752,29 +1904,29 @@ stem_dens$unique <- factor(interaction(stem_dens$Combo, stem_dens$Species, sep =
 stem_dens_unique <- stem_dens %>% distinct(unique, .keep_all = TRUE) 
 
 # transform this to wide format with a column for each species' stem density. Not sure how this works with offsets. Let's start without and then figure out there
-stem_dens_wide <- stem_dens_unique %>% pivot_wider(id_cols = c(Estuary, Site, Quadrat, Combo, Elevation, rest_status, YSR, DomSpecies), names_from = Species, values_from = total_stems)
+stem_dens_wide <- stem_dens_unique %>% pivot_wider(id_cols = c(Estuary, Site, Quadrat, Combo, Elevation, rest_status, YSR, DomSpecies, DomSpeciesSimp, DomSpeciesSuperSimp), names_from = Species, values_from = total_stems)
 
 # fill NA values with zeroes
-stem_dens_wide[,9:33] <- stem_dens_wide[,9:33] %>% replace(is.na(.), 0)
+stem_dens_wide[,11:35] <- stem_dens_wide[,11:35] %>% replace(is.na(.), 0)
 
 # subset for only Hunter and only restored
 stem_dens_wide_H_res <- stem_dens_wide %>% subset(Estuary == "Hunter") %>% subset(rest_status == 1)
 
 # remove columns that only have zeroes (i.e. no observations of that species anywhere)
-stem_dens_wide_H_res[,9:33] %>% colSums() # the last four columns are all zeroes
-stem_dens_wide_H_res <- stem_dens_wide_H_res[,1:29]
+stem_dens_wide_H_res[,11:35] %>% colSums() # the last four columns are all zeroes
+stem_dens_wide_H_res <- stem_dens_wide_H_res[,1:31]
 
 # now, we are only interested in species that have at least 5 total observations (otherwise there are insufficient data to analyse them)
 # calculate number of non-zero elements in each column
-stem_dens_wide_H_res[,9:29] %>% colSums(stem_dens_wide_H_res != 0)
-# add another row of code here to subset for only the columns with at least 5 observations
+colSums(stem_dens_wide_H_res != 0) # species with at least 5 values are Sarcocornia, Sporobolus, Triglochin, Pneumatophores, Bolboschoenus, Aster, Phragmites
+stem_dens_wide_H_res <- stem_dens_wide_H_res[,c(1:14,18,20,22)] # subset for only those species
 
-# set up mvabund with stem density columns - these are 9-29
-stemdens_mvabund <- mvabund(stem_dens_wide_H_res[,9:29])
+# set up mvabund with stem density columns - these are 11-17
+stemdens_mvabund <- mvabund(stem_dens_wide_H_res[,11:17])
 
 # look at spread of data
 par(mar = c(2, 10, 2, 2)) # adjusts the margins
-boxplot(stem_dens_wide_H_res[,9:29], horizontal = TRUE, las = 2, main = "Stem density")
+boxplot(stem_dens_wide_H_res[,11:17], horizontal = TRUE, las = 2, main = "Stem density")
 
 # look at mean-variance relationship
 meanvar.plot(stemdens_mvabund) # strong linear relationship
@@ -1783,34 +1935,87 @@ meanvar.plot(stemdens_mvabund) # strong linear relationship
 plot(stemdens_mvabund ~ as.factor(stem_dens_wide_H_res$YSR), cex.axis = 0.8, cex = 0.8)
 
 # count data so model with poisson or negative binomial distribution
-stemdens_mod1 <- manyglm(stemdens_mvabund ~ YSR + Elevation + DomSpecies, data = stem_dens_wide_H_res, family = "poisson")
+stemdens_mod1 <- manyglm(stemdens_mvabund ~ YSR * Elevation + DomSpecies, data = stem_dens_wide_H_res, family = "poisson")
 
 # check model assumptions
 plot(stemdens_mod1) # NOT OK!! there is a big trend...
 
 # try a negative binomial model
-stemdens_mod2 <- manyglm(stemdens_mvabund ~ YSR + Elevation + DomSpecies, data = stem_dens_wide_H_res) # default family is negative binomial
+stemdens_mod2 <- manyglm(stemdens_mvabund ~ YSR * Elevation + DomSpecies, data = stem_dens_wide_H_res) # default family is negative binomial
 
 # check model assumptions
 plot(stemdens_mod2) # zero inflated but much much better!
 
+# try with DomSpeciesSimp
+stemdens_mod3 <- manyglm(stemdens_mvabund ~ YSR * Elevation + DomSpeciesSimp, data = stem_dens_wide_H_res)
+
+plot(stemdens_mod3) # fine
+meanvar.plot(stemdens_mod3)
+
+# try with DomSpeciesSuperSimp
+stemdens_mod4 <- manyglm(stemdens_mvabund ~ YSR * Elevation + DomSpeciesSuperSimp, data = stem_dens_wide_H_res)
+
+plot(stemdens_mod4) # one outlier
+
+# therefore try mod3 (residuals plot looks fine and only has species we can statistically analyse)
+
 # use model to test hypotheses
-anova(stemdens_mod2)
+anova(stemdens_mod3)
 
 # get more specifics
-anova(stemdens_mod2, p.uni = "adjusted")
+anova(stemdens_mod3, p.uni = "adjusted")
 
 
-# do I want to do a simplified DomSpecies variable?
-# interactions??
 ```
 
+```{r Stem density again - long format with one species per row?}
+# can we just use Species as a predictor variable? and then we'd easily be able to include the offsets for quadrat size? don't remember the reason why we hadn't done this earlier (it might not be ok)
+
+# only Hunter and restored...
+stem_dens_unique_H_res <- stem_dens_unique %>% subset(Estuary == "Hunter") %>% subset(rest_status == 1)
+
+# determine which species have at least 5 values
+Stem_dens_count <-
+  stem_dens_unique_H_res %>% 
+  group_by(Species) %>% 
+  summarise(count_non_na = sum(!is.na(Stems)))
+print(Stem_dens_count, n = 21)
+# retain Aster, Bolboschoenus, Phragmites, Pneumatophores, Sarcocornia, Sporobolus, Triglochin
+
+stem_dens_unique_H_res <- stem_dens_unique_H_res %>% 
+  subset(Species %in% c("Aster", "Bolboschoenus", "Phragmites", "Pneumatophores", "Sarcocornia", "Sporobolus", "Triglochin"))
+
+# in this case can we do a generalised linear model?
+
+# try negative binomial as that's what worked above
+
+# need to include an offset for quadrat size.
+
+stem_mod5 <- glm.nb(Stems ~ Species * YSR * Elevation + DomSpeciesSimp + sp_prop +  offset(log(Quadrat_area)), data = stem_dens_unique_H_res, control=glm.control(maxit=50))
+
+plot(stem_mod5) # plots don't look good - not straight lines...
+
+stem_mod6 <- glm.nb(Stems ~ Species * YSR * Elevation + DomSpeciesSuperSimp + sp_prop +  offset(log(Quadrat_area)), data = stem_dens_unique_H_res, control=glm.control(maxit=50))
+
+plot(stem_mod6) # almost identical (bad) plots to the above
+```
+
+```{r Stem density multivariate - plot}
+# this is not a good plot, but not sure how to plot.
+ggplot(data = stem_dens_unique_H_res, aes(y = total_stems, x = YSR, fill = Species)) +
+  geom_smooth() +
+  geom_point()
+
+```
+
+
+# 4c. Reproduction
 
 ```{r Reproduction (presence/absence)}
 # note: can't currently include species proportions as a predictor because you would need one row for each species.
 
 # create a new dataframe with just reproduction data
-reprod <- salt[,c(5,6,7,11,16:18,24,25,28,30:32)]
+reprod <- salt[,c(5,6,7,11,16:18,24,25,28,30:32,35,36)]
 
 # recode seeds as a binary presence/absence variable
 reprod$Seeds %>% unique() # view unique values
@@ -1824,52 +2029,53 @@ reprod <- reprod %>% mutate(Seeds = case_when(
   Seeds == "NA" ~ NA
 ))
 
-# only keep species that I care about (saltmarsh species)
-reprod$Species %>% unique() # get list of Species
-reprod <- reprod %>% filter(Species == "Sarcocornia" | Species == "Sporobolus" | Species == 
-                              "Triglochin" | Species == "Suaeda" | Species == "Bolboschoenus" | Species == "Phragmites" | Species == "Juncus_kraussii" | Species == "Juncus acutus" | Species == "Juncus_sp1" | Species == "Juncus_sp2")
-
-
 # remove replicates from measuring multiple stems for each species per quadrat (but only one reproduction value)
 # first create a column for every unique site/quadrat/species combination
 reprod$unique <- factor(interaction(reprod$Combo, reprod$Species, sep = ":"))
 reprod_unique <- reprod %>% distinct(unique, .keep_all = TRUE) 
 
+# subset for only restored and Hunter
+reprod_unique_H_res <- reprod_unique %>% subset(Estuary == "Hunter") %>% subset(rest_status == 1)
+
+# count number of non-na values for each species (can only analyse species with at least 5 values)
+Reprod_count <-
+  reprod_unique_H_res %>% 
+  group_by(Species) %>% 
+  summarise(count_non_na = sum(!is.na(Seeds))) # can choose whatever reproduction type here as when one was recorded, all were.
+print(Reprod_count, n = 21)
+
+# species with enough data are: aster, bolboschoenus, phragmites, sarcocornia, sporobolus, triglochin
+reprod_unique_H_res <- reprod_unique_H_res %>% subset(Species %in% c("Aster", "Bolboschoenus", "Phragmites", "Sarcocornia", "Sporobolus", "Triglochin"))
+
 # make data longer with one row for reproduction type and another for presence/absence
-reprod_long <- reprod_unique %>% pivot_longer(cols = c("Buds", "Flowers", "Seeds"), names_to = "reprod_type", values_to = "Reproduction")
+reprod_long <- reprod_unique_H_res %>% pivot_longer(cols = c("Buds", "Flowers", "Seeds"), names_to = "reprod_type", values_to = "Reproduction")
 
 # transform this to wide format with a column for each species' reproduction. 
-reprod_wide <- reprod_long %>% pivot_wider(id_cols = c(Estuary, Site, Quadrat, Combo, Elevation, YSR, rest_status, reprod_type, DomSpecies), names_from = Species, values_from = Reproduction)
+reprod_wide <- reprod_long %>% pivot_wider(id_cols = c(Estuary, Site, Quadrat, Combo, Elevation, YSR, rest_status, reprod_type, DomSpecies, DomSpeciesSimp, DomSpeciesSuperSimp), names_from = Species, values_from = Reproduction)
 
-# subset for only Hunter and only restored
-reprod_wide_H_res <- reprod_wide %>% subset(Estuary == "Hunter") %>% subset(rest_status == 1)
-
-# remove columns that only have zeroes
-reprod_wide_H_res[,10:18] %>% colSums(na.rm = TRUE) # the last two columns are zeroes
-reprod_wide_H_res <- reprod_wide_H_res[,1:16]
-
-# add code here for also removing columns with <5 observations of that species
-
-# set up mvabund with reproduction columns - these are 10-16 (?)
-reprod_mvabund <- mvabund(reprod_wide_H_res[,10:16])
+# set up mvabund with reproduction columns - these are 12-17
+reprod_mvabund <- mvabund(reprod_wide[,12:17])
 
 # look at spread of data - boxplots are not ideal for binary data...
 par(mar = c(2, 10, 2, 2)) # adjusts the margins
-boxplot(reprod_wide_H_res[,10:16], horizontal = TRUE, las = 2, main = "Reproduction")
-
-# look at mean-variance relationship - not sure this is relevant for binary data...
-#meanvar.plot(reprod_mvabund) 
+boxplot(reprod_wide[,12:17], horizontal = TRUE, las = 2, main = "Reproduction")
 
 # explore visually - hard to interpret with binary data
-plot(reprod_mvabund ~ as.factor(reprod_wide_H_res$YSR), cex.axis = 0.8, cex = 0.8)
+plot(reprod_mvabund ~ as.factor(reprod_wide$YSR), cex.axis = 0.8, cex = 0.8)
 
-# count data so model with poisson or negative binomial distribution
+# binary data so model with binomial distribution
+
+reprod_mod1 <- manyglm(reprod_mvabund ~ YSR * Elevation + DomSpeciesSuperSimp + reprod_type, data = reprod_wide, family = "binomial", na.rm = TRUE)
+
 # This is coming up with errors, even though all categorical variables have multiple levels. Coming up with fatal errors when I experiment removing variables.
 
-#reprod_mod1 <- manyglm(reprod_mvabund ~ YSR + Elevation + DomSpecies + reprod_type, data = reprod_wide_H_res, family = "binomial", na.rm = TRUE)
+# try recoding character vectors as factors
+reprod_wide$reprod_type <- as.factor(reprod_wide$reprod_type)
+reprod_wide$DomSpeciesSuperSimp <- as.factor(reprod_wide$DomSpeciesSuperSimp)
+reprod_wide$DomSpeciesSimp <- as.factor(reprod_wide$DomSpeciesSimp)
 
-
-
+#reprod_mod1 <- manyglm(reprod_mvabund ~ YSR * Elevation + DomSpeciesSuperSimp + reprod_type, data = reprod_wide, family = "binomial", na.rm = TRUE)
+# coming up with a fatal error!
 
 # check model assumptions
 plot(reprod_mod1) 
@@ -1884,58 +2090,175 @@ anova(reprod_mod1, p.uni = "adjusted")
 
 Stem traits
 
-Stem height
-```{r Stem height}
-# note: can't currently included species proportions as a predictor because you would need one row for each species.
+# 4d. Stem height and diameter
 
-# create a new dataframe with just stem height data
-stem_height <- salt[,c(5,6,7,11,19,24,25,28,30:32,34)]
+```{r Stem height and diameter - prep data}
+# we can model these continuous traits together using a multivariate linear mixed model.
 
-# transform this to wide format with a column for each species' stem height 
-stem_ht_wide <- stem_ht_unique %>% pivot_wider(id_cols = c(Estuary, Site, Quadrat, Combo, Elevation, rest_status, YSR, DomSpecies), names_from = Species, values_from = Stem_ht_mm)
+# check number of non-NA rows for each Species (so we can exclude species with <5 values - insufficient data to analyse)
+Stem_ht_count <- 
+  salt_H_rest %>% 
+  group_by(Species, Quadrat.f) %>% # should only count 1 per quadrat.. independent observations. therefore grouping by Quadrat.f as well.
+  summarise(total_non_na = sum(!is.na(Stem_ht_mm)))
+print(Stem_ht_count, n = 21)
 
-# don't fill NA values with zeroes - doesn't make sense for stem heights!
+Stem_ht_quadrats <-
+  Stem_ht_count %>% 
+  group_by(Species) %>% 
+  summarise(count_non_na = sum(!is.na(total_non_na)))
+print(Stem_ht_quadrats, n = 21)
 
-# subset for only Hunter and only restored
-stem_ht_wide_H_res <- stem_ht_wide %>% subset(Estuary == "Hunter") %>% subset(rest_status == 1)
+# species to retain (at least 5 quadrats): Aster, Bolboschoenus, Phragmites, Pneumatophores, Sarcocornia, Sporobolus, Triglochin
+# stem diameters were measured at the same time as stem heights so these would also be the suitable species for stem diameter.
 
-# remove columns that only have NAs / sum to zero (i.e. no heights)
-stem_ht_wide_H_res[,9:33] %>% colSums() # the last four columns are all zeroes
-stem_ht_wide_H_res <- stem_ht_wide_H_res[,1:29]
+salt_H_rest_stems <- salt_H_rest %>% subset(Species %in% c("Aster", "Bolboschoenus", "Phragmites", "Pneumatophores", "Sarcocornia", "Sporobolus", "Triglochin"))
 
-# also remove columns with <5 values (can't do stats on rare species as insufficient data)
-stem_ht_wide_H_res[,9:29] %>% colSums(stem_ht_wide_H_res != 0)
-# add another row of code here to subset for only the columns with at least 5 observations
 
-# set up mvabund with stem height columns - these are 9-29
-stemht_mvabund <- mvabund(stem_ht_wide_H_res[,9:29])
+# visualise relationships between traits for each species
+scatterplotMatrix(~ Stem_ht_mm + Stem_dia_mm | Species, data=salt_H_rest_stems,smooth=FALSE,regLine=FALSE,ellipse=TRUE, by.groups=TRUE,diagonal=FALSE,legend=list(coords="bottomleft")) # this does not need to be a matrix as there are only two factors! Interesting to look at though.
 
-# look at spread of data
-par(mar = c(2, 10, 2, 2)) # adjusts the margins
-boxplot(stem_ht_wide_H_res[,9:29], horizontal = TRUE, las = 2, main = "Stem height")
+# visualise boxplots for each factor
+boxplot(salt_H_rest_stems$Stem_ht_mm ~ salt_H_rest_stems$Species)
+boxplot(salt_H_rest_stems$Stem_dia_mm ~ salt_H_rest_stems$Species)
 
-# look at mean-variance relationship
-meanvar.plot(stemht_mvabund, na.rm = TRUE) # not working
-
-# explore visually
-plot(stemht_mvabund ~ as.factor(stem_ht_wide_H_res$YSR), cex.axis = 0.8, cex = 0.8)
-
-# continuous data so model with poisson or negative binomial distribution
-stemht_mod1 <- manyglm(stemht_mvabund ~ YSR + Elevation + DomSpecies, data = stem_ht_wide_H_res, family = "poisson")
-
-# check model assumptions
-plot() # 
-
-# use model to test hypotheses
-anova()
-
-# get more specifics
-anova(, p.uni = "adjusted")
+# recode characters as factors?
+salt_H_rest_stems$DomSpeciesSimp <- as.factor(salt_H_rest_stems$DomSpeciesSimp)
+salt_H_rest_stems$DomSpeciesSuperSimp <- as.factor(salt_H_rest_stems$DomSpeciesSuperSimp)
+salt_H_rest_stems$Species <- as.factor(salt_H_rest_stems$Species)
 ```
 
-```{r Stem diameter}
 
+```{r Stem height - try models and explore assumptions}
+# explore distribution
+hist(salt_H_rest_stems$Stem_ht_mm) # highly left skewed
+
+# explore relationship between dependent and predictor variables
+plot(salt_H_rest_stems$Stem_ht_mm ~ salt_H_rest_stems$YSR) # not clearly non-linear
+plot(salt_H_rest_stems$Stem_ht_mm ~ salt_H_rest_stems$Elevation) # not clearly non-linear
+
+# model stem height
+M1 <- lmer(Stem_ht_mm ~ Species * YSR * Elevation + DomSpeciesSimp + sp_prop + (1|Quadrat.f), data = salt_H_rest_stems, na.action = na.exclude)
+
+# residuals plots
+plot(M1) # not ideal variance plot
+qqnorm(resid(M1)) 
+qqline(resid(M1)) # not good normality plot
+
+# try log-transformation
+M2 <- lmer(log(Stem_ht_mm) ~ Species * YSR * Elevation + DomSpeciesSimp + sp_prop + (1|Quadrat.f), data = salt_H_rest_stems, na.action = na.exclude)
+
+# residuals plots
+plot(M2) # variances look ok
+qqnorm(resid(M2)) 
+qqline(resid(M2)) #normality is better but still not good - lower values are off
+
+# try sqrt-transformation
+M3 <- lmer(sqrt(Stem_ht_mm) ~ Species * YSR * Elevation + DomSpeciesSimp + sp_prop + (1|Quadrat.f), data = salt_H_rest_stems, na.action = na.exclude)
+
+# residuals plots
+plot(M3) # variances not great
+qqnorm(resid(M3)) 
+qqline(resid(M3)) #normality not good
+
+# try DomSpeciesSuperSimp with log transform
+M4 <- lmer(log(Stem_ht_mm) ~ Species * YSR * Elevation + DomSpeciesSuperSimp + sp_prop + (1|Quadrat.f), data = salt_H_rest_stems, na.action = na.exclude)
+
+# residuals plots
+plot(M4) # variances look ok not amazing
+qqnorm(resid(M4)) 
+qqline(resid(M4)) # not any better than M2
+
+# try gamma distribution
+M5 <- glmer(Stem_ht_mm ~ Species * YSR * Elevation + DomSpeciesSimp + sp_prop + (1|Quadrat.f), data = salt_H_rest_stems, family = Gamma(), na.action = na.exclude)
+# errors
 ```
+
+
+```{r Stem diameter - try models and explore assumptions}
+# explore distribution
+hist(salt_H_rest_stems$Stem_dia_mm) # highly right skewed
+
+# explore relationship between dependent and predictor variables
+plot(salt_H_rest_stems$Stem_dia_mm ~ salt_H_rest_stems$YSR) # not clearly non-linear
+plot(salt_H_rest_stems$Stem_dia_mm ~ salt_H_rest_stems$Elevation) # not clearly non-linear
+
+# model stem height
+M1 <- lmer(Stem_dia_mm ~ Species * YSR * Elevation + DomSpeciesSimp + sp_prop + (1|Quadrat.f), data = salt_H_rest_stems, na.action = na.exclude)
+
+# residuals plots
+plot(M1) # not amazing but might be ok
+qqnorm(resid(M1)) 
+qqline(resid(M1)) # not good normality plot
+
+# try log-transformation
+M2 <- lmer(log(Stem_dia_mm) ~ Species * YSR * Elevation + DomSpeciesSimp + sp_prop + (1|Quadrat.f), data = salt_H_rest_stems, na.action = na.exclude)
+
+# residuals plots
+plot(M2) # not great but ok
+qqnorm(resid(M2)) 
+qqline(resid(M2)) # normality not ok
+
+# try sqrt-transformation
+M3 <- lmer(sqrt(Stem_dia_mm) ~ Species * YSR * Elevation + DomSpeciesSimp + sp_prop + (1|Quadrat.f), data = salt_H_rest_stems, na.action = na.exclude)
+
+# residuals plots
+plot(M3) # pretty good
+qqnorm(resid(M3)) 
+qqline(resid(M3)) # pretty good
+
+#therefore use M3
+summary(M3)
+
+# results are very different when elevation is rescaled vs not....
+```
+
+```{r Stem diameter - interpreting effects}
+plot_model(M3, type = "pred", terms = c("YSR", "Species", "Elevation"))
+plot_model(M3, type = "int", terms = c("Species", "YSR", "Elevation"))
+
+
+# code modified from https://osf.io/28mpv
+
+# Describe the interaction effect based on estimated marginal means and errors
+# get and plot estimated marginal means, standard errors, and confidence intervals.
+
+# Get estimated marginal means and errors
+emm = as.data.frame(emmeans(M3, specs=c("YSR", "Species")))
+
+# Prepare plot with stimated marginal means and CIs
+mm = ggplot(data=salt_H_rest_stems_factor, aes(x=YSR, y=Stem_dia_mm, fill=Species)) + 
+  #ylim(ylim) +
+  geom_line(data=emm, linewidth=1.3, linetype=1,
+            aes(x=YSR, y=emmean, group=Species, colour=Species)) + 
+  geom_point(data=emm, size=3, shape=18, 
+             aes(x=YSR, y=emmean, group=Species, colour=Species)) + 
+  geom_errorbar(data=emm, size=1, width=.1,
+                aes(x=YSR, y=emmean, group=Species, colour=Species, ymin=lower.CL, ymax=upper.CL)) +
+  scale_colour_brewer(palette="Dark2") + scale_fill_brewer(palette="Dark2") + 
+  ggtitle("Model estimated \n marginal means ") + 
+  theme_bw() + 
+  theme(plot.title=element_text(hjust=0.5, size=27), 
+        panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        legend.position=c(.2,.85),
+        legend.title=element_text(size=25), 
+        legend.text=element_text(size=25),
+        axis.title.x=element_text(size=27),
+        axis.text.x=element_text(size=27),
+        axis.title.y=element_text(size=25),
+        axis.text.y=element_text(size=25),
+        panel.border = element_blank(),
+        axis.line.x = element_line(linewidth = 0.5, linetype = "solid", colour = "black"),
+        axis.line.y = element_line(linewidth = 0.5, linetype = "solid", colour = "black"))
+mm
+```
+
+
+
+
+
+
+
+
 
 
 
