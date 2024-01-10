@@ -39,6 +39,7 @@ This R script tests different types of modelling that can be applied to our salt
 #install.packages("statmod")
 #install.packages("lmerTest")
 #install.packages("sjPlot")
+#install.packages("DHARMa")
 
 library(plyr)
 library(readxl)
@@ -63,6 +64,7 @@ library(ggpubr)
 library(countreg)
 library(lmerTest)
 library(sjPlot)
+library(DHARMa)
 ```
 
 
@@ -551,7 +553,6 @@ plot(salt_comm_rest_H$total_cover_prop ~ salt_comm_rest_H$YSR) # possibly non-li
 plot(salt_comm_rest_H$total_cover_prop ~ salt_comm_rest_H$Elevation) # possibly non-linear
 ```
 
-
 ```{r Total cover - model}
 # use glm with tweedie distrubution as tweedie is similar to beta distrubtion
 M <- glm(total_cover_prop ~ poly(YSR,2) * DomSpecies * poly(Elevation,2), data = salt_comm_rest_H, family = tweedie(var.power=1.5, link = 0), na.action = na.exclude)
@@ -591,7 +592,7 @@ M8 <- betareg(total_cover_prop ~ poly(YSR,2) * poly(Elevation,2) + DomSpeciesSim
 plot(M8) # now point 41 has very high cook's distnace and 7 and 69 are still high...
 
 # try DomSpeciesSuperSimp
-M9 <- betareg(total_cover_prop ~ poly(YSR,2) * poly(Elevation,2) + DomSpeciesSuperSimp, data = salt_comm_rest_H, link = "logit", na.action = na.exclude)
+M9 <- betareg(total_cover_prop ~ poly(cbind(YSR,Elevation),2) + DomSpeciesSuperSimp, data = salt_comm_rest_H, link = "logit", na.action = na.exclude)
 plot(M9) # still large cook's distance at 7, 41 and 69 but a bit better than before
 summary(M9)
 # after adjusting p-values by multiplying by 2, it's pretty similar to M4 - no significance, except in DomSpeciesSuperSimpSporobolus - more sporobolus means more cover. (highly significant)
@@ -609,8 +610,23 @@ M10 <- betareg(total_cover_prop ~ poly(YSR,2) * poly(Elevation,2) + DomSpeciesSu
 plot(M10) # cook's distance plot looks much better
 summary(M10) # there are some differences from M9. but the influential values are realistic so should be retained..
 
-# therefore, if we want to include DomSpecies to some extent, use M9, but if not, use M4
-# use M9
+
+
+M11 <- lm(total_cover_prop ~ poly(cbind(YSR,Elevation),2) + DomSpeciesSuperSimp, data = salt_comm_rest_H, na.action = na.exclude)
+plot(M11)
+
+plot(salt_comm_rest_H$total_cover_prop)
+hist(log(1-salt_comm_rest_H$total_cover_prop))
+
+# use M12 - too many 1's for a beta regression + cbind the two poly variables so we're not modelling interactions between their polynomial terms
+M12 <- lm(log(1-salt_comm_rest_H$total_cover_prop) ~ poly(cbind(YSR,Elevation),2) +  DomSpeciesSuperSimp, data = salt_comm_rest_H, na.action = na.exclude)
+plot(M12) # plots look good enough - the data are ~1 inflated so that's going to show up regardless but the spread looks way better now.
+summary(M12)
+
+# however, this isn't looking for YSR on its own which is what I'm actually interested in
+M13 <- lm(log(1-salt_comm_rest_H$total_cover_prop) ~ poly(cbind(YSR,Elevation),2) + YSR + DomSpeciesSuperSimp, data = salt_comm_rest_H, na.action = na.exclude)
+plot(M13) # plots look good enough - the data are ~1 inflated so that's going to show up regardless but the spread looks way better now.
+summary(M13) # comes up with NAs for YSR?
 ```
 
 Other assumptions (??)
@@ -736,8 +752,7 @@ plot(M1) # plot doesn't look good
 
 # check if this number of zeroes can be predicted under a negative binomial model
 
-M2 <- glm(Burrows_0.5x0.5 ~ poly(YSR,2) + Elevation + DomSpecies,
-          family = 'nbinom1',
+M2 <- glm.nb(Burrows_0.5x0.5 ~ poly(YSR,2) + Elevation + DomSpecies,
           data = salt_comm_rest_H)
 plot(M2) # plot doesn't look good
 
@@ -808,7 +823,17 @@ M9 <- zeroinfl(Burrows_0.5x0.5 ~ poly(YSR,2)* Elevation + DomSpeciesSuperSimp, d
 rootogram(M9, main = "ZINB", ylim = c(-5, 15), max = 50) # looks fine
 qqrplot(M9, main = "ZINB") # looks fine
 summary(M9) # now no error.
+plot(predict(M9), residuals(M9))
 
+M10 <- glmmTMB(Burrows_0.5x0.5 ~ poly(YSR,2)* Elevation + DomSpeciesSuperSimp, data = salt_comm_rest_H, family = "nbinom2")
+
+M11 <- glmmTMB(Burrows_0.5x0.5 ~ poly(YSR,2)* Elevation + DomSpeciesSuperSimp, data = salt_comm_rest_H, family = "nbinom2", ziformula =~1)
+plot(predict(M11), residuals(M11), ylim = c(-50,50))
+
+resid <- residuals(simulateResiduals(M10), quantilefunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(resid, predict(M10))
+
+anova(M10,M11)
 
 # I think the count part of the model models the likelihood of burrows given that burrows may exist on site whereas the zero-inflated part might model the likelihood that there are just no burrows on site?
 
@@ -1841,16 +1866,22 @@ Community traits
 
 # 4a. Community composition
 
+
 ```{r Community composition}
 # remove columns that only have zeroes
 salt_comm_comp_H_res[,1:25] %>% colSums() # the last four columns are all zeroes
 salt_comm_comp_H_res <- salt_comm_comp_H_res[,c(1:21,26:31)]
 
-SaltComm <- mvabund(salt_comm_comp_H_res[,1:21])
+# only include species with at least 5 occurrences.
+# check occurrences of each species
+colSums(salt_comm_comp_H_res != 0) # species with at least 5 values are Sarcocornia, Sporobolus, Triglochin, Pneumatophores, Bolboschoenus, Aster, Phragmites
+salt_comm_comp_H_res <- salt_comm_comp_H_res[,c(1:4,8,10,12,22:27)] # subset for only those species
+
+SaltComm <- mvabund(salt_comm_comp_H_res[,1:7])
 
 # check out spread of data
 par(mar = c(2, 10, 2, 2)) # adjusts the margins
-boxplot(salt_comm_comp_H_res[,1:21], horizontal = TRUE, las = 2, main = "Percent cover")
+boxplot(salt_comm_comp_H_res[,1:7], horizontal = TRUE, las = 2, main = "Percent cover")
 # large differences in variance, therefore check out mean-variance relationship
 
 # check out mean-variance relationship
@@ -1861,7 +1892,10 @@ meanvar.plot(SaltComm)
 plot(SaltComm ~ as.factor(salt_comm_comp_H_res$YSR))
 
 # fit a tweedie model for percentage cover data
-fit_cover <- manyany(SaltComm ~ YSR + Elevation, "glm", data = salt_comm_comp_H_res, family=tweedie(link = 0, var.power=1.1), var.power = 1.1)
+fit_cover <- manyany(SaltComm ~ YSR + Elevation, "glm", data = salt_comm_comp_H_res, family=tweedie(var.power=1.1, link.power = 0), var.power = 1.1)
+residuals(fit_cover)
+predict(fit_cover)
+summary(fit_cover)
 
 # check residuals vs fitted values plot
 plot.manyglm(fit_cover)
@@ -1879,6 +1913,12 @@ for(i in 1:length(vpwrs)){
 # model with interaction term
 fit_cover2 <- manyany(SaltComm ~ YSR * Elevation, "glm", data = salt_comm_comp_H_res, family=tweedie(link = 0, var.power=1.1), var.power = 1.1)
 # if going with this, would also need to check the residuals vs fitted values plot and check for the optimum var.power value
+summary(fit_cover2)
+
+
+# testing if it works for an individual species
+fit_cover3 <- glm(Sporobolus ~ YSR * Elevation, data = salt_comm_comp_H_res, family=tweedie(link = 0, var.power=1.1))
+
 
 # test model
 # test importance of restoration 
@@ -2130,7 +2170,7 @@ salt_H_rest_stems$Species <- as.factor(salt_H_rest_stems$Species)
 
 ```{r Stem height - try models and explore assumptions}
 # explore distribution
-hist(salt_H_rest_stems$Stem_ht_mm) # highly left skewed
+hist(salt_H_rest_stems$Stem_ht_mm) # highly right skewed
 
 # explore relationship between dependent and predictor variables
 plot(salt_H_rest_stems$Stem_ht_mm ~ salt_H_rest_stems$YSR) # not clearly non-linear
