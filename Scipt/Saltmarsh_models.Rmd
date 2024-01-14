@@ -634,6 +634,11 @@ emmip(M12, Elevation~YSR | DomSpeciesSuperSimp, at = list(YSR = c(6,9,11,12,19,3
 # note, back-transforming would reverse these trends
 # so total cover increases with increasing elevation, is higher at middle YSR, is lowest for higher YSR, and is higher for sporobolus
 
+
+# try adding sp_prop
+M13 <- lm(log(1-salt_comm_rest_H$total_cover_prop) ~ poly(cbind(YSR,Elevation),2) +  DomSpeciesSuperSimp + sp_prop, data = salt_comm_rest_H, na.action = na.exclude)
+plot(M13) # plots are a little worse than M12. need to come up with a good reason to include sp_prop or not based on theory 
+summary(M13)
 ```
 
 Other assumptions (??)
@@ -857,6 +862,15 @@ anova(M10,M11)
 # significance here means the zero inflated part of the model does explain more of the variation, so therefore we should use the zero inflated model - M11
 
 summary(M11)
+
+
+# try with sp_prop
+M12 <- glmmTMB(Burrows_0.5x0.5 ~ poly(YSR,2)* Elevation + DomSpeciesSuperSimp + sp_prop, data = salt_comm_rest_H_burrows, family = "nbinom2", ziformula =~1)
+# in this plot we expect to see an increasing variance trend as it's a negative binomial distribution and hasn't been altered to fit a flat distribution.
+plot(predict(M12), residuals(M12), ylim = c(-50,50))
+resid <- residuals(simulateResiduals(M12), quantilefunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(resid, predict(M12)) # this one should be flat - looks good
+summary(M12)
 ```
 
 ```{r Burrows - plot}
@@ -1919,6 +1933,8 @@ plot(SaltComm ~ as.factor(salt_comm_comp_H_res$YSR))
 fit_cover <- manyany(SaltComm ~ YSR * Elevation, "glm", data = salt_comm_comp_H_res, family=tweedie(link = 0, var.power=1.1), var.power = 1.1)
 # if going with this, would also need to check the residuals vs fitted values plot and check for the optimum var.power value
 
+plot(fit_cover)
+
 # test for the best value of the var.power element
 vpwrs <- seq(1.1,1.9, by =.1)
 aic_vp <- rep(NA, length(vpwrs))
@@ -2025,6 +2041,14 @@ anova(stemdens_mod3, p.uni = "adjusted")
 # can we just use Species as a predictor variable? and then we'd easily be able to include the offsets for quadrat size? don't remember the reason why we hadn't done this earlier (it might not be ok)
 # yes we can, but need to account for covariance between species observations for the same quadrat:
 
+# create a new dataframe with just stem density data
+stem_dens <- salt[,c(5,6,7,11,13,14,24:32,35,36)]
+
+# remove replicates from measuring multiple stems for each species per quadrat (but only one stem density measurement)
+# first create a column for every unique site/quadrat/species combination
+stem_dens$unique <- factor(interaction(stem_dens$Combo, stem_dens$Species, sep = ":"))
+stem_dens_unique <- stem_dens %>% distinct(unique, .keep_all = TRUE) 
+
 # only Hunter and restored...
 stem_dens_unique_H_res <- stem_dens_unique %>% subset(Estuary == "Hunter") %>% subset(rest_status == 1)
 
@@ -2055,6 +2079,21 @@ plotQQunif(M1) # looks great
 
 
 summary(M1)
+
+
+
+# try adding sp_prop
+M2 <- glmmTMB(Stems ~ YSR * Elevation * Species + DomSpeciesSuperSimp + sp_prop + offset(log(Quadrat_area)) + rr(Species+0|Combo, d = 2), family = "nbinom2", data = stem_dens_unique_H_res)
+# do we need to add + (1|Combo) when that's already involved in the covariate structure?
+# also what is d?
+
+plot(predict(M2), residuals(M2)) # looks great and less uneven than previous
+resid <- residuals(simulateResiduals(M2), quantilefunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(resid, predict(M2)) # looks good
+plotQQunif(M2) # looks great
+
+
+summary(M2)
 
 ```
 
@@ -2127,22 +2166,67 @@ reprod_mod1 <- manyglm(reprod_mvabund ~ YSR * Elevation + DomSpeciesSuperSimp + 
 
 # This is coming up with errors, even though all categorical variables have multiple levels. Coming up with fatal errors when I experiment removing variables.
 
-# try recoding character vectors as factors
-reprod_wide$reprod_type <- as.factor(reprod_wide$reprod_type)
-reprod_wide$DomSpeciesSuperSimp <- as.factor(reprod_wide$DomSpeciesSuperSimp)
-reprod_wide$DomSpeciesSimp <- as.factor(reprod_wide$DomSpeciesSimp)
+# maybe because Bolboschoenus only has reprod_type = seeds? and other uncommon species probably have similar problems (Aster and Phragmites)
 
-#reprod_mod1 <- manyglm(reprod_mvabund ~ YSR * Elevation + DomSpeciesSuperSimp + reprod_type, data = reprod_wide, family = "binomial", na.rm = TRUE)
-# coming up with a fatal error!
+# therefore try with only Sarcocornoia, Sporobolus and Triglochin
+reprod_unique_H_res2 <- reprod_unique_H_res %>% subset(Species %in% c("Sarcocornia", "Sporobolus", "Triglochin"))
+
+# make data longer with one row for reproduction type and another for presence/absence
+reprod2_long <- reprod_unique_H_res2 %>% pivot_longer(cols = c("Buds", "Flowers", "Seeds"), names_to = "reprod_type", values_to = "Reproduction")
+
+# transform this to wide format with a column for each species' reproduction. 
+reprod2_wide <- reprod2_long %>% pivot_wider(id_cols = c(Estuary, Site, Quadrat, Combo, Elevation, YSR, rest_status, reprod_type, DomSpecies, DomSpeciesSimp, DomSpeciesSuperSimp), names_from = Species, values_from = Reproduction)
+
+# set up mvabund with reproduction columns - these are 12-14
+reprod2_mvabund <- mvabund(reprod2_wide[,12:14])
+
+reprod_mod2 <- manyglm(reprod2_mvabund ~ YSR * Elevation + DomSpeciesSuperSimp + reprod_type, data = reprod2_wide, family = "binomial", na.rm = TRUE)
+
+
+
 
 # check model assumptions
-plot(reprod_mod1) 
+plot(reprod_mod2) 
 
 # use model to test hypotheses
-anova(reprod_mod1)
+anova(reprod_mod2)
 
 # get more specifics
-anova(reprod_mod1, p.uni = "adjusted")
+anova(reprod_mod2, p.uni = "adjusted")
+```
+
+
+```{r Reproduction - try long data approach in glmmTMB}
+# remove NAs
+reprod_long <- reprod_long %>% subset(!is.na(Reproduction))
+
+# not sure this is going to work as we have two grouping variables, Species and reprod_type
+M1 <- glmmTMB(Reproduction ~ YSR * Elevation * Species + DomSpeciesSuperSimp + reprod_type + rr(Species+0|Combo, d = 2), family = "binomial", data = reprod_long)
+# do we need to add + (1|Combo) when that's already involved in the covariate structure?
+# also what is d?
+# warning message
+
+# check model assumptions
+residuals(M1)
+predict(M1)
+plot(predict(M1), residuals(M1))
+
+resid <- residuals(simulateResiduals(M1), quantilefunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(resid, predict(M1)) # scaled residuals plot - there are three outliers with large negative predicted values. are these ok? how do I know which they are and if I should remove them?
+resid <- residuals(simulateResiduals(M1), quantilefunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(resid, predict(M1), ylim = c(-20,20)) # looks pretty good without the outliers.
+plotQQunif(M1) # looks great
+
+summary(M1)
+
+
+
+
+# explore - only seeds
+seeds <- reprod_long %>% subset(reprod_type == "Seeds")
+
+M2 <- glmmTMB(Reproduction ~ YSR * Elevation * Species + DomSpeciesSuperSimp + rr(Species+0|Combo, d = 2), family = "binomial", data = seeds)
+# warnings
 ```
 
 
@@ -2195,7 +2279,7 @@ salt_H_rest_stems_dia <- salt_H_rest_stems %>% subset(!is.na(Stem_dia_mm))
 # explore distribution
 hist(salt_H_rest_stems_dia$Stem_dia_mm) # highly right skewed
 hist(log(salt_H_rest_stems_dia$Stem_dia_mm)) # better
-hist(sqrt(salt_H_rest_stems_dia$Stem_dia_mm)) # better
+hist(sqrt(salt_H_rest_stems_dia$Stem_dia_mm)) # better but worse than log
 
 # explore relationship between dependent and predictor variables
 plot(salt_H_rest_stems_dia$Stem_dia_mm ~ salt_H_rest_stems_dia$YSR) # not clearly non-linear
@@ -2290,7 +2374,7 @@ plotQQunif(M0) # not good
 
 # log model
 M2 <- glmmTMB(log(Stem_ht_mm) ~ Species * YSR * Elevation + DomSpeciesSuperSimp + sp_prop + (1|Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_ht)
-# no error with log model?
+# no error with log model
 
 plot(predict(M2), residuals(M2)) # decent but some more extreme lower values, probably ok though
 plotQQunif(M2) # pretty good

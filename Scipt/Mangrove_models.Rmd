@@ -227,10 +227,6 @@ manq$Elevation[31:50] <- 0.732
 # there is a grey mangrove height measurement listed as 1m, which is too short to be a tree so must be a transcription error. Removing this data cell.
 mantree$Height_m[15] <- NA 
 
-# rescale/standardise elevation
-mantree$Elevation <- scale(mantree$Elevation, center = TRUE, scale = TRUE)
-manq$Elevation <- scale(manq$Elevation, center = TRUE, scale = TRUE)
-
 # data transformations
 mantree <- mantree %>% mutate(ln_total_trees = log(total_trees),
                               sq_total_trees = sqrt(total_trees),
@@ -253,7 +249,7 @@ mantree_H <- mantree %>% subset(mantree$Estuary == "Hunter")
 mantree_comm_H <- mantree_comm %>% subset(mantree_comm$Estuary == "Hunter")
 manq_H <- manq %>% subset(manq$Estuary == "Hunter")
 manq_comm_H <- manq_comm %>% subset(manq_comm$Estuary == "Hunter")
-manleaf_wide_H <- manleaf_wide %>% subset(manleaf_wide$Estuary == "Hunter")
+manleaf_wide_H <- manleafall_wide %>% subset(manleafall_wide$Estuary == "Hunter")
 
 # Grey mangroves only
 mantree_grey <- mantree %>% subset(mantree$Species == "Grey")
@@ -268,7 +264,7 @@ manq_comm_rest <- manq_comm %>% subset(manq_comm$rest_status == 1)
 manq_H_rest <- manq_H %>% subset(manq_H$rest_status == 1)
 manq_comm_H_rest <- manq_comm_H %>% subset(manq_comm_H$rest_status == 1)
 mantree_grey_rest <- mantree_grey %>% subset(mantree_grey$rest_status == 1)
-manleaf_wide_rest <- manleaf_wide %>% subset(manleaf_wide$rest_status == 1)
+manleaf_wide_rest <- manleafall_wide %>% subset(manleafall_wide$rest_status == 1)
 manleaf_wide_H_rest <- manleaf_wide_H %>% subset(manleaf_wide_H$rest_status == 1)
 
 # natural sites only
@@ -281,10 +277,10 @@ manq_comm_nat <- manq_comm %>% subset(manq_comm$rest_status == 0)
 manq_H_nat <- manq_H %>% subset(manq_H$rest_status == 0)
 manq_comm_H_nat <- manq_comm_H %>% subset(manq_comm_H$rest_status == 0)
 mantree_grey_nat <- mantree_grey %>% subset(mantree_grey$rest_status == 0)
-manleaf_wide_nat <- manleaf_wide %>% subset(manleaf_wide$rest_status == 0)
+manleaf_wide_nat <- manleafall_wide %>% subset(manleafall_wide$rest_status == 0)
 
 # mangrove leaves - trees only
-manleaf_wide_t <- manleaf_wide %>% subset(manleaf_wide$Tree_sapling == "Tree")
+manleaf_wide_t <- manleafall_wide %>% subset(manleafall_wide$Tree_sapling == "Tree")
 manleaf_wide_H_t <- manleaf_wide_H %>% subset(manleaf_wide_H$Tree_sapling == "Tree")
 manleaf_wide_rest_t <- manleaf_wide_rest %>% subset(manleaf_wide_rest$Tree_sapling == "Tree")
 manleaf_wide_nat_t <- manleaf_wide_nat %>% subset(manleaf_wide_nat$Tree_sapling == "Tree")
@@ -547,18 +543,29 @@ plot(mantree$DBH_cm ~ mantree$Basal_circ_cm) # they are correlated, but there is
 # B. Hunter and Maroochy together (for YSR)
 
 ```{r Number of trees - YSR - model}
+# plot distribution of "Trees"
+hist(mantree_comm_rest$total_trees) #  right skewed
+
 # plot relationships between variables
-plot(mantree_comm_rest$total_trees ~ mantree_comm_rest$YSR) # not obviously non-linear
+plot(mantree_comm_rest$total_trees ~ mantree_comm_rest$YSR) # potentially non-linear
 plot(mantree_comm_rest$total_trees ~ mantree_comm_rest$Elevation) # not obviously non-linear
+# use total_trees for plotting as it accounts for offsets, but use Trees + offset for modelling
 
-M <- lmer(total_trees ~ YSR + Elevation + Estuary + (1|Site), data = mantree_comm_rest, na.action = na.exclude)
+# it's count data so probably not a normal distribution! try poisson or negative binomial
 
-summary(M)
+M1 <- glm(Trees ~ poly(YSR,2) * Elevation * Estuary + offset(log(Quadrat_size_m2)), family = "poisson", data = mantree_comm_rest)
 
-# need to include an offset...
+plot(M1) # looks pretty good
 
-M1 <- glm(total_trees ~ YSR + Elevation + Estuary, data = mantree_comm_rest, na.action = na.exclude)
+# try negative binomial
 
+M2 <- glm(Trees ~ poly(YSR,2) * Elevation * Estuary + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm_rest)
+
+plot(M2) # not great
+
+# therefore use poisson model, M1
+
+# note we still need to include a variable for DomSpecies or # species as species composition could affect # trees...
 summary(M1)
 ```
 
@@ -598,33 +605,30 @@ ggplot(mantree_comm_nat, aes(x = Site, y = total_trees)) +
 
 
 ```{r Number of saplings - YSR - model}
+# plot distribution of saplings
+hist(mantree_comm_rest$total_saplings) # right skewed
+
 # plot relationships between variables
 plot(mantree_comm_rest$total_saplings ~ mantree_comm_rest$YSR) # looks non-linear
 plot(mantree_comm_rest$total_saplings ~ mantree_comm_rest$Elevation) # not obviously non-linear
 
-M <- lmer(total_saplings ~ poly(YSR,2) + Elevation + Estuary + (1|Site), data = mantree_comm_rest, na.action = na.exclude)
-summary(M)
+# count data so use poisson or negative binomial model
 
-# need to include offset!
+# try poisson
+M1 <- glm(Saplings ~ poly(YSR,2) * Elevation * Estuary + offset(log(Quadrat_size_m2)), family = "poisson", data = mantree_comm_rest)
 
-# not a mixed model
-M1 <- glm(total_saplings ~ poly(YSR,2) + Elevation + Estuary, data = mantree_comm_rest, na.action = na.exclude)
+plot(M1) # pretty good
+
+# try negative binomial
+M2 <- glm(Saplings ~ poly(YSR,2) * Elevation * Estuary + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm_rest)
+
+plot(M2) # pretty good
+
+# poisson looks slightly better so use that
+
+# note we still need to include a variable for DomSpecies or # species as species composition could affect # saplings...
 summary(M1)
-
-# with interactions
-M2 <- glm(total_saplings ~ poly(YSR,2) * Elevation * Estuary, data = mantree_comm_rest, na.action = na.exclude)
-summary(M2) # no significant interactions so run model without interactions
-
-# check model assumptions
-# check for collinearity between predictors
-check_collinearity(M) # VIF < 5 (low collinearity) - good.
-
-# residuals plots
-plot(M) # fine
-qqnorm(resid(M))
-qqline(resid(M)) # roughly fine, one slightly extreme value
 ```
-
 
 ```{r Number of saplings - YSR - plot}
 # plot YSR - smoothed line plot
@@ -714,21 +718,47 @@ ggplot(mantree_comm, aes(x = new_order, y = total_saplings)) +
   theme_classic() 
 ```
 
-```{r Number of seedlings - YSR - model}
-M <- lmer(`Seedlings_30-100cm_1x1` ~ YSR + Elevation + (1|Site) + (1|Site/Quadrat), data = manq_comm_rest, na.action = na.exclude)
-summary(M)
-# error
+```{r Hollows - YSR - model}
+# plot distribution of hollows
+hist(mantree_comm_rest$total_hollows) # highly right skewed, zero-inflated
 
-M2 <- lmer(sq_seedling ~ YSR + Elevation + (1|Site) + (1|Site/Quadrat), data = manq_comm_rest, na.action = na.exclude)
-# error
-summary(M2)
-```
+# plot relationships between variables
+plot(mantree_comm_rest$total_hollows ~ mantree_comm_rest$YSR) # not obviously non-linear
+plot(mantree_comm_rest$total_hollows ~ mantree_comm_rest$Elevation) # not obviously non-linear
 
-```{r Number of seedlings - YSR - plot}
-# plot YSR
-ggplot(manq_comm_rest, aes(x = YSR, y = sq_seedling)) +
-  geom_point() +
-  stat_smooth(span = 1)
+# count data so use poisson or negative binomial model
+# or zero-inflated model if these can't account for excessive zeroes
+
+# try poisson
+M1 <- glm(Hollows ~ poly(YSR,2) * Elevation * Estuary + offset(log(Quadrat_size_m2)), family = "poisson", data = mantree_comm_rest)
+
+plot(M1) # not good
+
+# try negative binomial
+M2 <- glm(Hollows ~ poly(YSR,2) * Elevation * Estuary + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm_rest)
+
+plot(M2) # not good
+
+# try zero-inflated negative binomial
+M3 <- glmmTMB(Hollows ~ poly(YSR,2) * Elevation * Estuary + offset(log(Quadrat_size_m2)), family = "nbinom2", ziformula =~1, data = mantree_comm_rest)
+# model convergence problem
+
+# troubleshooting - see https://cran.r-project.org/web/packages/glmmTMB/vignettes/troubleshooting.html
+# see if any estimated coefficients are extreme
+fixef(M3)
+# zero-inflated model intercept looks tiny (-14), some of the interaction terms are very large
+
+#... could continue trying this troubleshooting approach
+
+# try model without interactions
+M4 <- glmmTMB(Hollows ~ poly(YSR,2) + Elevation + Estuary + offset(log(Quadrat_size_m2)), family = "nbinom2", ziformula =~1, data = mantree_comm_rest)
+
+resid <- residuals(simulateResiduals(M4), quantilefunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(resid, predict(M4)) # plot looks great
+plotQQunif(M4) #looks good
+
+# note we still need to include a variable for DomSpecies or # species as species composition could affect # hollows...
+summary(M4)
 ```
 
 ```{r Hollows - YSR - plot}
@@ -746,6 +776,23 @@ ggplot(mantree_comm_nat, aes(x = Site, y = Hollows)) +
   theme_classic() 
 ```
 
+```{r Canopy cover - YSR - model}
+# plot distribution of canopy cover
+hist(mantree_comm_rest$`Canopy_cover_%`) # slightly left skewed but ok / kind of close to uniform distribution
+
+# plot relationships between variables
+plot(mantree_comm_rest$`Canopy_cover_%` ~ mantree_comm_rest$YSR) # could be non-linear
+plot(mantree_comm_rest$`Canopy_cover_%` ~ mantree_comm_rest$Elevation) # not obviously non-linear
+
+# try linear model to begin with
+M1 <- lm(`Canopy_cover_%` ~ poly(YSR,2) * Elevation * Estuary, data = mantree_comm_rest)
+
+plot(M1) # looks great
+
+summary(M1)
+
+```
+
 ```{r Canopy cover - YSR - plot}
 # plot YSR
 ggplot(mantree_comm_rest, aes(x = YSR, y = `Canopy_cover_%`)) +
@@ -759,6 +806,39 @@ ggplot(mantree_comm_nat, aes(x = Site, y = `Canopy_cover_%`)) +
   geom_jitter(width=0.1) +
     labs(y = "Number of hollows", x = "Site") +
   theme_classic() 
+```
+
+```{r Number of pneumatophores - YSR - plot}
+# plot distribution of number of pneumatophores
+hist(manq_comm_rest$`Pneu_0.5x0.5`) # looks normally distributed
+
+# plot relationships between variables
+plot(manq_comm_rest$`Pneu_0.5x0.5` ~ manq_comm_rest$YSR) # could be non-linear
+plot(manq_comm_rest$`Pneu_0.5x0.5` ~ manq_comm_rest$Elevation) # not obviously non-linear
+
+# try linear model as data are normally distributed
+# need random factor for quadrat (Combo) - therefore linear mixed model
+M1 <- lmer(`Pneu_0.5x0.5` ~ poly(YSR,2) * Elevation * Estuary + (1|Combo), data = manq_comm_rest)
+# singular fit
+```
+
+
+
+```{r Number of seedlings - YSR - model}
+M <- lmer(`Seedlings_30-100cm_1x1` ~ YSR + Elevation + (1|Site) + (1|Site/Quadrat), data = manq_comm_rest, na.action = na.exclude)
+summary(M)
+# error
+
+M2 <- lmer(sq_seedling ~ YSR + Elevation + (1|Site) + (1|Site/Quadrat), data = manq_comm_rest, na.action = na.exclude)
+# error
+summary(M2)
+```
+
+```{r Number of seedlings - YSR - plot}
+# plot YSR
+ggplot(manq_comm_rest, aes(x = YSR, y = sq_seedling)) +
+  geom_point() +
+  stat_smooth(span = 1)
 ```
 
 
