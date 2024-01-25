@@ -169,6 +169,7 @@ salt$Quadrat.f <- as.character(salt$Quadrat.f)
 
 # load saltmarsh community composition data
 salt_comm_comp <- read_excel("Data/salt_comm_comp.xlsx", sheet = "alldata")
+salt_comm_comp$YSR <- as.numeric(salt_comm_comp$YSR)
 ```
 
 
@@ -256,7 +257,7 @@ Duplicate deletion - for community-level variables, there are several rows for e
 
 ```{r Duplicate deletion - community-level variables}
 salt_comm <- salt %>% distinct(Combo, .keep_all = TRUE) 
-salt_comm <- salt_comm[,-c(11:20,22,26,27,34)] # remove irrelevant rows
+salt_comm <- salt_comm[,-c(11:20,22,26,27,32,34)] # remove irrelevant rows
 # turn total cover into a proportion between 0 and 1 instead of between 0 and 100
 salt_comm <- salt_comm %>% mutate(total_cover_prop = `Total_cover_%`/100 -0.001)
 # also included a tiny offset since it doesn't like values of exactly 1 - must be below 1.
@@ -628,17 +629,24 @@ summary(M12)
 # first calculate quantile values for elevation
 quantile(salt_comm_rest_H$Elevation)
 # insert quantile 1 and quantile 3 values as Elevation values to use
-emmip(M12, Elevation~YSR | DomSpeciesSuperSimp, at = list(YSR = c(6,9,11,12,19,30,33), Elevation = c(0.143, 0.469), CIs = TRUE))
-# can see the trend, but would need to back-transform to understand what total cover values these correlate to.
-# also there are no CIs
-# note, back-transforming would reverse these trends
+plot <- emmip(M12, Elevation~YSR | DomSpeciesSuperSimp, at = list(YSR = c(6,9,11,12,19,30,33), Elevation = c(0.143, 0.469)))
+plotdata <- plot$data
+plotdata$Elevation <- as.factor(plotdata$Elevation)
+# this plot has transformed data, so doesn't mean much
+
+# backtransform data 
+plotdata <- plotdata %>% 
+  mutate(Cover = (1 - exp(yvar))*100)
+
+# plot (this code doesn't work - try to replicate emmip with facet by species, colour by elevation)
+ggplot(aes(x = YSR, y = Cover, group = Elevation, color = Elevation), data = plotdata) +
+  geom_line() +
+  facet_wrap(~DomSpeciesSuperSimp) + 
+  coord_cartesian(ylim=c(0, 100)) +
+  ylab("Total cover")
+
 # so total cover increases with increasing elevation, is higher at middle YSR, is lowest for higher YSR, and is higher for sporobolus
 
-
-# try adding sp_prop
-M13 <- lm(log(1-salt_comm_rest_H$total_cover_prop) ~ poly(cbind(YSR,Elevation),2) +  DomSpeciesSuperSimp + sp_prop, data = salt_comm_rest_H, na.action = na.exclude)
-plot(M13) # plots are a little worse than M12. need to come up with a good reason to include sp_prop or not based on theory 
-summary(M13)
 ```
 
 Other assumptions (??)
@@ -741,12 +749,12 @@ tapply(salt_comm$total_cover_prop, salt_comm$Site, mean)
 #2c - burrows
 
 ```{r Burrows - Exploration and data prep}
-# plot relationships between variables
+# histogram of burrows per site
 ggplot(data = salt_comm_rest_H, aes(x = Burrows_0.5x0.5)) +
   geom_histogram() +
   facet_wrap(~Site)
 
-
+# plot relationships between variables
 plot(salt_comm_rest_H$Burrows_0.5x0.5 ~ salt_comm_rest_H$YSR) # relatively linear
 plot(salt_comm_rest_H$Burrows_0.5x0.5 ~ salt_comm_rest_H$Elevation) # relatively linear
 
@@ -864,13 +872,7 @@ anova(M10,M11)
 summary(M11)
 
 
-# try with sp_prop
-M12 <- glmmTMB(Burrows_0.5x0.5 ~ poly(YSR,2)* Elevation + DomSpeciesSuperSimp + sp_prop, data = salt_comm_rest_H_burrows, family = "nbinom2", ziformula =~1)
-# in this plot we expect to see an increasing variance trend as it's a negative binomial distribution and hasn't been altered to fit a flat distribution.
-plot(predict(M12), residuals(M12), ylim = c(-50,50))
-resid <- residuals(simulateResiduals(M12), quantilefunction = qnorm, outlierValues = c(-7,7))
-scatter.smooth(resid, predict(M12)) # this one should be flat - looks good
-summary(M12)
+# cannot make a model with sp_prop as it is for non-community level variables!
 ```
 
 ```{r Burrows - plot}
@@ -888,9 +890,7 @@ emmip(M11, Elevation~YSR, at = list(YSR = c(6,9,11,12,19,30,33), Elevation = c(0
 
 
 
-
-
-
+# this doesn't take into account any of the other factors or interactions...
 # Years since restoration
 ggplot(salt_comm_rest_H, aes(x = YSR, y = Burrows_0.5x0.5)) +   
       geom_point(alpha = 0.5, na.rm = TRUE) +
@@ -941,13 +941,12 @@ ggarrange(S_Bur_rest,S_Bur_nat,ncol =2,nrow=1,widths = c(3,1))
 # print at 1500 x 800
 
 # predict effects of YSR when controlling for the other factors
-# this plot needs work - not sure what the y axis is??
-predict_YSR <- ggemmeans(M11, terms = c("YSR [all]"))
+predict_YSR <- ggemmeans(M12, terms = c("YSR [all]"))
 # view this result
 print(predict_YSR)
 # visualise this result
 plot(predict_YSR, ci = T) +
-  ggtitle("") +  geom_line(size = 1.2) +
+  ggtitle("") +  geom_line(linewidth = 1.2) +
   labs(y = "Burrows", x = "Years since restoration") +
   theme_classic() 
 ```
@@ -1913,13 +1912,14 @@ salt_comm_comp_H_res <- salt_comm_comp_H_res[,c(1:21,26:31)]
 # only include species with at least 5 occurrences.
 # check occurrences of each species
 colSums(salt_comm_comp_H_res != 0) # species with at least 5 values are Sarcocornia, Sporobolus, Triglochin, Pneumatophores, Bolboschoenus, Aster, Phragmites
-salt_comm_comp_H_res <- salt_comm_comp_H_res[,c(1:4,8,10,12,22:27)] # subset for only those species
+# also remove Pneumatophores - they are not a saltmarsh species so are not that relevant for understanding community composition.
+salt_comm_comp_H_res <- salt_comm_comp_H_res[,c(1:3,8,10,12,22:27)] # subset for only those species
 
-SaltComm <- mvabund(salt_comm_comp_H_res[,1:7])
+SaltComm <- mvabund(salt_comm_comp_H_res[,1:6])
 
 # check out spread of data
 par(mar = c(2, 10, 2, 2)) # adjusts the margins
-boxplot(salt_comm_comp_H_res[,1:7], horizontal = TRUE, las = 2, main = "Percent cover")
+boxplot(salt_comm_comp_H_res[,1:6], horizontal = TRUE, las = 2, main = "Percent cover")
 # large differences in variance, therefore check out mean-variance relationship
 
 # check out mean-variance relationship
@@ -1931,30 +1931,58 @@ plot(SaltComm ~ as.factor(salt_comm_comp_H_res$YSR))
 
 # create model with interaction term
 fit_cover <- manyany(SaltComm ~ YSR * Elevation, "glm", data = salt_comm_comp_H_res, family=tweedie(link = 0, var.power=1.1), var.power = 1.1)
-# if going with this, would also need to check the residuals vs fitted values plot and check for the optimum var.power value
+sum(fit_cover$logL) # sum of log likelihood = -3797
 
-plot(fit_cover)
+# now check the residuals vs fitted values plot and check for the optimum var.power value
+
+plot(fit_cover) # looks ok
 
 # test for the best value of the var.power element
-vpwrs <- seq(1.1,1.9, by =.1)
-aic_vp <- rep(NA, length(vpwrs))
+vpwrs <- seq(1.1,1.8, by =.1) # only going up to 1.8 rather than 1.9 as 1.9 creates errors and would be a worse fit than 1.8 anyway
+LogL_vp <- rep(NA, length(vpwrs))
 for(i in 1:length(vpwrs)){ 
   fit_vp <- manyany(SaltComm ~ YSR * Elevation, "glm", data = salt_comm_comp_H_res, family=tweedie(link = 0, var.power=vpwrs[i]), var.power=vpwrs[i])
-  aic_vp[i] <- fit_vp$AICsum
+  LogL_vp[i] <- sum(fit_vp$logL)
 }
-# this is not working because there is no fit_vp$AICsum
-# how do I calculate AIC? formula is AIC = 2K – 2ln(L) where K = # model parameters and ln(L) = log likelihood but there are a lot of log likelihood terms and I'm not sure if each species counts as a parameter?
 
-# test importance of YSR by comparing it to a model without YSR
-fit_cover_null <- manyany(SaltComm ~ Elevation, "glm", data = salt_comm_comp_H_res, family=tweedie(link = 0, var.power=1.1), var.power = 1.1) # make a model that's the same as the desired model but without YSR term
-anova(fit_cover_null, fit_cover)
+# looking for whichever model has the greatest log Likelihood
+plot(LogL_vp) # log likelihood maximised at 1.6
 
-# test model
-# test importance of restoration 
-mod_rest <- #insert best model here
-mod_null <- #same as best model without the YSR term
-anova(mod_null, mod_rest)
+# should create new model with var.power = 1.6. However, later at the anova stage, this doesn't work. Try lower values
+fit_cover2 <- manyany(SaltComm ~ YSR * Elevation, "glm", data = salt_comm_comp_H_res, family=tweedie(link = 0, var.power=1.5), var.power = 1.5)
+
+plot(fit_cover2) # residuals look ok - assumptions ok
+
+# test importance of YSR by comparing it to a model without YSR and without YSR * Elevation interaction
+# without interaction
+fit_cover_null <- manyany(SaltComm ~ YSR + Elevation, "glm", data = salt_comm_comp_H_res, family=tweedie(link = 0, var.power=1.5), var.power = 1.5) 
+# without YSR term
+fit_cover_null2 <- manyany(SaltComm ~ Elevation, "glm", data = salt_comm_comp_H_res, family=tweedie(link = 0, var.power=1.5), var.power = 1.5)
+
+# test for differences between the models
+anova(fit_cover_null, fit_cover2) # testing for interaction between YSR and Elevation
+anova(fit_cover_null2, fit_cover_null) # testing for YSR
 ```
+
+```{r Community composition - plot}
+# make data longer
+salt_comm_comp_H_res_long <- salt_comm_comp_H_res %>% pivot_longer(cols = c(Sarcocornia, Sporobolus, Triglochin, Aster, Bolboschoenus, Phragmites), names_to = "Species", values_to = "Percent_cover")
+
+# plot
+ggplot(data = salt_comm_comp_H_res_long, aes(x = as.factor(YSR), y = Percent_cover, fill = Species)) +
+  geom_boxplot() +
+  facet_wrap(~Species) +
+  scale_fill_viridis(discrete = TRUE, begin = 0.1, end = 1, option = "A") +
+    theme(legend.position = "none",
+          axis.text = element_text(size = 24),
+          axis.title = element_text(size = 28)) +
+  xlab("Years since restoration") +
+  ylab("Species percent cover") +
+  theme(strip.text = element_text(size = 24))
+# print at 1500 x 1200
+
+```
+
 
 Species traits
 
@@ -1983,7 +2011,7 @@ stem_dens_wide_H_res <- stem_dens_wide %>% subset(Estuary == "Hunter") %>% subse
 
 # remove columns that only have zeroes (i.e. no observations of that species anywhere)
 stem_dens_wide_H_res[,11:35] %>% colSums() # the last four columns are all zeroes
-stem_dens_wide_H_res <- stem_dens_wide_H_res[,1:31]
+stem_dens_wide_H_res <- stem_dens_wide_H_res[,1:35]
 
 # now, we are only interested in species that have at least 5 total observations (otherwise there are insufficient data to analyse them)
 # calculate number of non-zero elements in each column
@@ -2061,16 +2089,20 @@ print(Stem_dens_count, n = 21)
 # retain Aster, Bolboschoenus, Phragmites, Pneumatophores, Sarcocornia, Sporobolus, Triglochin
 
 stem_dens_unique_H_res <- stem_dens_unique_H_res %>% 
-  subset(Species %in% c("Aster", "Bolboschoenus", "Phragmites", "Sarcocornia", "Sporobolus", "Triglochin"))
+  subset(Species %in% c("Aster", "Bolboschoenus", "Phragmites", "Pneumatophores", "Sarcocornia", "Sporobolus", "Triglochin"))
 
 # remove NAs
 stem_dens_unique_H_res <- stem_dens_unique_H_res %>% subset(!is.na(Stems))
 
 # use glmmTMB
 
-M1 <- glmmTMB(Stems ~ YSR * Elevation * Species + DomSpeciesSuperSimp + offset(log(Quadrat_area)) + rr(Species+0|Combo, d = 2), family = "nbinom2", data = stem_dens_unique_H_res)
-# do we need to add + (1|Combo) when that's already involved in the covariate structure?
-# also what is d?
+M1 <- glmmTMB(Stems ~ YSR * Elevation + YSR * Species + Elevation * Species + DomSpeciesSuperSimp + offset(log(Quadrat_area)) + (1|Combo) + rr(Species+0|Combo, d = 1), family = "nbinom2", data = stem_dens_unique_H_res)
+
+M1 <- glmmTMB(Stems ~ YSR * Elevation + YSR * Species + Elevation * Species + DomSpeciesSuperSimp + offset(log(Quadrat_area)) + rr(Species+1|Combo, d = 1), family = "nbinom2", data = stem_dens_unique_H_res)
+
+
+M1 <- glmmTMB(Stems ~ YSR * Species * Elevation + DomSpeciesSuperSimp + offset(log(Quadrat_area)) + Combo + rr(Species+0|Combo, d = 1), family = "nbinom2", data = stem_dens_unique_H_res)
+
 
 plot(predict(M1), residuals(M1)) # looks like a negative binomial spread! more spread in negative values and a couple extreme values
 resid <- residuals(simulateResiduals(M1), quantilefunction = qnorm, outlierValues = c(-7,7))
@@ -2096,6 +2128,116 @@ plotQQunif(M2) # looks great
 summary(M2)
 
 ```
+
+```{r Stem density - mvabund with offset matrix - incomplete dataset}
+# I think we're likely going to have errors due to not having each species in each quadrat...
+
+# define some parameters
+nspec = n_distinct(stem_dens_unique_H_res$Species) #number of species
+nquadrat = nrow(stem_dens_unique_H_res) #number of rows/ quadrats
+nBoot = 999 #desired number of bootstraps
+
+# create some bootstrapping matrixes
+#bootID short is a matrix with nBOOT rows (e.g. 99 or 999), and nsite columns. As in the regular anova the response has length nsite
+bootID_short =  matrix(NA, nrow = nBoot, ncol = nquadrat)
+#bootID long is a matrix with nBOOT rows (e.g. 99 or 999), and nsite*nspecies columns. As in the long format anova the response has length nspecies
+bootID_long = matrix(NA, nrow = nBoot, ncol = nquadrat*nspec)
+
+#construct a bootID by sampling quadrats with replacement
+for (b in 1:nBoot){
+  site_samples = sample(1:nquadrat,nquadrat, replace = TRUE) 
+  bootID_short[b,] = site_samples
+}
+
+# long format data - cull rows I don't need and add a long data row index
+stem_dens_unique_H_res <- stem_dens_unique_H_res %>% 
+  dplyr::select(Combo, Species, Stems, Elevation, Quadrat_area, total_stems, YSR, DomSpeciesSuperSimp, sp_prop, unique) %>%
+  mutate(long_data.row.index = 1:n())
+
+#In this data, the row names are not the row indexes, otherwise you could skip this step and join on the row names. To be safe we join on row indexes in the next step. 
+row_names_row_index_lookup_table = data.frame(Combo = stem_dens_unique_H_res$Combo) %>% mutate(row.index = 1:nquadrat)
+row_names_row_index_lookup_table
+
+#This step selects the rows of the long format data which are selected in each bootstrap iteration. The important thing is that all rows corresponding to a site will be sampled in a bootstrap sample. 
+for(i in 1:nBoot){
+  bootID_long[i, ] = data.frame(row.index = matrix((bootID_short[i,]), ncol=1)) %>% #select the ith row of bootID_short
+    left_join(row_names_row_index_lookup_table) %>%  #joins on "row.index" This step is needed as the site names are not the row indexes
+    left_join(stem_dens_unique_H_res, multiple = "all") %>% #joins on "rows" (which are the site names in reveg). This is a many to one join. We take 10 rows and return 240 rows. 
+    dplyr::select(long_data.row.index) %>% #now we select the row indexes of the long format data which will be used in the ith bootstrap resample
+    unlist()
+  #these are the rows in the ith bootstrap 
+}
+# this is not working - most likely because it expects a complete matrix with all 6 species listed for all 139 quadrats, which is not the case.
+```
+
+
+```{r Stem density - mvabund with offset matrix - full dataset}
+# run code for wide stem density first 
+# now we can convert the wide format to long format so we can retain rows with zero observations
+
+stem_dens_long_zeroes <- stem_dens_wide_H_res %>% 
+  pivot_longer(cols = c(Sarcocornia, Sporobolus, Triglochin, Pneumatophores, Bolboschoenus, Aster, Phragmites), names_to = "Species", values_to = "Stems") %>% 
+  mutate(unique = paste0(Combo,":",Species))
+
+# this dataset does not have species proportion or offset data - we will need to add these
+
+id_data <- stem_dens_unique_H_res %>% dplyr::select(Quadrat_area, sp_prop, unique)
+
+stem_dens_long_zeroes <- stem_dens_long_zeroes %>% full_join(id_data) %>% 
+  mutate(
+    Quadrat_area = Quadrat_area %>% replace(is.na(.), 10000), # replace missing data with 1 x 1 m quadrat
+    sp_prop = sp_prop %>% replace(is.na(.), 0), # replace missing species proportions with 0 (there were none)
+    long_data.row.index = 1:n()) # add unique row index identifier
+
+# define some parameters
+nspec = n_distinct(stem_dens_long_zeroes$Species) #number of species
+nquadrat = nrow(stem_dens_long_zeroes) #number of rows/ quadrats
+nBoot = 999 #desired number of bootstraps
+
+# create some bootstrapping matrixes
+#bootID short is a matrix with nBOOT rows (e.g. 99 or 999), and nsite columns. As in the regular anova the response has length nsite
+bootID_short =  matrix(NA, nrow = nBoot, ncol = nquadrat)
+#bootID long is a matrix with nBOOT rows (e.g. 99 or 999), and nsite*nspecies columns. As in the long format anova the response has length nspecies
+bootID_long = matrix(NA, nrow = nBoot, ncol = nquadrat*nspec)
+
+#construct a bootID by sampling quadrats with replacement
+for (b in 1:nBoot){
+  site_samples = sample(1:nquadrat,nquadrat, replace = TRUE) 
+  bootID_short[b,] = site_samples
+}
+
+#In this data, the row names are not the row indexes, otherwise you could skip this step and join on the row names. To be safe we join on row indexes in the next step. 
+row_names_row_index_lookup_table = data.frame(Combo = stem_dens_long_zeroes$Combo) %>% mutate(row.index = 1:nquadrat)
+row_names_row_index_lookup_table
+
+#This step selects the rows of the long format data which are selected in each bootstrap iteration. The important thing is that all rows corresponding to a site will be sampled in a bootstrap sample. 
+for(i in 1:nBoot){
+  bootID_long[i, ] = data.frame(row.index = matrix((bootID_short[i,]), ncol=1)) %>% #select the ith row of bootID_short
+    left_join(row_names_row_index_lookup_table) %>%  #joins on "row.index" This step is needed as the site names are not the row indexes
+    left_join(stem_dens_long_zeroes, multiple = "all") %>% #joins on "rows" (which are the site names in reveg). This is a many to one join. We take 10 rows and return 240 rows. 
+    dplyr::select(long_data.row.index) %>% #now we select the row indexes of the long format data which will be used in the ith bootstrap resample
+    unlist()
+  #these are the rows in the ith bootstrap 
+}
+
+
+#Now we can run the model with an offset - which could vary by species as the data is long format - using a bootID matrix to make sure sites are resampled together. 
+fit_null = manyglm(Stems ~ Elevation * Species + 
+                     DomSpeciesSuperSimp + sp_prop + offset(log(Quadrat_area)),
+                   data=stem_dens_long_zeroes) # without YSR
+fit_null2 = manyglm(Stems ~ YSR * Species + Elevation * Species + 
+                     DomSpeciesSuperSimp + sp_prop + offset(log(Quadrat_area)),
+                   data=stem_dens_long_zeroes) # without interaction with Elevation
+#The alternative model contains the treatment variable/ gradient and it's interaction with species (using : syntax)
+fit_alt = manyglm(Stems ~ YSR * Elevation + YSR * Species + Elevation * Species + 
+                     DomSpeciesSuperSimp + sp_prop + offset(log(Quadrat_area)),
+                   data=stem_dens_long_zeroes)
+
+
+anova(fit_null, fit_null2, bootID = bootID_long) # testing for importance of YSR
+anova(fit_null2, ft_alt, bootID = bootID_long) # testing for importance of YSR * Elevation interaction
+```
+
 
 ```{r Stem density multivariate - plot}
 # this is not a good plot, but not sure how to plot.
@@ -2201,10 +2343,12 @@ anova(reprod_mod2, p.uni = "adjusted")
 reprod_long <- reprod_long %>% subset(!is.na(Reproduction))
 
 # not sure this is going to work as we have two grouping variables, Species and reprod_type
-M1 <- glmmTMB(Reproduction ~ YSR * Elevation * Species + DomSpeciesSuperSimp + reprod_type + rr(Species+0|Combo, d = 2), family = "binomial", data = reprod_long)
+M1 <- glmmTMB(Reproduction ~ YSR * Elevation * Species + YSR * Species * reprod_type +  rr(Species+0|Combo, d = 2), family = "binomial", data = reprod_long)
 # do we need to add + (1|Combo) when that's already involved in the covariate structure?
-# also what is d?
+# remove DomSp.. for now
 # warning message
+
+# do separately or do summary of reproduction?
 
 # check model assumptions
 residuals(M1)
@@ -2380,7 +2524,9 @@ plot(predict(M2), residuals(M2)) # decent but some more extreme lower values, pr
 plotQQunif(M2) # pretty good
 
 # sqrt model
-M3 <- glmmTMB(sqrt(Stem_ht_mm) ~ Species * YSR * Elevation + DomSpeciesSuperSimp + sp_prop + (1|Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_ht)
+M3 <- glmmTMB(sqrt(Stem_ht_mm) ~ Species * YSR * Elevation + DomSpeciesSuperSimp * Species + sp_prop * Species + (1|Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_ht)
+
+M3 <- glmmTMB(sqrt(Stem_ht_mm) ~ Species * YSR * Elevation + DomSpeciesSuperSimp * Species  + (1|Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_ht)
 
 plot(predict(M3), residuals(M3)) # ok but more clumped than log
 plotQQunif(M3) # pretty good

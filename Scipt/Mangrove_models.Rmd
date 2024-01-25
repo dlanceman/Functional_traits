@@ -28,6 +28,8 @@ knitr::opts_chunk$set(echo = TRUE)
 #install.packages("emmeans")
 #install.packages("robustlmm")
 #install.packages("viridis")
+#install.packages("DHARMa)
+#install.packages("lmerTest)
 
 library(readxl)
 library(tidyverse)
@@ -42,6 +44,8 @@ library(ggeffects)
 library(emmeans)
 library(robustlmm)
 library(viridis)
+library(DHARMa)
+library(lmerTest)
 ```
 
 
@@ -128,7 +132,14 @@ manq <- read_excel("Data/Functional_traits_combined_data.xlsx", sheet = "Mangrov
            Site == "DLW" ~ as.numeric("9"),
            Site == "CCW" ~ as.numeric("16"),
            Site == "YCW" ~ as.numeric("5")), # add a column for years since restoration
-         pneu_h_d = Pneu_ht_mm/Pneu_dia_mm)
+         pneu_h_d = Pneu_ht_mm/Pneu_dia_mm, # variable for ratio between pneu ht and dia
+         #Subquadrat = paste0(Combo, as.numeric(factor(`Seedlings_<30cm_1x1`))),
+         Subquadrat = paste0(Combo, match(`Pneu_0.5x0.5`, unique(`Pneu_0.5x0.5`)))
+         ) # need to create a subquadrat label to label subquadrat 1 and 2 in each quadrat
+
+# did this create enough unique subquadrats?
+unique(manq$Subquadrat) # there are 98 unique values
+unique(manq$Combo) # there are 49 unique Combo values, therefore we have the correct number of subquadrats.
 ```
 
 
@@ -808,7 +819,7 @@ ggplot(mantree_comm_nat, aes(x = Site, y = `Canopy_cover_%`)) +
   theme_classic() 
 ```
 
-```{r Number of pneumatophores - YSR - plot}
+```{r Number of pneumatophores - YSR - model}
 # plot distribution of number of pneumatophores
 hist(manq_comm_rest$`Pneu_0.5x0.5`) # looks normally distributed
 
@@ -820,6 +831,38 @@ plot(manq_comm_rest$`Pneu_0.5x0.5` ~ manq_comm_rest$Elevation) # not obviously n
 # need random factor for quadrat (Combo) - therefore linear mixed model
 M1 <- lmer(`Pneu_0.5x0.5` ~ poly(YSR,2) * Elevation * Estuary + (1|Combo), data = manq_comm_rest)
 # singular fit
+# it's because there are no overlap of Combo values in each Estuary - removing Estuary works but then we don't have estuary as a factor
+
+# try without Estuary
+M2 <- lmer(`Pneu_0.5x0.5` ~ poly(YSR,2) * Elevation + (1|Combo), data = manq_comm_rest)
+
+# try with Estuary inside the random factor (don't think it will work as Estuary only has 2 levels)
+M3 <- lmer(`Pneu_0.5x0.5` ~ poly(YSR,2) * Elevation + (1|Combo/Estuary), data = manq_comm_rest)
+
+# that works, let's explore. unfortunately can't have interactions between YSR and Estuary this way...
+plot(M3) # just the residuals plot, looks ok
+plotQQunif(M3) # looks great
+
+summary(M3)
+
+# or can we have interactions with random factors?
+# no, same results as without interactions
+```
+
+```{r Pneumatophore height - YSR - model}
+# use manq_rest dataset here as we have many pneumatophore values so can't use the community average
+
+# plot distribution of pneumatophore heights
+hist(manq_rest$Pneu_ht_mm) # somewhat right skewed
+
+# plot relationships between variables
+plot(manq_rest$Pneu_ht_mm ~ manq_rest$YSR) # looks potentially non-linear
+plot(manq_rest$Pneu_ht_mm ~ manq_rest$Elevation) # not obviously non-linear
+
+# try linear model 
+# need random factor for quadrat (Combo) - therefore linear mixed model
+M1 <- lmer(Pneu_ht_mm ~ poly(YSR,2) * Elevation + (1|Subquadrat/Combo/Estuary), data = manq_rest)
+# not working...
 ```
 
 
