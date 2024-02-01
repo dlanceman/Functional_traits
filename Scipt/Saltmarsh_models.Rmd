@@ -2338,6 +2338,106 @@ anova(reprod_mod2, p.uni = "adjusted")
 ```
 
 
+```{r Reproduction - explore data}
+# explore - only seeds
+seeds <- reprod_long %>% subset(reprod_type == "Seeds")
+
+M3 <- glmmTMB(Reproduction ~ YSR * Elevation * Species + DomSpeciesSuperSimp + rr(Species+0|Combo, d = 2), family = "binomial", data = seeds)
+# warnings
+
+M4 <- glmmTMB(Reproduction ~ YSR * Elevation * Species + (1|Combo), family = "binomial", data = seeds)
+
+ggplot(data = seeds, aes(x = Reproduction, y = Species)) +
+  geom_boxplot() +
+  facet_wrap(~Site)
+# bolboschoenus has almost no data; sporobolus, sarcocornia and triglochin have the most data
+
+seeds.s <- seeds %>% subset(Species %in% c("Sporobolus", "Sarcocornia", "Triglochin"))
+
+M5 <- glmmTMB(Reproduction ~ YSR * Elevation * Species + (1|Combo), family = "binomial", data = seeds.s)
+# no warnings
+
+seeds.no.b <- seeds %>% subset(Species %in% c("Sporobolus", "Sarcocornia", "Triglochin", "Aster", "Phragmites"))
+
+M6 <- glmmTMB(Reproduction ~ YSR * Elevation * Species + (1|Combo), family = "binomial", data = seeds.no.b)
+# warning
+
+
+# explore - only flowers
+flowers <- reprod_long %>% subset(reprod_type == "Flowers")
+
+ggplot(data = flowers, aes(x = Reproduction, y = Species)) +
+  geom_boxplot() +
+  facet_wrap(~Site)
+# bolboschoenus and phragmites have no useable data.
+
+
+# explore - only buds
+buds <- reprod_long %>% subset(reprod_type == "Buds")
+
+ggplot(data = buds, aes(x = Reproduction, y = Species)) +
+  geom_boxplot() +
+  facet_wrap(~Site)
+# there are only bud data for triglochin and aster. zeroes for the rest.
+
+# explore - general reproduction
+ggplot(data = reprod_long, aes(x = Reproduction, y = Species)) +
+  geom_boxplot() +
+  facet_wrap(~Site)
+
+# maybe we just can't include reprod_type as a factor since (particularly) buds are no good.
+
+
+
+
+
+
+
+
+# what is the proportion of each species at each site with each reproduction type?
+
+reprod_proportions <- reprod_long %>% 
+  group_by(Site, Species, reprod_type) %>% 
+  summarise(avg = mean(Reproduction), se = sd(Reproduction)/sqrt(n()), YSR = mean(YSR)) %>% 
+  ungroup()
+
+reprod_proportions <- reprod_proportions %>% mutate(Site = factor(Site, levels = c("AE", "TB", "HS", "TA", "CF", "CC")))
+
+# By YSR
+ggplot(data = reprod_proportions, aes(x = YSR, y = avg, group = reprod_type, color = reprod_type, ymin = avg-se, ymax = avg+se)) +
+  geom_point() +
+  geom_errorbar() +
+  facet_wrap(~Species)
+
+# By species
+ggplot(data = reprod_proportions, aes(x = Site, y = avg, group = reprod_type, color = reprod_type, ymin = avg-se, ymax = avg+se)) +
+  geom_point() +
+  geom_errorbar() +
+  facet_wrap(~Species)
+
+
+# with just sporobolus, sarcocornia, triglochin and just flowers, buds
+# USE THIS PLOT
+
+# By YSR
+reprod_proportions %>% 
+  subset(Species %in% c("Sporobolus", "Sarcocornia", "Triglochin")) %>% 
+  subset(reprod_type != "Buds") %>% 
+  ggplot(aes(x = YSR, y = avg, group = reprod_type, color = reprod_type, ymin = avg-se, ymax = avg+se)) +
+  geom_point(size = 4) +
+  geom_errorbar(size = 2) +
+  facet_wrap(~Species) +
+  ylab("Proportion of quadrats with reproduction") +
+  xlab("Years since restoration") +
+  labs(color = "Reproduction type") +
+  theme_bw() +
+  theme(axis.title = element_text(size = 28), axis.text = element_text(size = 24), legend.title = element_blank(), legend.text = element_text(size = 24), strip.text = element_text(size = 24)) +
+  scale_color_viridis(discrete = TRUE, begin = 0.4, end = 0.8, option = "A") 
+
+```
+
+
+
 ```{r Reproduction - try long data approach in glmmTMB}
 # remove NAs
 reprod_long <- reprod_long %>% subset(!is.na(Reproduction))
@@ -2366,12 +2466,74 @@ summary(M1)
 
 
 
-# explore - only seeds
-seeds <- reprod_long %>% subset(reprod_type == "Seeds")
 
-M2 <- glmmTMB(Reproduction ~ YSR * Elevation * Species + DomSpeciesSuperSimp + rr(Species+0|Combo, d = 2), family = "binomial", data = seeds)
-# warnings
+
+
+M2 <- glmmTMB(Reproduction ~ YSR * Elevation * Species + YSR * Species * reprod_type +  (1+reprod_type|Species) + (1|Combo), contrasts = list(reprod_type = "contr.sum"), family = "binomial", data = reprod_long)
+
+M2 <- glmmTMB(Reproduction ~ YSR * reprod_type +  (1+reprod_type|Species) + (1|Combo), contrasts = list(reprod_type = "contr.sum"), family = "binomial", data = reprod_long)
+
+
+
+
+reprod.s <- reprod_long %>% subset(Species %in% c("Sporobolus", "Sarcocornia", "Triglochin"))
+
+M7 <- glmmTMB(Reproduction ~ YSR * reprod_type +  (1+reprod_type|Species) + (1|Combo), contrasts = list(reprod_type = "contr.sum"), family = "binomial", data = reprod.s)
+
+
+
+# try without reproduction type as a factor - just general presence and absence of reproduction.
+
+M8 <- glmmTMB(Reproduction ~ YSR * Elevation * Species + (1|Combo), family = "binomial", data = reprod_long)
+# model convergence problem
+
+M9 <- glmmTMB(Reproduction ~ YSR * Elevation * Species + (1|Combo), family = "binomial", data = reprod.s)
+# fine
+
+residuals(M9)
+predict(M9)
+plot(predict(M9), residuals(M9))
+
+resid <- residuals(simulateResiduals(M9), quantilefunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(resid, predict(M9)) # scaled residuals plot - consistent spread but there are more high values than low values.
+
+plotQQunif(M9) # looks great
+
+summary(M9) # no sig. possibly the model is oversimplified with all reproduction types being lumped together though.
+
+
+
+
+# USE THIS MODEL:
+# try with just seeds and flowers as it was just buds that had a lack of data
+
+reprod.s_sf <- reprod.s %>% subset(reprod_type %in% c("Flowers", "Seeds"))
+
+M10 <- glmmTMB(Reproduction ~ YSR * reprod_type + (1+reprod_type|Species) + (1|Combo), contrasts = list(reprod_type = "contr.sum"), family = "binomial", data = reprod.s_sf)
+
+# it worked!! woo. 
+
+resid <- residuals(simulateResiduals(M10), quantilefunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(resid, predict(M10)) # scaled residuals plot - looks great. just a bit larger spread in large values. but should be fine
+
+plotQQunif(M10) # looks great
+
+summary(M10) # 
+
+
+# not sure if this is the right combo of predictors though. Shouldn't species also be a fixed effect? and we should add elevation to the model
+
+M11 <- glmmTMB(Reproduction ~ YSR * reprod_type * Species + Elevation + (1+reprod_type|Species) + (1|Combo), contrasts = list(reprod_type = "contr.sum"), family = "binomial", data = reprod.s_sf)
+
+resid <- residuals(simulateResiduals(M11), quantilefunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(resid, predict(M11)) # scaled residuals plot - looks great. just a bit larger spread in large values. but should be fine
+
+plotQQunif(M11) # looks great
+
+summary(M11) # 
 ```
+
+
 
 
 Stem traits
