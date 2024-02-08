@@ -1022,12 +1022,12 @@ boxplot(salt$Stem_dia_mm ~ salt$Site) # compare to incorrect averages across sit
 
 # try modelling?
 
-M1 <- lm(Stem_dia_average ~ YSR * Elevation * DomSpeciesSimp, data = salt_dia_wider)
+M1 <- lm(Stem_dia_average ~ YSR * Elevation + DomSpeciesSuperSimp, data = salt_dia_wider)
 plot(M1) # not good
 
-M2 <- lm(log(Stem_dia_average) ~ YSR * Elevation * DomSpeciesSimp, data = salt_dia_wider)
+M2 <- lm(log(Stem_dia_average) ~ YSR * Elevation + DomSpeciesSuperSimp, data = salt_dia_wider)
 plot(M2) # pretty good
-summary(M2) # no significant differences
+summary(M2) # no significant differences except with different DomSpecies
 ```
 
 ```{r Overall stem heights}
@@ -1141,79 +1141,6 @@ ggplot(spor_H, aes(x = YSR, y = Stem_ht_mm)) +
 ```
 
 
-```{r Sporobolus stem height - restoration status - Model building}
-# create model
-M_spor_H_stem_ht <- lmer(Stem_ht_mm ~ rest_status + poly(Elevation,3) + DomSpecies + poly(sp_prop,2) + (1|Site) + (1|Quadrat.f), data = spor_H, na.action = na.exclude)
-# do I need to specify nesting here or will the model figure out due to the unique labelling of factors?
-summary(M_spor_H_stem_ht)
-
-# 3rd order polynomial elevation was non-significant, so include as a 2nd order polynomial
-M_spor_H_stem_ht <- lmer(Stem_ht_mm ~ rest_status + poly(Elevation,2) + DomSpecies + poly(sp_prop,2) + (1|Site) + (1|Quadrat.f), data = spor_H, na.action = na.exclude)
-summary(M_spor_H_stem_ht)
-
-# check more model assumptions
-# check for collinearity between predictors
-check_collinearity(M_spor_H_stem_ht) # VIF ~ 6 (moderate collinearity) 
-# species proportions and dominance are correlated here - drop one.
-
-# drop DomSpecies predictor variable as it has the highest VIF
-M <- lmer(Stem_ht_mm ~ rest_status + poly(Elevation,2) + poly(sp_prop, 2) + (1|Site) + (1|Quadrat.f), data = spor_H, na.action = na.exclude)
-summary(M)
-
-# check for collinearity between predictors
-check_collinearity(M) # VIF are all <5 (low collinearity)
-
-# residuals plots
-plot(M) # roughly equal variances / just one outlier/low value
-qqnorm(resid(M)) 
-qqline(resid(M)) # not great
-
-
-
-# try using log-transformed stem height data given that assumptions are not ok
-M <- lmer(ln.stem.ht ~ rest_status + poly(Elevation,3) + DomSpecies + poly(sp_prop,2) + (1|Site) + (1|Quadrat.f), data = spor_H, na.action = na.exclude)
-summary(M)
-
-# drop elevation 2 and 3 - only 1 is significant
-M <- lmer(ln.stem.ht ~ rest_status + Elevation + DomSpecies + poly(sp_prop,2) + (1|Site) + (1|Quadrat.f), data = spor_H, na.action = na.exclude)
-summary(M)
-
-# check for collinearity between predictors
-check_collinearity(M) # some VIF are >5 (moderate collinearity)
-
-# drop species proportion as it has the highest VIF
-M <- lmer(ln.stem.ht ~ rest_status + Elevation + DomSpecies + (1|Site) + (1|Quadrat.f), data = spor_H, na.action = na.exclude)
-summary(M)
-
-check_collinearity(M) # all VIF are <5 (low collinearity)
-
-# residuals plots
-plot(M) # roughly equal variances
-qqnorm(resid(M)) 
-qqline(resid(M)) # not good
-
-
-# try square-root transformed?
-M <- lmer(sq.stem.ht ~ rest_status + Elevation + DomSpecies + (1|Site) + (1|Quadrat.f), data = spor_H, na.action = na.exclude)
-summary(M)
-
-# residuals plots
-plot(M) # good
-qqnorm(resid(M)) 
-qqline(resid(M)) # still not very good. could be due to 1-inflation. try a different model type?
-
-
-# try robust lmer
-M2 <- rlmer(ln.stem.ht ~ rest_status + Elevation + DomSpecies + (1|Site) + (1|Quadrat.f), data = spor_H, na.action = na.exclude)
-
-# residuals plots
-plot(M2) # 
-qqnorm(resid(M2)) 
-qqline(resid(M2))
-# still not good. Looks similar to plots made with normal lmer rather than rlmer.
-```
-
-
 ```{r Sporobolus stem height - restoration status - plot}
 # plot
 ggplot(spor_H, aes(x = Elevation, y = Stem_ht_mm)) +
@@ -1229,90 +1156,11 @@ boxplot(spor_H$Stem_ht_mm ~ spor_H$DomSpecies)
 
 
 
-
-```{r Sporobolus stem height - YSR - Model building}
-# create model
-M_spor_H_stem_ht <- lmer(Stem_ht_mm ~ poly(YSR,2) + poly(Elevation,3) + DomSpecies + poly(sp_prop,2) + (1|Site) + (1|Quadrat.f), data = spor_H_rest, na.action = na.exclude)
-summary(M_spor_H_stem_ht)
-
-# drop elevation poly 3 and YSR poly 2
-M <- lmer(Stem_ht_mm ~ YSR + poly(Elevation,2) + DomSpecies + poly(sp_prop,2) + (1|Site) + (1|Quadrat.f), data = spor_H_rest, na.action = na.exclude)
-summary(M)
-
-# check for collinearity between predictors
-check_collinearity(M) # some VIF are >5 (moderate collinearity)
-
-# drop DomSpecies, which has the highest VIF
-M <- lmer(Stem_ht_mm ~ YSR + poly(Elevation,2) + poly(sp_prop,2) + (1|Site) + (1|Quadrat.f), data = spor_H_rest, na.action = na.exclude)
-summary(M)
-
-# now sp prop poly 2 is non-significant, drop it
-M <- lmer(Stem_ht_mm ~ YSR + poly(Elevation,2) + sp_prop + (1|Site) + (1|Quadrat.f), data = spor_H_rest, na.action = na.exclude)
-summary(M)
-
-# residuals plots
-plot(M) # looks good
-qqnorm(resid(M)) 
-qqline(resid(M)) # mostly ok but high values diverge.. need to decide if OK
-
-# try log-transformed data
-M <- lmer(ln.stem.ht ~ YSR + poly(Elevation,2) + sp_prop + (1|Site) + (1|Quadrat.f), data = spor_H_rest, na.action = na.exclude)
-summary(M)
-
-# residuals plots
-plot(M) # roughly equal variances / just one outlier/low value
-qqnorm(resid(M)) 
-qqline(resid(M)) # not great- high and low values diverge
-
-# try sqrt-transformed data
-M <- lmer(sq.stem.ht ~ YSR + poly(Elevation,2) + sp_prop + (1|Site) + (1|Quadrat.f), data = spor_H_rest, na.action = na.exclude)
-summary(M)
-
-# residuals plots
-plot(M) # roughly equal variances / just one outlier/low value
-qqnorm(resid(M)) 
-qqline(resid(M)) # similar to log-transformed
-
-# try robust lmer
-M <- rlmer(Stem_ht_mm ~ YSR + poly(Elevation,2) + sp_prop + (1|Site) + (1|Quadrat.f), data = spor_H_rest, na.action = na.exclude)
-summary(M)
-
-# residuals plots
-plot(M) # roughly equal variances
-qqnorm(resid(M)) 
-qqline(resid(M)) # worse than original
-```
-
-
 ```{r Sporobolus stem height - YSR - plot}
-# best model - need to see if any model is good enough though
-M <- lmer(Stem_ht_mm ~ YSR + poly(Elevation,2) + sp_prop + (1|Site) + (1|Quadrat.f), data = spor_H_rest, na.action = na.exclude)
-summary(M)
 
 ggplot(spor_H_rest, aes(x = YSR, y = Stem_ht_mm)) +
   geom_point() +
   geom_smooth(method = lm)
-
-# plot predicted values with ggeffects ggemmeans
-predict_YSR <- ggemmeans(M, terms = c("YSR [all]"))
-# view this result
-print(predict_YSR)
-# visualise this result
-plot(predict_YSR, ci = T,add.data = TRUE, dot.alpha = 0.5,  jitter = 0.2)+
-  ggtitle("") +  geom_line(size = 1.2) +
-  labs(y = "Sporobolus stem height", x = "Years since restoration") +
-  theme_classic()
-
-# plot predicted values of Elevation with ggeffects ggemmeans
-predict_YSR <- ggemmeans(M, terms = c("Elevation [all]"))
-# view this result
-print(predict_YSR)
-# visualise this result
-plot(predict_YSR, ci = T,add.data = TRUE, dot.alpha = 0.5,  jitter = 0.2)+
-  ggtitle("") +  geom_line(size = 1.2) +
-  labs(y = "Sporobolus stem height", x = "Elevation") +
-  theme_classic()
-# need to de-standardise elevation scale
 
 ggplot(spor_H_rest, aes(x = sp_prop, y = Stem_ht_mm)) +
   geom_point() +
@@ -1337,45 +1185,6 @@ plot(spor_H$Stem_dia_mm ~ spor_H$YSR) # fine
 ```
 
 
-```{r Sporobolus stem diameter - restoration status - Model building}
-# create model
-M <- lmer(Stem_dia_mm ~ rest_status + Elevation + DomSpecies + sp_prop + (1|Site) + (1|Quadrat.f), data = spor_H, na.action = na.exclude)
-summary(M)
-
-# sp prop is clearly non-significant, drop it first
-M <- lmer(Stem_dia_mm ~ rest_status + Elevation + DomSpecies + (1|Site) + (1|Quadrat.f), data = spor_H, na.action = na.exclude)
-summary(M)
-
-# check more model assumptions
-# check for collinearity between predictors
-check_collinearity(M) # all VIF < 5 (low collinearity)
-
-# residuals plots
-plot(M) # not equal variances / a couple outliers
-qqnorm(resid(M)) 
-qqline(resid(M)) # not good - high values diverge
-
-
-# try using log-transformed stem diameter data given that assumptions are not ok
-M <- lmer(ln.stem.dia ~ rest_status + Elevation + DomSpecies+ (1|Site) + (1|Quadrat.f), data = spor_H, na.action = na.exclude)
-summary(M)
-
-# residuals plots
-plot(M) # roughly equal variances
-qqnorm(resid(M)) 
-qqline(resid(M)) # still not good - probably best option though
-
-
-# try square-root transformed?
-M <- lmer(sq.stem.dia ~ rest_status + Elevation + DomSpecies + (1|Site) + (1|Quadrat.f), data = spor_H, na.action = na.exclude)
-summary(M)
-
-# residuals plots
-plot(M) # good
-qqnorm(resid(M)) 
-qqline(resid(M)) # still not very good. could be due to inflation. try a different model type?
-```
-
 
 ```{r Sporobolus stem diameter - restoration status - plot}
 # plot
@@ -1392,63 +1201,10 @@ boxplot(spor_H$Stem_dia_mm ~ spor_H$Site)
 
 
 
-
-```{r Sporobolus stem diameter - YSR - Model building}
-# create model
-M1 <- lmer(Stem_dia_mm ~ YSR + poly(Elevation,2) + DomSpecies + poly(sp_prop,2) + (1|Site) + (1|Quadrat.f), data = spor_H_rest, na.action = na.exclude)
-summary(M1)
-
-# check for collinearity between predictors
-check_collinearity(M1) # some VIF are >5 (moderate collinearity)
-
-# sp_prop has slightly higher VIF, drop sp_prop
-M2 <- lmer(Stem_dia_mm ~ YSR + poly(Elevation,2) + DomSpecies + (1|Site) + (1|Quadrat.f), data = spor_H_rest, na.action = na.exclude)
-summary(M2)
-
-# residuals plots
-plot(M2) # roughly equal variances
-qqnorm(resid(M2)) 
-qqline(resid(M2)) # mostly ok but high values diverge.. not great
-
-# try log-transformed data
-M3 <- lmer(ln.stem.dia ~ YSR + poly(Elevation,2) + DomSpecies + (1|Site) + (1|Quadrat.f), data = spor_H_rest, na.action = na.exclude)
-summary(M3)
-
-# residuals plots
-plot(M3) # roughly equal variances 
-qqnorm(resid(M3)) 
-qqline(resid(M3)) # terrible
-
-# try sqrt-transformed data
-M4 <- lmer(sq.stem.dia ~ YSR + poly(Elevation,2) + DomSpecies + (1|Site) + (1|Quadrat.f), data = spor_H_rest, na.action = na.exclude)
-summary(M4)
-
-# residuals plots
-plot(M4) # roughly equal variances
-qqnorm(resid(M4)) 
-qqline(resid(M4)) # not great, ok..
-```
-
-
 ```{r Sporobolus stem diameter - YSR - plot}
-# best model? but not good...
-M4 <- lmer(sq.stem.dia ~ YSR + poly(Elevation,2) + DomSpecies + (1|Site) + (1|Quadrat.f), data = spor_H_rest, na.action = na.exclude)
-summary(M4)
-
 ggplot(spor_H_rest, aes(x = YSR, y = sq.stem.dia)) +
   geom_point() +
   geom_smooth(method = lm)
-
-# plot predicted values with ggeffects ggemmeans
-predict_YSR <- ggemmeans(M4, terms = c("YSR [all]"))
-# view this result
-print(predict_YSR)
-# visualise this result
-plot(predict_YSR, ci = T,add.data = TRUE, dot.alpha = 0.5,  jitter = 0.2)+
-  ggtitle("") +  geom_line(size = 1.2) +
-  scale_y_continuous(breaks = sqrt(pretty((spor_H_rest$ln.stem.dia)^2)), labels = pretty((spor_H_rest$ln.stem.dia)^2)) +
-  labs(y = "Sporobolus stem diameter (mm)", x = "Years since restoration") +
-  theme_classic()
 
 # plot natural stem diameters
 ggplot(spor_H_nat, aes(x = Site, y = ln.stem.dia)) +
@@ -1501,56 +1257,6 @@ ggplot(spor_comm_H, aes(x = YSR, y = total_stems)) +
   geom_point() +
   geom_smooth(span = 2) +
   geom_smooth(method = lm) # non-linear is a better fit
-```
-
-
-```{r Sporoblus stem density - restoration status - model}
-# create model
-M_spor_H_stem_dens <- lmer(total_stems ~ rest_status + Elevation + DomSpecies + sp_prop + (1|Site), data = spor_comm_H, na.action = na.exclude)
-# do I need to specify nesting here or will the model figure out due to the unique labelling of factors?
-summary(M_spor_H_stem_dens)
-
-# looks like elevation and species proportion influence Sporobolus stem density, but not restoration status (exploratory plots looked like restoration status did have an influence, but older sites were similar to natural sites, so wouldn't necessarily show up in this binary model)
-
-# create a simplified model with only the significant factors
-M_spor_H_stem_dens <- lmer(total_stems ~ Elevation + sp_prop + (1|Site), data = spor_comm_H, na.action = na.exclude)
-summary(M_spor_H_stem_dens)
-# elevation is no longer significant?
-
-
-# check more model assumptions
-# check for collinearity between predictors
-check_collinearity(M_spor_H_stem_dens) # VIF < 5 (low collinearity) - good.
-
-# residuals plots
-plot(M_spor_H_stem_dens) # equal variances assumption is not ok
-qqnorm(resid(M_spor_H_stem_dens)) 
-qqline(resid(M_spor_H_stem_dens)) # not great but not terrible
-
-
-# try with sq stem density
-M_spor_H_stem_dens <- lmer(sq.stem.dens ~ Elevation + sp_prop + (1|Site), data = spor_comm_H, na.action = na.exclude)
-summary(M_spor_H_stem_dens)
-# elevation is no longer significant?
-
-
-# check more model assumptions
-# check for collinearity between predictors
-check_collinearity(M_spor_H_stem_dens) # VIF < 5 (low collinearity) - good.
-
-# residuals plots
-plot(M_spor_H_stem_dens) # not good
-qqnorm(resid(M_spor_H_stem_dens)) 
-qqline(resid(M_spor_H_stem_dens)) # great
-
-
-# remove sp_prop from model? as it's logically correlated with stem density
-M_spor_H_stem_dens <- lmer(total_stems ~ rest_status + Elevation + DomSpecies + (1|Site), data = spor_comm_H, na.action = na.exclude)
-# do I need to specify nesting here or will the model figure out due to the unique labelling of factors?
-summary(M_spor_H_stem_dens)
-
-# only DomSpecies sporobolus is significant - which again makes sense as there will be more stems when it's dominant
-# not really happy with any of these models..
 ```
 
 
@@ -1693,36 +1399,11 @@ ggplot(spor_comm_H_res, aes(x = YSR, y = total_stems)) +
 ```
 
 
-# 3aiv - Sporobolus quantitative variables (multivariate)
-
-
-Need to standardise these variables (centred on 0 with SD of 1) in order to model them together?
-
-Need to account for the fact that stem density is measured at a quadrat level and stem height and diameter are measured at stem level.
-
-```{r Sporobolus stem height diameter and density - Multivariate model}
-
-```
-
-
-
 # 3av - Sporobolus % species cover
 
 Sporobolus % species cover
 - Total cover ~ rest_status*YSR + Elevation + (1|Estuary) + (1|Site)
 - beta distribution (proportional data with 2 categories - cover and non cover)
-
-```{r Sporobolus species cover - model}
-# when YSR has NA values, this model comes up with an error
-M <- glmmTMB(sp_cover_prop ~ rest_status/YSR + Elevation + Estuary + (1|Site), data = spor_comm, family = beta_family(link = "logit"), na.action = na.exclude)
-# check whether this model makes sense and the correct way to include YSR as a fixed factor nested within rest_status
-summary(M)
-
-# excluding restoration status (and therefore natural sites) from the model removes the error
-M <- glmmTMB(sp_cover_prop ~ YSR + Elevation + Estuary + (1|YSR), data = spor_comm, family = beta_family(link = "logit"), na.action = na.exclude)
-# check whether this model makes sense and the correct way to include YSR as a fixed factor nested within rest_status
-summary(M)
-```
 
 
 ```{r sporobolus % cover univariate}
@@ -1780,15 +1461,6 @@ ggplot(spor_comm_H_nat, aes(x=Site, y=sp_cover_prop, fill=Estuary, group = Site)
 ```
 
 
-# 3avi - Sporobous buds and flowers
-
-Sporobolus buds and flowers - binary response variables
-
-```{r Sporobolus buds and flowers - visualise distributions}
-hist(spor_comm$Buds) # all zeroes - nothing to model
-hist(spor_comm$Flowers) # almost all zeroes (only 5 quadrats with flowers) - not enough data to model
-```
-
 # 3avii - Sporobolus seeding
 
 Sporobolus seeding - ordinal categorical response variable
@@ -1797,105 +1469,6 @@ Sporobolus seeding - ordinal categorical response variable
 # make seeds into an ordinal variable
 spor_comm$Seeds <- factor(spor_comm$Seeds, order = TRUE, levels = c("No", "Very few", "Few", "Some", "Lots"))
 ```
-
-We can use the GLMMadaptive package to create a mixed model with an ordinal response variable.
-
-Need to explore data to decide which family is most appropriate.
-
-```{r Sporobolus seeding - model}
-m_spor_seeds <- mixed_model(fixed = Seeds ~ YSR + Elevation + Estuary, random = ~ 1 | Site, 
-                  data = spor_comm, family = binomial())
-summary(m_spor_seeds)
-```
-
-
-
-
-
-
-# 3b - Sarcocornia
-
-
-
-Sarcocornia reproduction
-
-```{r Sarcocornia reproduction - Visualise distributions}
-hist(sarc_comm$Buds) # no buds
-hist(sarc_comm$Flowers) # there are occurrences of both flowers and no flowers
-
-# make seeds a binary variable
-sarc_comm <- sarc_comm %>% mutate(
-  Seeds = case_when(
-    Seeds == "Yes" ~ 1,
-    Seeds == "No" ~ 0,
-    Seeds == "Unknown" ~ NA,
-    Seeds == "NA" ~ NA  
-  )
-)
-hist(sarc_comm$Seeds) # there are occurrences of both seeds and no seeds
-
-# are Flower and Seed presence correlated?
-# see if there is a more formal way of testing this
-sarc_comm$Seeds[sarc_comm$Flowers == 1] # there are 25 cases when Flowers are present. Seeds are present in 15 of these and no seeds in 8 of these.
-sarc_comm$Seeds[sarc_comm$Flowers == 0] # there are 11 cases when Flowers are not present. Seeds are present in 5 of these and not present in 4 of these.
-# therefore it seems like they aren't well correlated and can both be analysed
-```
-
-Need to decide whether we want to include these in a multivariate model together or have two separate models.
-
-```{r Sarcocornia flowers - model}
-m_sarc_flow <- glmmTMB(Flowers ~ YSR + Elevation + (1|Site), 
-                  data = sarc_comm, family = binomial(), na.action = na.exclude)
-# can't include estuary in the model as this species was only surveyed at Hunter
-summary(m_sarc_flow)
-```
-
-
-```{r Sarcocornia seeds - model}
-m_sarc_seeds <- glmmTMB(Seeds ~ YSR + Elevation + (1|Site), 
-                  data = sarc_comm, family = binomial(), na.action = na.exclude)
-# can't include estuary in the model as this species was only surveyed at Hunter
-summary(m_sarc_seeds)
-```
-
-
-
-
-# 3c - Triglochin
-
-Triglochin reproduction
-
-```{r Triglochin reproduction - Visualise distributions}
-hist(trig_comm$Buds) # there are occurrences of buds and no buds
-hist(trig_comm$Flowers) # there are occurrences of both flowers and no flowers, but only about 2 occurrences of no flowers, which is not enough to analyse
-
-# make seeds a binary variable
-trig_comm <- trig_comm %>% mutate(
-  Seeds = case_when(
-    Seeds == "Yes" ~ 1,
-    Seeds == "No" ~ 0,
-    Seeds == "Unknown" ~ NA,
-    Seeds == "NA" ~ NA  
-  )
-)
-hist(trig_comm$Seeds) # there are occurrences of both seeds and no seeds
-
-# are Bud and Seed presence correlated?
-# see if there is a more formal way of testing this
-trig_comm$Buds[trig_comm$Seeds == 1] # there are 12 cases when seeds are present. Buds are present in 7 of these and not present in 5 of these
-trig_comm$Buds[trig_comm$Seeds == 0] # there are 21 cases when seeds are not present. Buds are present in 3 of these and not present in 18 of these.
-trig_comm$Seeds[trig_comm$Buds == 1] # there are 10 cases when Buds are present. Seeds are present in 7 of these and not present in 3 of these
-trig_comm$Seeds[trig_comm$Buds == 0] # there are 23 cases when Buds are not present. Seeds are present in 5 of these and not present in 18 of these.
-# therefore I'm not sure if they're too correlated or not..
-```
-
-
-
-
-# 3d - pneumatophores
-
-
-
 
 # 4. Multivariate models
 
@@ -2172,26 +1745,56 @@ for(i in 1:nBoot){
 
 
 ```{r Stem density - mvabund with offset matrix - full dataset}
-# run code for wide stem density first 
+# set up new dataframes based on non-adjusted Stem data
+
+# create a new dataframe with just stem density data
+stem_dens <- salt[,c(5,6,7,11,13,14,24:32,35,36)]
+
+# remove replicates from measuring multiple stems for each species per quadrat (but only one stem density measurement)
+# first create a column for every unique site/quadrat/species combination
+stem_dens$unique <- factor(interaction(stem_dens$Combo, stem_dens$Species, sep = ":"))
+stem_dens_unique <- stem_dens %>% distinct(unique, .keep_all = TRUE) 
+
+# transform this to wide format with a column for each species' stem density. Not sure how this works with offsets. Let's start without and then figure out there
+stem_dens_wide <- stem_dens_unique %>% pivot_wider(id_cols = c(Estuary, Site, Quadrat, Combo, Elevation, rest_status, YSR, DomSpecies, DomSpeciesSimp, DomSpeciesSuperSimp), names_from = Species, values_from = Stems)
+
+# fill NA values with zeroes
+stem_dens_wide[,11:35] <- stem_dens_wide[,11:35] %>% replace(is.na(.), 0)
+
+# subset for only Hunter and only restored
+stem_dens_wide_H_res <- stem_dens_wide %>% subset(Estuary == "Hunter") %>% subset(rest_status == 1)
+
+# remove columns that only have zeroes (i.e. no observations of that species anywhere)
+stem_dens_wide_H_res[,11:35] %>% colSums() # the last four columns are all zeroes
+stem_dens_wide_H_res <- stem_dens_wide_H_res[,1:35]
+
+# now, we are only interested in species that have at least 5 total observations (otherwise there are insufficient data to analyse them)
+# calculate number of non-zero elements in each column
+colSums(stem_dens_wide_H_res != 0) # species with at least 5 values are Sarcocornia, Sporobolus, Triglochin, Pneumatophores, Bolboschoenus, Aster, Phragmites
+# however, don't include pneumatophores, as they're only present at one site
+stem_dens_wide_H_res <- stem_dens_wide_H_res[,c(1:13,18,20,22)] # subset for only those species
+
+
 # now we can convert the wide format to long format so we can retain rows with zero observations
 
 stem_dens_long_zeroes <- stem_dens_wide_H_res %>% 
-  pivot_longer(cols = c(Sarcocornia, Sporobolus, Triglochin, Pneumatophores, Bolboschoenus, Aster, Phragmites), names_to = "Species", values_to = "Stems") %>% 
+  pivot_longer(cols = c(Sarcocornia, Sporobolus, Triglochin, Bolboschoenus, Aster, Phragmites), names_to = "Species", values_to = "Stems") %>% 
   mutate(unique = paste0(Combo,":",Species))
 
 # this dataset does not have species proportion or offset data - we will need to add these
 
-id_data <- stem_dens_unique_H_res %>% dplyr::select(Quadrat_area, sp_prop, unique)
+id_data <- stem_dens_unique_H_res %>% dplyr::select(Quadrat_area, sp_prop, unique, Species) %>% subset(Species != "Pneumatophores") %>% dplyr::select(Quadrat_area, sp_prop, unique) 
 
 stem_dens_long_zeroes <- stem_dens_long_zeroes %>% full_join(id_data) %>% 
   mutate(
     Quadrat_area = Quadrat_area %>% replace(is.na(.), 10000), # replace missing data with 1 x 1 m quadrat
     sp_prop = sp_prop %>% replace(is.na(.), 0), # replace missing species proportions with 0 (there were none)
+    total_stems = round(Stems * 10000/Quadrat_area), # column for total stems adjusting for different quadrat sizes (for plottin only, using offsets for modelling)
     long_data.row.index = 1:n()) # add unique row index identifier
 
 # define some parameters
 nspec = n_distinct(stem_dens_long_zeroes$Species) #number of species
-nquadrat = nrow(stem_dens_long_zeroes) #number of rows/ quadrats
+nquadrat = nrow(stem_dens_long_zeroes)/6 #number of rows/ quadrats - this dataset has one row per each of 6 species so to get # quadrats we need to divide by 6
 nBoot = 999 #desired number of bootstraps
 
 # create some bootstrapping matrixes
@@ -2206,8 +1809,8 @@ for (b in 1:nBoot){
   bootID_short[b,] = site_samples
 }
 
-#In this data, the row names are not the row indexes, otherwise you could skip this step and join on the row names. To be safe we join on row indexes in the next step. 
-row_names_row_index_lookup_table = data.frame(Combo = stem_dens_long_zeroes$Combo) %>% mutate(row.index = 1:nquadrat)
+#In these data, the row names are not the row indexes, otherwise you could skip this step and join on the row names. To be safe we join on row indexes in the next step. 
+row_names_row_index_lookup_table = data.frame(Combo = unique(stem_dens_long_zeroes$Combo)) %>% mutate(row.index = 1:nquadrat)
 row_names_row_index_lookup_table
 
 #This step selects the rows of the long format data which are selected in each bootstrap iteration. The important thing is that all rows corresponding to a site will be sampled in a bootstrap sample. 
@@ -2221,29 +1824,168 @@ for(i in 1:nBoot){
 }
 
 
-#Now we can run the model with an offset - which could vary by species as the data is long format - using a bootID matrix to make sure sites are resampled together. 
-fit_null = manyglm(Stems ~ Elevation * Species + 
-                     DomSpeciesSuperSimp + sp_prop + offset(log(Quadrat_area)),
-                   data=stem_dens_long_zeroes) # without YSR
-fit_null2 = manyglm(Stems ~ YSR * Species + Elevation * Species + 
-                     DomSpeciesSuperSimp + sp_prop + offset(log(Quadrat_area)),
-                   data=stem_dens_long_zeroes) # without interaction with Elevation
-#The alternative model contains the treatment variable/ gradient and it's interaction with species (using : syntax)
-fit_alt = manyglm(Stems ~ YSR * Elevation + YSR * Species + Elevation * Species + 
-                     DomSpeciesSuperSimp + sp_prop + offset(log(Quadrat_area)),
-                   data=stem_dens_long_zeroes)
+# use data with NAs rather than zeroes
 
+stem_dens_long_NA <- stem_dens_long_zeroes %>% mutate(
+  Stems = case_when(Stems == 0 ~ NA,
+                    .default = Stems),
+  total_stems = case_when(total_stems == 0 ~ NA,
+                    .default = total_stems)
+)
+
+# run the model with an offset - which could vary by species as the data is long format - using a bootID matrix to make sure sites are resampled together. 
+fit_null_2 = manyglm(Stems ~ Elevation * Species + 
+                     DomSpeciesSuperSimp + sp_prop + offset(log(Quadrat_area)),
+                   data=stem_dens_long_NA) # without YSR
+fit_null2_2 = manyglm(Stems ~ YSR * Species + Elevation * Species + 
+                     DomSpeciesSuperSimp + sp_prop + offset(log(Quadrat_area)),
+                   data=stem_dens_long_NA)
+
+fit_alt_2 = manyglm(Stems ~ YSR * Elevation * Species  + 
+                     DomSpeciesSuperSimp + sp_prop + offset(log(Quadrat_area)),
+                   data=stem_dens_long_NA)
+
+# test model assumptions (?)
+plot(fit_alt_2)
+
+anova(fit_null_2, fit_null2_2, bootID = bootID_long) # testing for importance of YSR
+anova(fit_null2_2, fit_alt_2, bootID = bootID_long) # testing for importance of YSR * Elevation interaction
+
+
+
+
+
+
+
+
+# isn't using the boot_ID matrix we've made, likely because of the NAs.
+# can we create a matrix with just the non-NA data?
+
+stem_dens_non_NA <- stem_dens_long_NA %>% subset(!is.na(Stems))
+non_NA_rows <- stem_dens_non_NA$long_data.row.index
+
+# define some parameters
+nspec = n_distinct(stem_dens_non_NA$Species) #number of species
+nquadrat = nrow(stem_dens_long_zeroes)/6 #number of rows/ quadrats - this dataset has one row per each of 6 species so to get # quadrats we need to divide by 6
+nBoot = 999 #desired number of bootstraps
+
+# create some bootstrapping matrixes
+#bootID short is a matrix with nBOOT rows (e.g. 99 or 999), and nsite columns. As in the regular anova the response has length nsite
+bootID_short =  matrix(NA, nrow = nBoot, ncol = nquadrat)
+#bootID long is a matrix with nBOOT rows (e.g. 99 or 999), and nsite*nspecies columns. As in the long format anova the response has length nspecies
+bootID_long = matrix(NA, nrow = nBoot, ncol = nquadrat*nspec)
+
+#construct a bootID by sampling quadrats with replacement
+for (b in 1:nBoot){
+  site_samples = sample(non_NA_rows,nquadrat, replace = TRUE) 
+  bootID_short[b,] = site_samples
+}
+
+#In these data, the row names are not the row indexes, otherwise you could skip this step and join on the row names. To be safe we join on row indexes in the next step. 
+row_names_row_index_lookup_table = data.frame(Combo = unique(stem_dens_non_NA$Combo)) %>% mutate(row.index = 1:nquadrat)
+row_names_row_index_lookup_table
+
+#This step selects the rows of the long format data which are selected in each bootstrap iteration. The important thing is that all rows corresponding to a site will be sampled in a bootstrap sample. 
+for(i in 1:nBoot){
+  bootID_long[i, ] = data.frame(row.index = matrix((bootID_short[i,]), ncol=1)) %>% #select the ith row of bootID_short
+    left_join(row_names_row_index_lookup_table) %>%  #joins on "row.index" This step is needed as the site names are not the row indexes
+    left_join(stem_dens_long_zeroes, multiple = "all") %>% #joins on "rows" (which are the site names in reveg). This is a many to one join. We take 10 rows and return 240 rows. 
+    dplyr::select(long_data.row.index) %>% #now we select the row indexes of the long format data which will be used in the ith bootstrap resample
+    unlist()
+  #these are the rows in the ith bootstrap 
+}
+
+
+# doesn't work because the different matrixes have different lengths, just like when we were trying with the incomplete dataset earlier
+
+
+
+
+
+
+#delete this part eventually
+# for some reason the manual bootstrapping seems to work with total_stems but not with Stems...
+fit_null = manyglm(total_stems ~ Elevation * Species + 
+                     DomSpeciesSuperSimp + sp_prop + offset(log(Quadrat_area)),
+                   data=stem_dens_long_NA) # without YSR
+fit_null2 = manyglm(total_stems ~ YSR * Species + Elevation * Species + 
+                     DomSpeciesSuperSimp + sp_prop + offset(log(Quadrat_area)),
+                   data=stem_dens_long_NA) # without Elevation * YSR interaction
+
+fit_alt = manyglm(total_stems ~ YSR * Elevation * Species + 
+                     DomSpeciesSuperSimp + sp_prop + offset(log(Quadrat_area)),
+                   data=stem_dens_long_NA)
+
+# test model assumptions (?)
+plot(fit_alt)
 
 anova(fit_null, fit_null2, bootID = bootID_long) # testing for importance of YSR
-anova(fit_null2, ft_alt, bootID = bootID_long) # testing for importance of YSR * Elevation interaction
+anova(fit_null2, fit_alt, bootID = bootID_long) # testing for importance of YSR * Elevation interaction
 ```
 
 
-```{r Stem density multivariate - plot}
-# this is not a good plot, but not sure how to plot.
-ggplot(data = stem_dens_unique_H_res, aes(y = total_stems, x = YSR, fill = Species)) +
-  geom_smooth() +
-  geom_point()
+```{r Stem density - plot}
+
+# at different elevations
+# median elevation:
+median(stem_dens_long_NA$Elevation) # 0.298
+# split data into two groups, one <0.298 and one >0.298 elevation
+stem_dens_long_NA <- stem_dens_long_NA %>% mutate(Elev_class =
+                                                    case_when(Elevation < 0.298 ~ "Low",
+                                                              Elevation >= 0.298 ~ "High"))
+
+
+# use total stems column for plotting
+stem_dens_summary <- stem_dens_long_NA %>% 
+  subset(!is.na(total_stems)) %>% 
+  group_by(Site, Species, Elev_class) %>% 
+  summarise(avg = mean(total_stems), se = sd(total_stems)/sqrt(n()), YSR = mean(YSR)) %>% 
+  ungroup()
+
+stem_dens_summary <- stem_dens_summary %>% mutate(Site = factor(Site, levels = c("AE", "TB", "HS", "TA", "CF", "CC")))
+
+# By YSR
+ggplot(data = stem_dens_summary, aes(x = YSR, y = avg, ymin = avg-se, ymax = avg+se)) +
+  geom_point() +
+  geom_errorbar() +
+  facet_wrap(~Species, scales = "free_y")
+
+# By species
+ggplot(data = stem_dens_summary, aes(x = Site, y = avg, ymin = avg-se, ymax = avg+se)) +
+  geom_point() +
+  geom_errorbar() +
+  facet_wrap(~Species, scales = "free_y")
+
+
+# By YSR
+ggplot(data = stem_dens_summary, aes(x = YSR, y = avg, group = Elev_class, color = Elev_class, ymin = avg-se, ymax = avg+se)) +
+  geom_point() +
+  geom_errorbar() +
+  facet_wrap(~Species, scales = "free_y")
+
+
+
+
+
+
+
+
+# this is still coded for reproduction
+
+# By YSR
+reprod_proportions %>% 
+  subset(Species %in% c("Sporobolus", "Sarcocornia", "Triglochin")) %>% 
+  subset(reprod_type != "Buds") %>% 
+  ggplot(aes(x = YSR, y = avg, group = reprod_type, color = reprod_type, ymin = avg-se, ymax = avg+se)) +
+  geom_point(size = 4) +
+  geom_errorbar(size = 2) +
+  facet_wrap(~Species) +
+  ylab("Proportion of quadrats with reproduction") +
+  xlab("Years since restoration") +
+  labs(color = "Reproduction type") +
+  theme_bw() +
+  theme(axis.title = element_text(size = 28), axis.text = element_text(size = 24), legend.title = element_blank(), legend.text = element_text(size = 24), strip.text = element_text(size = 24)) +
+  scale_color_viridis(discrete = TRUE, begin = 0.4, end = 0.8, option = "A") 
 
 ```
 
@@ -2519,6 +2261,7 @@ scatter.smooth(resid, predict(M10)) # scaled residuals plot - looks great. just 
 plotQQunif(M10) # looks great
 
 summary(M10) # 
+# YSR is significant, but when you add elevation to the model, it's not
 
 
 # not sure if this is the right combo of predictors though. Shouldn't species also be a fixed effect? and we should add elevation to the model
@@ -2594,23 +2337,33 @@ plot(salt_H_rest_stems_dia$Stem_dia_mm ~ salt_H_rest_stems_dia$Elevation) # not 
 M1 <- glmmTMB(Stem_dia_mm ~ Species * YSR * Elevation + DomSpeciesSuperSimp + sp_prop + (1|Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_dia)
 
 plot(predict(M1), residuals(M1)) # not that even
-plotQQunif(M1) # ok?
+plotQQunif(M1) # not very good
 
 # log model
 M2 <- glmmTMB(log(Stem_dia_mm) ~ Species * YSR * Elevation + DomSpeciesSuperSimp + sp_prop + (1|Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_dia)
 
 plot(predict(M2), residuals(M2)) # not that even
-plotQQunif(M2) # not great
+plotQQunif(M2) # not good
 
 # sqrt model
 M3 <- glmmTMB(sqrt(Stem_dia_mm) ~ Species * YSR * Elevation + DomSpeciesSuperSimp + sp_prop + (1|Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_dia)
 
 plot(predict(M3), residuals(M3)) # looks weird with two distinct clumps. but no trend per se and fairly equal distribution either side of zero so I think it's good
-plotQQunif(M3) # ok?
+plotQQunif(M3) # not great
 
 # therefore use M3
 summary(M3)
 # YSR is not significant except in interaction with both elevation and speciesBolboschoenus
+
+
+# can we try a different distribution type?
+# gamma distribution since it's right skewed?
+
+M4 <- glmmTMB(Stem_dia_mm ~ Species * YSR * Elevation + DomSpeciesSuperSimp + sp_prop + (1|Combo) + rr(Species+0|Combo, d = 2), family = Gamma(link = "inverse"), data = salt_H_rest_stems_dia)
+# not working properly (errors and terrible assumptions graphs below)
+
+plot(predict(M4), residuals(M4)) # not that even
+plotQQunif(M4)
 ```
 
 ```{r Stem diameter - interpreting effects}
@@ -2660,6 +2413,8 @@ salt_H_rest_stems_ht <- salt_H_rest_stems %>% subset(!is.na(Stem_ht_mm))
 
 # explore distribution
 hist(salt_H_rest_stems_ht$Stem_ht_mm) # highly right skewed
+hist(log(salt_H_rest_stems_ht$Stem_ht_mm)) # pretty good
+hist(sqrt(salt_H_rest_stems_ht$Stem_ht_mm)) # still right skewed
 
 # explore relationship between dependent and predictor variables
 plot(salt_H_rest_stems_ht$Stem_ht_mm ~ salt_H_rest_stems_ht$YSR) # not clearly non-linear
@@ -2686,9 +2441,8 @@ plot(predict(M2), residuals(M2)) # decent but some more extreme lower values, pr
 plotQQunif(M2) # pretty good
 
 # sqrt model
-M3 <- glmmTMB(sqrt(Stem_ht_mm) ~ Species * YSR * Elevation + DomSpeciesSuperSimp * Species + sp_prop * Species + (1|Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_ht)
-
-M3 <- glmmTMB(sqrt(Stem_ht_mm) ~ Species * YSR * Elevation + DomSpeciesSuperSimp * Species  + (1|Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_ht)
+M3 <- glmmTMB(sqrt(Stem_ht_mm) ~ Species * YSR * Elevation + DomSpeciesSuperSimp + sp_prop * Species + (1|Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_ht)
+# no warnings
 
 plot(predict(M3), residuals(M3)) # ok but more clumped than log
 plotQQunif(M3) # pretty good
@@ -2700,6 +2454,128 @@ summary(M2)
 ```
 
 
+
+
+#5. Restored vs natural models
+
+Let's try these with all the data from both estuaries.
+
+# 5.1 Community composition
+
+```{r Community composition - nat vs rest - model}
+# only include species with at least 5 occurrences.
+# check occurrences of each species
+colSums(salt_comm_comp != 0) # species with less than 5 values are Mangrove_seedling, Suaeda, Ambrosia, Pasture_grass, Cotula, GSG, Grass_sp_1, Grass_sp_2, Lobelia, Alternanthera, Watsonia, Grass_B, Grass_C, Juncus_acutus, Juncus_sp1, Juncus_sp2, Mangrove_saplings_river
+salt_comm_comp <- salt_comm_comp %>% dplyr::select(-c("Mangrove_seedling", "Suaeda", "Ambrosia", "Pasture_grass", "Cotula", "GSG", "Grass_sp_1", "Grass_sp_2", "Lobelia", "Alternanthera", "Watsonia", "Grass_B", "Grass_C", "Juncus_acutus", "Juncus_sp1", "Juncus_sp2", "Mangrove_saplings_river")) # subset for only those species
+
+
+```
+
+
+
+# 5.2 Total cover
+
+
+```{r Total cover - explore}
+# histogram
+hist(salt_comm$total_cover_prop) # highly left skewed
+hist(log(salt_comm$total_cover_prop)) # highly left skewed
+hist(sqrt(salt_comm$total_cover_prop)) # highly left skewed
+hist(log(1 - salt_comm$total_cover_prop)) # looks closer to normal, still inflated with large negatives now
+hist(log(1.025 - salt_comm$total_cover_prop)) # looks a bit better, but I'm not sure if it's ok to randomly choose a number for an offset
+
+# plot relationships between variables
+plot(salt_comm$total_cover_prop ~ salt_comm$rest_status)
+plot(salt_comm$total_cover_prop ~ salt_comm$Elevation) # not obviously non-linear
+```
+
+```{r Total cover - model}
+M1 <- lm(salt_comm$total_cover_prop ~ rest_status * Elevation *  DomSpeciesSuperSimp, data = salt_comm, na.action = na.exclude)
+plot(M1) # looks terrible
+
+M2 <- lm(log(1-salt_comm$total_cover_prop) ~ rest_status * Elevation *  DomSpeciesSuperSimp, data = salt_comm, na.action = na.exclude)
+plot(M2) # looks weird, gap in normality plot
+
+M3 <- lm(log(1.025-salt_comm$total_cover_prop) ~ rest_status * Elevation *  DomSpeciesSuperSimp, data = salt_comm, na.action = na.exclude)
+plot(M3) # better, but not sure if it's ok to choose a random number for an offset
+summary(M3)
+```
+
+
+# 5.3 Burrows
+
+
+```{r Burrows - Exploration and data prep}
+# histogram of burrows per site
+ggplot(data = salt_comm, aes(x = Burrows_0.5x0.5)) +
+  geom_histogram() +
+  facet_wrap(~Site)
+
+# plot relationships between variables
+plot(salt_comm$Burrows_0.5x0.5 ~ salt_comm$rest_status) 
+plot(salt_comm$Burrows_0.5x0.5 ~ salt_comm$Elevation) # relatively linear
+
+
+# remove NA data
+salt_comm_burrows <- salt_comm %>% subset(!is.na(Burrows_0.5x0.5))
+
+```
+
+```{r Zero-inflation testing and model approach}
+# test for zero-inflation
+
+100*sum(salt_comm_burrows$Burrows_0.5x0.5 == 0, na.rm = TRUE)/nrow(salt_comm_burrows)
+# 48% of our data are zeroes
+
+# try negative binomial in glmmTMB - might be ok without zero inflation
+M1 <- glmmTMB(Burrows_0.5x0.5 ~ rest_status * Elevation + DomSpeciesSuperSimp, data = salt_comm_burrows, family = "nbinom2")
+resid <- residuals(simulateResiduals(M1), quantilefunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(resid, predict(M1)) # a little trend but ok?
+
+# try zero inflated negative binomial model in glmmTMB
+M2 <- glmmTMB(Burrows_0.5x0.5 ~ rest_status * Elevation + DomSpeciesSuperSimp, data = salt_comm_burrows, family = "nbinom2", ziformula =~1)
+
+
+
+# up to here
+
+
+
+
+
+
+
+
+# in this plot we expect to see an increasing variance trend as it's a negative binomial distribution and hasn't been altered to fit a flat distribution.
+plot(predict(M2), residuals(M2), ylim = c(-50,50))
+
+# plot residuals vs predicted values with adjustments for easier interpretation - should see a relatively flat, even spread of residuals with no clear trend
+resid <- residuals(simulateResiduals(M10), quantilefunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(resid, predict(M10))
+resid <- residuals(simulateResiduals(M11), quantilefunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(resid, predict(M11))
+# M11 is flatter but they're both ok looking, use anova to test for differences between the two models
+
+anova(M10,M11)
+# significance here means the zero inflated part of the model does explain more of the variation, so therefore we should use the zero inflated model - M11
+
+summary(M11)
+
+
+# cannot make a model with sp_prop as it is for non-community level variables!
+```
+
+
+# 5.4 Stem density
+
+
+# 5.5 Stem diameter
+
+
+# 5.6 Stem height
+
+
+# 5.7 Reproduction
 
 
 

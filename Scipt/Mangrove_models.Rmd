@@ -145,10 +145,10 @@ unique(manq$Combo) # there are 49 unique Combo values, therefore we have the cor
 
 ```{r Get data - mangrove leaf data}
 # mangrove leaf herbivory data
-manherb <- read_excel("Data/Functional_traits_combined_data.xlsx", sheet = "Mangrove_herb") %>% 
-  rowwise() %>% 
-  mutate(Herb_av = mean(c_across(Leaf_1:Leaf_5), na.rm = TRUE))
-# do we want to take averages or have one row for every measurement??
+manherb <- read_excel("Data/Functional_traits_combined_data.xlsx", sheet = "Mangrove_herb") 
+
+manherb_long <- manherb %>% 
+  pivot_longer(cols = c(Leaf_1, Leaf_2, Leaf_3, Leaf_4, Leaf_5), names_prefix = "Leaf_", names_to = "Leaf", values_to = "Herb_%")
 
 
 # mangrove leaf weight and area data
@@ -201,9 +201,7 @@ manleafAIwide <- manleafAI %>% pivot_wider(id_cols = c(Estuary, Site, Quadrat, C
          Measurer = "AI",
          Measure = "Area",
          Notes = "",
-         Tree_sapling = "Tree") %>% # need to specify if any of these are saplings
-  rowwise() %>% 
-  mutate(Value_av = mean(c_across(Leaf_1:Leaf_5), na.rm = TRUE))
+         Tree_sapling = "Tree") # need to specify if any of these are saplings
 
 # edit Method and Measurer for rows where they included manual components
 manleafAIwide$Measurer[c(2,9,10,15,16,21,23,25,26,29,31,34)] <- "AI + Dana"
@@ -214,12 +212,99 @@ manleafAIwide$Method[c(2,9,10,15,16,21,23,25,26,29,31,34)] <- "Machine_Learning 
 # merge the two leaf area/mass datasets together
 manleafall <- merge(manleaf, manleafAIwide, all = TRUE)
 
-manleafall_wide <- manleafall %>% pivot_wider(id_cols = c(Site, Combo, Quadrat, Tree, Tree_sapling, Species, Estuary, YSR, rest_status), names_from = "Measure", values_from = "Value_av") # column for each dry and fresh weight and area
+# first, make dataset longer so there is one row for each leaf
+manleafall_long <- manleafall %>% 
+  pivot_longer(cols = c(Leaf_1, Leaf_2, Leaf_3, Leaf_4, Leaf_5), names_prefix = "Leaf_", names_to = "Leaf", values_to = "value") %>% 
+  select(-Value_av) # remove average value column
+
+# make dataset wider - dataset with every value
+manleafall_wide <- manleafall_long %>% 
+  pivot_wider(id_cols = c(Site, Combo, Quadrat, Tree, Leaf, Tree_sapling, Species, Estuary, YSR, rest_status), names_from = "Measure", values_from = "value") # column for each dry and fresh weight and area
 manleafall_wide <- manleafall_wide %>% 
   mutate(dfratio = Dry_weight/Fresh_weight,
          LMA = Dry_weight/Area)
 
-# CC1-2 has missing data (area and fresh weight) but all other columns are complete
+# CC1-2 has missing data (area and fresh weight) but all other columns are complete (not including many of the Maroochy leaves, which only have areas)
+```
+
+
+```{r Identify outliers and explore distributions - side-by-side Cleveland plot and boxplot}
+cleveland_plot <- function(vector,axislab){
+  par(mfrow= c(1,2), mar = c(5,4,2,1)) # set some parameters for the plot
+  boxplot(vector,  ylab = axislab)
+  dotchart(vector, xlab = axislab,
+         ylab = "Order of the data") 
+}
+
+# mangrove tree data
+cleveland_plot(mantree$Trees, "Trees") # fairly even spread, one outlier quadrat with >200 trees
+cleveland_plot(mantree$Saplings, "Saplings") # right skewed, no outliers
+cleveland_plot(mantree$Hollows, "Hollows") # right skewed, there are some large values but they're realistic
+cleveland_plot(mantree$`Canopy_cover_%`, "`Canopy_cover_%`") # fairly even distribution, slightly left skewed
+cleveland_plot(mantree$Stems, "Stems") # right skewed, some large values but realistic
+cleveland_plot(mantree$DBH_cm, "DBH_cm") # right skewed, one large value but it's realistic
+cleveland_plot(mantree$Basal_circ_cm, "Basal_circ_cm") # right skewed, some large values but they're realistic
+cleveland_plot(mantree$Height_m, "Height_m") # even spread, no outliers
+
+# therefore, investigate quadrat with large number of Trees
+# it seems realistic - this is the number on the paper datasheet and photos show a high tree density. therefore retain
+
+# mangrove subquadrat data
+cleveland_plot(manq$`Seedlings_<30cm_1x1`, "`Seedlings_<30cm_1x1`") # right skewed, some large values but realistic
+cleveland_plot(manq$`Seedlings_30-100cm_1x1`, "`Seedlings_30-100cm_1x1`") # right skewed, some large values but realistic
+cleveland_plot(manq$`Propagules_1x1`, "`Propagules_1x1`") # highly zero inflated, probably cannot model. one extreme outlier - realistic but would be a challenge
+cleveland_plot(manq$`Pneu_0.5x0.5`, "`Pneu_0.5x0.5`") # pretty even spread, no outliers
+cleveland_plot(manq$`Bare_%`, "`Bare_%`") # left skewed, all realistic
+cleveland_plot(manq$`Litter_%`, "`Litter_%`") # right skewed, all realistic
+cleveland_plot(manq$`Algae_%`, "`Algae_%`") # highly zero inflated, probably cannot model
+cleveland_plot(manq$`Vege_%`, "`Vege_%`") # highly zero inflated, probably cannot model
+cleveland_plot(manq$Pneu_ht_mm, "Pneu_ht_mm") # right skewed, some large values but realistic
+cleveland_plot(manq$Pneu_dia_mm, "Pneu_dia_mm") # right skewed, a couple very large values - investigate
+
+# therefore, don't model propagules, vege % or algae % and investigate large pneumatophore diameter values
+# pneumatophore diameter at AI 5 is 19mm. In my experience this is not a realistic value - therefore remove
+# pneumatophore diameter at HS 1 is 17.5mm. Also seems unrealistic - remove.
+# pneumatophore diameter at VSR 5 is 15 mm. The pneumatophores in the photo look quite thick - therefore retain.
+
+# mangrove leaf data
+cleveland_plot(manleafall_wide$Area, "Area") # right skewed, some large values - should be realistic but check
+cleveland_plot(manleafall_wide$Dry_weight, "Dry_weight") # fairly even distribution, some large values but realistic
+cleveland_plot(manleafall_wide$Fresh_weight, "Fresh_weight") # fairly even distribution, some large values but realistic
+cleveland_plot(manleafall_wide$dfratio, "dfratio") # even spread, with a few outliers on each side - check these out in case there were any mistakes in the order of weight measurements
+cleveland_plot(manleafall_wide$LMA, "LMA") # even spread but there are outliers - check these out
+cleveland_plot(manherb_long$`Herb_%`, "Herb_%") # right skewed, some large values but realistic
+
+# check leaf areas - largest areas are all for orange and red mangroves, which have bigger leaves, so makes sense.
+# remeasured the 15 leaves with the largest leaf areas. Replacing values of leaves where the remeasured value was very different from the original measurement: 
+#- CCW4 Orange 1 Leaf 1
+manleafall_wide$Area[591] <- 7952
+#- CCW3 Orange1 Leaf 3, 4, 5
+manleafall_wide$Area[583] <- 5679
+manleafall_wide$Area[584] <- 6447
+manleafall_wide$Area[585] <- 5459
+#- VSR 5 Orange 3 Leaf 4
+manleafall_wide$Area[954] <- 5198
+#- CCW 2 Orange 1 Leaf 2, 4
+manleafall_wide$Area[577] <- 5334
+manleafall_wide$Area[579] <- 6039
+#- VSR 1 Orange 2 Leaf 3, 4
+manleafall_wide$Area[853] <- 4925
+manleafall_wide$Area[854] <- 5940
+
+# check dfratios
+# no reason to suggest any large values are unrealistic/incorrect except 2 leaf dry weights were in the wrong order - HS2 Tree 7 Leaf 3 and 5
+manleafall_wide$Dry_weight[323] # dry weight 0.311
+manleafall_wide$Dry_weight[325] # dry weight 0.484
+# swap these
+manleafall_wide$Dry_weight[323] <- 0.484
+manleafall_wide$Dry_weight[325] <- 0.311
+# recalculate dfratio
+manleafall_wide <- manleafall_wide %>% mutate(dfratio = Dry_weight/Fresh_weight)
+
+
+# investigate extreme LMA values
+# identified some mistakes and fixed those in the original data.
+# the remaining large and small data points are realistic - very small LMA values are mostly saplings, and very large LMA values are likely because leaves had dried somewhat before scanning so may have shriveled a little? If there is an issue with analysis later, we can look more into these values and consider removing.
 ```
 
 
