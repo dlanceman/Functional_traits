@@ -2280,6 +2280,7 @@ summary(M11) #
 
 
 # set up with Species properly - Doesn't work...
+
 ```
 
 
@@ -2374,8 +2375,8 @@ plotQQunif(M4)
 
 
 # play around with variables with the sqrt model
-M5 <- glmmTMB(sqrt(Stem_dia_mm) ~ Species:(YSR * Elevation + sp_prop) + (1|Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_dia)
-# works without DomSpecies
+M5 <- glmmTMB(sqrt(Stem_dia_mm) ~ Species:(YSR * Elevation + sp_prop) + DomSpeciesSuperSimp + (1|Combo/Site) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_dia)
+# works without DomSpecies inside the bracket (or without it completely)
 
 plot(predict(M5), residuals(M5)) # looks weird with two distinct clumps. but no trend per se and fairly equal distribution either side of zero so I think it's good
 plotQQunif(M5) # not great
@@ -2476,7 +2477,7 @@ plot(predict(M4), residuals(M4)) # ok?
 plotQQunif(M4) # not amazing..
 
 # sqrt model
-M5 <- glmmTMB(sqrt(Stem_ht_mm) ~ Species:(YSR * Elevation + sp_prop) + (1|Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_ht)
+M5 <- glmmTMB(sqrt(Stem_ht_mm) ~ Species:(YSR * Elevation + sp_prop) + DomSpeciesSuperSimp + (1|Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_ht)
 # have to exclude DomSpecies
 plot(predict(M5), residuals(M5)) # clumped, and a couple outliers, but ok...
 plotQQunif(M5) # pretty good
@@ -2515,6 +2516,8 @@ salt_comm_comp_long <- salt_comm_comp %>%
 
 # visualise
 hist(salt_comm_comp_long$Sp_cover_prop) # highly zero-inflated given we've included an extra row for each time a species wasn't present..
+hist(log(salt_comm_comp_long$Sp_cover_prop)) # becomes left skewed
+hist(sqrt(salt_comm_comp_long$Sp_cover_prop)) # still zero inflated of course
 
 salt_comm_comp_long %>% subset(rest_status == 1) %>% 
   ggplot(aes(x = Sp_cover_prop, group = Species)) +
@@ -2624,7 +2627,7 @@ plotQQunif(M1) # not good
 
 M2 <- lmer(log(1-salt_comm$total_cover_prop) ~ rest_status * Elevation +  DomSpeciesSuperSimp + Estuary * rest_status + (1|Site), data = salt_comm, na.action = na.exclude)
 plot(M2) # looks ok
-plotQQunif(M2) # not good
+plotQQunif(M2) # not great
 
 M3 <- lmer(log(1.025-salt_comm$total_cover_prop) ~ rest_status * Elevation +  DomSpeciesSuperSimp + Estuary * rest_status + (1|Site), data = salt_comm, na.action = na.exclude)
 plot(M3) # better, but not sure if it's ok to choose a random number for an offset
@@ -2632,6 +2635,14 @@ plotQQunif(M3) # great
 
 
 summary(M3)
+
+# try different distribution types
+
+M4 <- glmer(salt_comm$total_cover_prop ~ rest_status * Elevation +  DomSpeciesSuperSimp + Estuary * rest_status + (1|Site), family = "nbinom2", data = salt_comm, na.action = na.exclude)
+plot(M4) # not good
+
+M5 <- glmer(salt_comm$total_cover_prop ~ rest_status * Elevation +  DomSpeciesSuperSimp + Estuary * rest_status + (1|Site), family = "Gamma", data = salt_comm, na.action = na.exclude)
+plot(M5) # not good
 ```
 
 
@@ -2765,23 +2776,207 @@ summary(M3)
 ```{r Stem diameter - prep and explore}
 # first, only include Sporobolus, Sarcocornia, Pneumatophores and Triglochin as these are the only species that exist in both natural and restored sites.
 
+salt_less <- salt %>% subset(Species %in% c("Sporobolus", "Sarcocornia", "Pneumatophores", "Triglochin"))
 
+# explore - histograms
+hist(salt_less$Stem_dia_mm) # highly right skewed
+hist(log(salt_less$Stem_dia_mm)) # weird but more similar to normal
+hist(sqrt(salt_less$Stem_dia_mm)) # worse than log
+hist(log(salt_less$Stem_dia_mm+0.2)) # more similar to normal but not sure if this sort of offset is ok
+
+# relationship with elevation
+plot(salt_less$Stem_dia_mm ~ salt_less$Elevation) # no evidence of a non-linear relationship
+```
+
+```{r Stem diameter - natural vs restored - model}
+M1 <- glmmTMB(Stem_dia_mm ~ Species:(rest_status * Elevation + DomSpeciesSuperSimp + sp_prop) + (1|Combo/Site/Estuary) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_less)
+# rank deficient and model convergence problem
+
+M2 <- glmmTMB(Stem_dia_mm ~ Species:(rest_status * Elevation + sp_prop) + (1|Combo/Site/Estuary) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_less)
+# works without DomSpeciesSuperSimp
+resid <- residuals(simulateResiduals(M2), quantilefunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(resid, predict(M2)) # terrible
+plotQQunif(M2) # terrible
+
+# log
+M3 <- glmmTMB(log(Stem_dia_mm) ~ Species:(rest_status * Elevation + sp_prop) + (1|Combo/Site/Estuary) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_less)
+resid <- residuals(simulateResiduals(M3), quantilefunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(resid, predict(M3)) # very clumped (likely due to the nature of the data) and not great but a lot better than the previous
+plotQQunif(M3) # terrible
+
+# sqrt
+M4 <- glmmTMB(sqrt(Stem_dia_mm) ~ Species:(rest_status * Elevation + sp_prop) + (1|Combo/Site/Estuary) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_less)
+# model convergence problem
+
+M5 <- glmmTMB(sqrt(Stem_dia_mm) ~ Species:(rest_status * Elevation) + (1|Combo/Site/Estuary) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_less)
+# still model convergence problem without sp_prop
+
+M6 <- glmmTMB(sqrt(Stem_dia_mm) ~ Species:(rest_status + Elevation) + (1|Combo/Site/Estuary) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_less)
+# works without sp_prop and without interaction
+resid <- residuals(simulateResiduals(M6), quantilefunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(resid, predict(M6)) # not great
+plotQQunif(M6) # not good
+
+# try different distribution type?
+M7 <- glmmTMB(Stem_dia_mm ~ Species:(rest_status * Elevation + sp_prop) + (1|Combo/Site/Estuary) + rr(Species+0|Combo, d = 2), family = Gamma(link = "inverse"), data = salt_less)
+# 44 warnings
+resid <- residuals(simulateResiduals(M7), quantilefunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(resid, predict(M7)) # not great
+plotQQunif(M7)
+# apparently infinite residuals values have been created
+
+# try estuary as a fixed value
+M8 <- glmmTMB(Stem_dia_mm ~ Species:(rest_status * Elevation + sp_prop) + rest_status * Estuary + (1|Combo/Site) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_less)
+# doesn't work when estuary is in the bracket with species
+resid <- residuals(simulateResiduals(M8), quantilefunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(resid, predict(M8)) # not good
+plotQQunif(M8) # not good
+
+M9 <- glmmTMB(log(Stem_dia_mm) ~ Species:(rest_status * Elevation + sp_prop) + rest_status * Estuary + (1|Combo/Site) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_less)
+# doesn't work when estuary is in the bracket with species
+resid <- residuals(simulateResiduals(M9), quantilefunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(resid, predict(M9)) # pretty decent
+plotQQunif(M9) # not good
+
+M10 <- glmmTMB(log(Stem_dia_mm) ~ Species:(rest_status + Elevation + sp_prop) + rest_status * Estuary + (1|Combo/Site) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_less)
+resid <- residuals(simulateResiduals(M10), quantilefunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(resid, predict(M10)) # pretty decent
+plotQQunif(M10) # not good
+
+M11 <- glmmTMB(log(Stem_dia_mm+0.2) ~ Species:(rest_status + Elevation + sp_prop) + rest_status * Estuary + (1|Combo/Site) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_less)
+resid <- residuals(simulateResiduals(M11), quantilefunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(resid, predict(M11)) # pretty decent
+plotQQunif(M11) # not good
 ```
 
 
 # 5.6 Stem height
 
+```{r Stem height - natural vs restored - prep and explore data}
+# first, only include Sporobolus, Sarcocornia, Pneumatophores and Triglochin as these are the only species that exist in both natural and restored sites.
+
+salt_less <- salt %>% subset(Species %in% c("Sporobolus", "Sarcocornia", "Pneumatophores", "Triglochin"))
+
+# explore - histograms
+hist(salt_less$Stem_ht_mm) # somewhat right skewed
+hist(log(salt_less$Stem_ht_mm)) # somewhat left skewed
+hist(sqrt(salt_less$Stem_ht_mm)) # normal!
+
+# relationship with elevation
+plot(salt_less$Stem_ht_mm ~ salt_less$Elevation) # could be non-linear
+```
+
+```{r Stem height - natural vs restored - model}
+M1 <- glmmTMB(Stem_ht_mm ~ Species:(rest_status * poly(Elevation,2) + DomSpeciesSuperSimp + sp_prop) + (1|Combo/Site/Estuary) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_less)
+# rank deficient and model convergence problems
+
+M2 <- glmmTMB(Stem_ht_mm ~ Species:(rest_status * poly(Elevation,2) + sp_prop) + (1|Combo/Site/Estuary) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_less)
+# model convergence problems
+
+M3 <- glmmTMB(Stem_ht_mm ~ Species:(rest_status * poly(Elevation,2)) + (1|Combo/Site/Estuary) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_less)
+# model convergence problem
+
+M4 <- glmmTMB(Stem_ht_mm ~ Species:(rest_status * Elevation + sp_prop) + (1|Combo/Site/Estuary) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_less)
+# model convergence problem
+
+M5 <- glmmTMB(Stem_ht_mm ~ Species:(rest_status + Elevation + sp_prop) + (1|Combo/Site/Estuary) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_less)
+# model convergence problem
+
+M6 <- glmmTMB(Stem_ht_mm ~ Species:(rest_status + Elevation + sp_prop) + Estuary * rest_status + (1|Combo/Site) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_less)
+# works with Estuary not a random variable and not in brackets with Species, and no interactions between variables
+resid <- residuals(simulateResiduals(M6), quantilefunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(resid, predict(M6)) # ok but has a trend
+plotQQunif(M6) # pretty good
+
+# try sqrt
+M7 <- glmmTMB(sqrt(Stem_ht_mm) ~ Species:(rest_status + Elevation + sp_prop) + Estuary * rest_status + (1|Combo/Site) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_less)
+resid <- residuals(simulateResiduals(M7), quantilefunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(resid, predict(M7)) # ok spread but has a trend
+plotQQunif(M7) # perfect
+
+# try other sqrt models that have a better residuals plot?
+M8 <- glmmTMB(sqrt(Stem_ht_mm) ~ Species:(rest_status + poly(Elevation,2) + sp_prop) + Estuary * rest_status + (1|Combo/Site) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_less)
+resid <- residuals(simulateResiduals(M8), quantilefunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(resid, predict(M8)) # still has a trend
+plotQQunif(M8) # perfect
+
+# log model
+M9 <- glmmTMB(log(Stem_ht_mm) ~ Species:(rest_status + poly(Elevation,2) + sp_prop) + Estuary * rest_status + (1|Combo/Site) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_less)
+resid <- residuals(simulateResiduals(M9), quantilefunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(resid, predict(M9)) # trend + uneven spread
+plotQQunif(M9) # not good
+
+# therefore M8 is closest to ok
+
+summary(M8)
+```
+
 
 # 5.7 Reproduction
 
 
+```{r Reproduction - natural vs restored - prep and explore}
+# use reprod_unique created in the Reproduction YSR section above
+
+# create a new dataframe with only Sporobolus, Sarcocornia and Triglochin (only sp. with enough data)
+reprod_unique_less <- reprod_unique %>% subset(Species %in% c("Sporobolus", "Sarcocornia", "Triglochin"))
+
+# make data longer with one row for reproduction type and another for presence/absence
+reprod_all_long <- reprod_unique_less %>% pivot_longer(cols = c("Buds", "Flowers", "Seeds"), names_to = "reprod_type", values_to = "Reproduction")
+
+# now subset for only flowers and seeds since there are not enough bud data
+# and remove NAs
+reprod_all_long <- reprod_all_long %>% subset(!is.na(Reproduction)) %>% 
+  subset(reprod_type %in% c("Flowers", "Seeds"))
+
+# explore reproduction of different species and reproduction types in each restoration status
+ggplot(data = reprod_all_long, aes(x = Reproduction, y = Species)) +
+  geom_boxplot() +
+  facet_wrap(~Site)
+```
+
+```{r Reproduction - natural vs restored - model}
+M1 <- glmmTMB(Reproduction ~ Species:(rest_status * reprod_type + Elevation) + (1+reprod_type|Species) + (1|Combo/Site/Estuary), contrasts = list(reprod_type = "contr.sum"), family = "binomial", data = reprod_all_long)
+
+resid <- residuals(simulateResiduals(M1), quantilefunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(resid, predict(M1)) # great
+plotQQunif(M1) # great
+
+summary(M1)
+
+# however, when visualising the data below it's evident that there are insufficient data for natural sites for sarcocornia (only 2 quadrats, both in the same site, that have sarcocornia)
+
+reprod_all_nosarc <- reprod_all_long %>% subset(Species %in% c("Sporobolus", "Triglochin"))
+
+M2 <- glmmTMB(Reproduction ~ Species:(rest_status * reprod_type + Elevation) + (1|Combo/Site/Estuary), contrasts = list(reprod_type = "contr.sum"), family = "binomial", data = reprod_all_nosarc)
+# it wasn't working with the additional random effect. and do we need the random effect of reproduction type|Species if these are included as fixed effects?
+resid <- residuals(simulateResiduals(M2), quantilefunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(resid, predict(M2)) # not good - there are points that are far from the line
+plotQQunif(M2) # good
+```
+
+```{r Reproduction - natural sites - graph}
+# what is the proportion of each species at each site with each reproduction type?
+
+reprod_all_proportions <- reprod_all_long %>% 
+  group_by(Site, Species, reprod_type) %>% 
+  summarise(avg = mean(Reproduction), se = sd(Reproduction)/sqrt(n()), rest_status = mean(rest_status)) %>% 
+  ungroup()
+
+# By species
+reprod_all_proportions %>%  
+  subset(rest_status == 0) %>% 
+  ggplot(aes(x = Site, y = avg, group = reprod_type, color = reprod_type, ymin = avg-se, ymax = avg+se)) +
+  geom_point() +
+  geom_errorbar() +
+  facet_wrap(~Species)
+
+```
 
 
 
 
-
-
---------------
+#--------------
 
 ```{r Elevation rescaling makes a difference?}
 salt_elev_test <- salt_H_rest_stems[,c(5:7,11,20,25,30:33,35,36)]
