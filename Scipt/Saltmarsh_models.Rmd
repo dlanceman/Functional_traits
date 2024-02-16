@@ -413,139 +413,7 @@ plot(salt_numeric)
 
 First, let's create univariate models for our community-level variables (tallest canopy height, total cover and burrows).
 
-
-# 2a Tallest canopy height
-
-Tallest canopy height
-- Canopy height ~ YSR + DomSpecies + Elevation + (1|Site)
-
-First assumption: linear relationship between predictors and response variable
-
-```{r Tallest canopy height - check assumptions - linear relationship }
-# numeric predictors are YSR and elevation
-plot(salt_comm_rest_H$Canopy_ht_cm ~ salt_comm_rest_H$YSR) # possibly non-linear
-plot(salt_comm_rest_H$Canopy_ht_cm ~ salt_comm_rest_H$Elevation) # possibly non-linear
-```
-
-
-```{r Tallest canopy height - model}
-# try a model with polynomial variables
-M1 <- lmer(Canopy_ht_cm ~ poly(YSR,2) + DomSpecies + poly(Elevation,2) + (1|Site), data = salt_comm_rest_H, na.action = na.exclude)
-summary(M1)
-
-# estimate > st error for 2nd order polynomial YSR & 1st order polynomial
-# 1st order elevation is significant here, but 2nd order isn't, so remove it
-
-M2 <- lmer(Canopy_ht_cm ~ poly(YSR,2) + DomSpecies + Elevation + (1|Site), data = salt_comm_rest_H, na.action = na.exclude)
-summary(M2)
-
-# try a model with polynomial variables and log transform
-M3 <- lmer(ln.canopy.ht ~ poly(YSR,2) + DomSpecies + poly(Elevation,2) + (1|Site), data = salt_comm_rest_H, na.action = na.exclude)
-summary(M3)
-
-# remove non-significant factors - polynomial elevation
-
-M4 <- lmer(ln.canopy.ht ~ poly(YSR,2) + DomSpecies + Elevation + (1|Site), data = salt_comm_rest_H, na.action = na.exclude)
-summary(M4)
-```
-
-Other assumptions:
-- model residuals are normally distributed
-- model residuals have equal variances
-- model residuals are independent
-
-```{r Tallest canopy height - check residuals assumptions}
-# try M1 
-# check for collinearity between predictors
-check_collinearity(M1) # VIF < 5 (low collinearity) - good.
-
-# residuals plots
-plot(M1) # roughly equal variances
-qqnorm(resid(M1)) 
-qqline(resid(M1)) # not great (high values diverge)
-
-# try M2
-# check for collinearity between predictors
-check_collinearity(M2) # VIF < 5 (low collinearity) - good.
-
-# residuals plots
-plot(M2) # roughly equal variances 
-qqnorm(resid(M2)) 
-qqline(resid(M2)) # not great - similar to before
-
-# try M3 
-# check for collinearity between predictors
-check_collinearity(M3) # VIF < 5 (low collinearity) - good.
-
-# residuals plots
-plot(M3) # roughly equal variances 
-qqnorm(resid(M3)) 
-qqline(resid(M3)) # high and low values diverge but somewhat better than non-transformed
-
-# use log transformed rather than non-transformed
-# confirm if this is good enough
-
-# try M4
-# check for collinearity between predictors
-check_collinearity(M4) # VIF < 5 (low collinearity) - good.
-
-# residuals plots
-plot(M4) # good
-qqnorm(resid(M4)) 
-qqline(resid(M4)) # same as M3
-```
-
-```{r Tallest canopy height - plot}
-# Years since restoration
-ggplot(salt_comm_rest_H, aes(x = YSR, y = ln.canopy.ht)) +   
-      geom_point(alpha = 0.5, na.rm = TRUE) +
-      geom_smooth(span = 10) +
-    scale_y_continuous(breaks = log(pretty(exp(salt_comm$ln.canopy.ht))), labels = pretty(exp(salt_comm$ln.canopy.ht))) +
-    labs(y = "Canopy height (cm)", x = "Years since restoration") +
-      theme_classic()
-
-# plot predicted values with ggeffects ggemmeans
-predict_YSR <- ggemmeans(M4, terms = c("YSR [all]"))
-# view this result
-print(predict_YSR)
-# visualise this result
-plot(predict_YSR, ci = T,add.data = TRUE, dot.alpha = 0.5,  jitter = 0.2)+
-  ggtitle("") +  geom_line(size = 1.2) +
-    scale_y_continuous(breaks = log(pretty(exp(salt_comm$ln.canopy.ht))), labels = pretty(exp(salt_comm$ln.canopy.ht))) +
-  labs(y = "Tallest stem height (cm)", x = "Years since restoration") +
-  theme_classic()
-
-# natural sites boxplot
-ggplot(salt_comm_nat_H, aes(x = Site, y = ln.canopy.ht)) +
-  geom_boxplot() +
-    scale_y_continuous(breaks = log(pretty(exp(salt_comm$ln.canopy.ht))), labels = pretty(exp(salt_comm$ln.canopy.ht)))   +
-  geom_point() +
-    labs(y = "Canopy height (cm)") +
-  theme_classic()
-
-# Elevation
-ggplot(salt_comm_rest_H, aes(x = Elevation, y = ln.canopy.ht)) +   
-      geom_point(alpha = 0.5, na.rm = TRUE) +
-      geom_smooth(method = lm) +
-    scale_y_continuous(breaks = log(pretty(exp(salt_comm$ln.canopy.ht))), labels = pretty(exp(salt_comm$ln.canopy.ht))) +
-    labs(y = "Canopy height (cm)", x = "Elevation (standardised)") +
-      theme_classic() 
-# ideally back-transform the elevation axis
-
-# Dominant species
-salt_comm_rest_H %>% 
-  subset(DomSpecies %in% c("Bolboschoenus", "Phragmites", "Sarcocornia", "Sporobolus", "Triglochin")) %>% 
-  ggplot(., aes(x = DomSpecies, y = ln.canopy.ht)) +
-  geom_boxplot() +
-    scale_y_continuous(breaks = log(pretty(exp(salt_comm$ln.canopy.ht))), labels = pretty(exp(salt_comm$ln.canopy.ht)))   +
-  geom_point() +
-    labs(y = "Canopy height (cm)") +
-  theme_classic()
-# aster, juncus, suaeda and unvegetated only have one value each so should be excluded from the plot and (maybe) model.
-```
-
-
-# 2b - Total cover 
+# 2a - Total cover 
 
 Total cover
 - Total cover ~ YSR + DomSpecies + Elevation 
@@ -748,7 +616,7 @@ tapply(salt_comm$total_cover_prop, salt_comm$Site, mean)
 ```
 
 
-#2c - burrows
+#2b - burrows
 
 ```{r Burrows - Exploration and data prep}
 # histogram of burrows per site
@@ -757,9 +625,14 @@ ggplot(data = salt_comm_rest_H, aes(x = Burrows_0.5x0.5)) +
   facet_wrap(~Site)
 
 # plot relationships between variables
-plot(salt_comm_rest_H$Burrows_0.5x0.5 ~ salt_comm_rest_H$YSR) # relatively linear
+plot(salt_comm_rest_H$Burrows_0.5x0.5 ~ salt_comm_rest_H$YSR) # potentially non-linear
 plot(salt_comm_rest_H$Burrows_0.5x0.5 ~ salt_comm_rest_H$Elevation) # relatively linear
 
+ggplot(data = salt_comm_rest_H, aes(x = YSR, y = Burrows_0.5x0.5)) +
+  geom_point() +
+  geom_smooth()
+
+plot(salt_comm_rest_H$Elevation ~ salt_comm_rest_H$YSR)
 
 # remove NA data
 salt_comm_rest_H_burrows <- salt_comm_rest_H %>% subset(!is.na(Burrows_0.5x0.5))
@@ -854,40 +727,118 @@ summary(M9) # now no error.
 plot(predict(M9), residuals(M9))
 
 # try negative binomial in glmmTMB - might be ok without zero inflation
-M10 <- glmmTMB(Burrows_0.5x0.5 ~ poly(YSR,2)* Elevation + DomSpeciesSuperSimp, data = salt_comm_rest_H_burrows, family = "nbinom2")
+M10 <- glmmTMB(Burrows_0.5x0.5 ~ poly(YSR,2)* Elevation + DomSpeciesSuperSimp + (1|Site), data = salt_comm_rest_H_burrows, family = "nbinom2")
 
 # try zero inflated negative binomial model in glmmTMB
-M11 <- glmmTMB(Burrows_0.5x0.5 ~ poly(YSR,2)* Elevation + DomSpeciesSuperSimp, data = salt_comm_rest_H_burrows, family = "nbinom2", ziformula =~1)
+M11 <- glmmTMB(Burrows_0.5x0.5 ~ poly(YSR,2)* Elevation + DomSpeciesSuperSimp + (1|Site), data = salt_comm_rest_H_burrows, family = "nbinom2", ziformula =~1)
 # in this plot we expect to see an increasing variance trend as it's a negative binomial distribution and hasn't been altered to fit a flat distribution.
 plot(predict(M11), residuals(M11), ylim = c(-50,50))
 
+
 # plot residuals vs predicted values with adjustments for easier interpretation - should see a relatively flat, even spread of residuals with no clear trend
-resid <- residuals(simulateResiduals(M10), quantilefunction = qnorm, outlierValues = c(-7,7))
-scatter.smooth(resid, predict(M10))
-resid <- residuals(simulateResiduals(M11), quantilefunction = qnorm, outlierValues = c(-7,7))
-scatter.smooth(resid, predict(M11))
-# M11 is flatter but they're both ok looking, use anova to test for differences between the two models
+resid <- residuals(simulateResiduals(M10), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M10,re.form = NA), resid)
+resid <- residuals(simulateResiduals(M11), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M11,re.form = NA), resid) # looks a bit odd
+hist(resid) # check distribution of residuals - should be normal
+scatter.smooth(abs(resid), predict(M11,re.form = NA)) # test homogeneity of variance - looks fine with absolute values so should be ok
 
 anova(M10,M11)
 # significance here means the zero inflated part of the model does explain more of the variation, so therefore we should use the zero inflated model - M11
 
 summary(M11)
-
-
-# cannot make a model with sp_prop as it is for non-community level variables!
 ```
 
 ```{r Burrows - plot}
+# need to consider the data space with YSR and Elevation
+plot(salt_comm_rest_H$Elevation ~ salt_comm_rest_H$YSR)
+# there are only low elevations with low YSR and high elevations with high YSR, therefore we don't have a full matrix so can't model the entire data space. create a new dataframe to reflect the part of the matrix we have data for and include a column "Site" filled with NA
+# let's do a matrix with 0.1-0.4m elevations for YSRs 6-16 and 0.5-0.8m elevations for YSRs 30-33
+
+# also need to know how this is for each DomSpeciesSuperSimp.
+t <- salt_comm_rest_H %>% subset(DomSpeciesSuperSimp == "Sporobolus") 
+plot(t$Elevation ~ t$YSR) # has data across all Elevations/YSRs that the entire data cover (as above)
+t <- salt_comm_rest_H %>% subset(DomSpeciesSuperSimp == "Sarcocornia") 
+plot(t$Elevation ~ t$YSR) # only one data point at YSR 30 (elevation 0.6), rest of data are YSR 6-12 & elevation 0.2-0.5. Also YSR and elevation are correlated for this variable
+t <- salt_comm_rest_H %>% subset(DomSpeciesSuperSimp == "Other") 
+plot(t$Elevation ~ t$YSR) # only two data points at YSR 30/33 (elevation 0.5), rest of data are YSR 11-16 & elevation 0-0.2
+
+plot(salt_comm_rest_H$Burrows_0.5x0.5 ~ salt_comm_rest_H$Elevation)
+
+
+
+plotting_space1 <- tibble(Elevation = c(0.1,0.2,0.3,0.4,
+                                       0.1,0.2,0.3,0.4,
+                                       0.1,0.2,0.3,0.4,
+                                       0.1,0.2,0.3,0.4,
+                                       0.5,0.6,0.7,0.8,
+                                       0.5,0.6,0.7,0.8),
+                         YSR = c(6,6,6,6,
+                                 9,9,9,9,
+                                 12,12,12,12,
+                                 16,16,16,16,
+                                 30,30,30,30,
+                                 33,33,33,33),
+                         Site = NA,
+                         DomSpeciesSuperSimp = "Sporobolus")
+
+plotting_space2 <- tibble(Elevation = c(0.2,0.3,0.4,0.5,
+                                        0.2,0.3,0.4,0.5,
+                                        0.2,0.3,0.4,0.5,
+                                        0.6),
+                          YSR = c(6,6,6,6,
+                                  9,9,9,9,
+                                  12,12,12,12,
+                                  30),
+                          Site = NA,
+                          DomSpeciesSuperSimp = "Sarcocornia")
+
+plotting_space3 <- tibble(Elevation = c(0,0.1,0.2,
+                                        0,0.1,0.2,
+                                        0.5,0.5),
+                          YSR = c(11,11,11,
+                                  16,16,16,
+                                  30,33),
+                          Site = NA,
+                          DomSpeciesSuperSimp = "Other")
+
+plotting_space <- rbind(plotting_space1, plotting_space2, plotting_space3)
+
+plotting_space$predict_burrows <- predict(M11, newdata = plotting_space, type = "response")
+
+ggplot(data = plotting_space, aes(x = YSR, y = predict_burrows, color = Elevation)) +
+  geom_point() +
+  facet_wrap(~DomSpeciesSuperSimp) +
+  ylim(0,100)
+
+# try with only an intermediate elevation value - 0.4
+plotting_single_elevation1 <- tibble(YSR = c(6,9,11,12,16,30,33),
+                                    Elevation = c(0.4,0.4,0.4,0.4,0.4,0.4,0.4),
+                                    Site = NA,
+                                    DomSpeciesSuperSimp = "Sporobolus")
+plotting_single_elevation2 <- plotting_single_elevation1 %>% 
+  mutate(DomSpeciesSuperSimp = "Sarcocornia")
+plotting_single_elevation3 <- plotting_single_elevation1 %>% 
+  mutate(DomSpeciesSuperSimp = "Other")
+plotting_single_elevation <- rbind(plotting_single_elevation1,plotting_single_elevation2,plotting_single_elevation3)
+plotting_single_elevation$predict_burrows <- predict(M11, newdata = plotting_single_elevation, type = "response")
+
+
+ggplot(data = plotting_single_elevation, aes(x = YSR, y = predict_burrows)) +
+  geom_point() +
+  facet_wrap(~DomSpeciesSuperSimp)
+
+
 # create plots while holding interacting variable (elevation) at fixed levels
 # first calculate quantile values for elevation
 quantile(salt_comm_rest_H$Elevation)
 # histogram of elevation
 hist(salt_comm_rest_H$Elevation)
 # insert quantile 1 and quantile 3 values as Elevation values to use
-emmip(M11, Elevation~YSR, at = list(YSR = c(6,9,11,12,19,30,33), Elevation = c(0.143, 0.469), CIs = TRUE))
+emmip(M11, Elevation~YSR, at = list(YSR = c(6,9,11,12,19,30,33), Elevation = c(0.143, 0.469), CIs = TRUE, type = "response"))
 # what do we do about negative values (impossible?)
 # results are counterintuitive - and different to the predict code below - show for low elevations that there would be more burrows at low YSR? and mostly negative values for high elevations?
-emmip(M11, Elevation~YSR, at = list(YSR = c(6,9,11,12,19,30,33), Elevation = c(0,0.2,0.4,0.6,0.8), CIs = TRUE))
+emmip(M11, Elevation~YSR, at = list(YSR = c(6,9,11,12,19,30,33), Elevation = c(0.2,0.4,0.6,0.8)), type = "response")
 
 
 
@@ -970,7 +921,7 @@ sum(E2^2) / (N - p)
 # 1.62 = overdispersed but not too bad?
 ```
 
-# 2d. Overall stem diameters and heights
+# 2c. Overall stem diameters and heights
 
 ```{r Overall stem diameters}
 # to work out how the community looks in terms of stem diameters, we need to weight each species' diameters by their proportion. 
@@ -1924,6 +1875,12 @@ plot(fit_alt)
 anova(fit_null, fit_null2, bootID = bootID_long) # testing for importance of YSR
 anova(fit_null2, fit_alt, bootID = bootID_long) # testing for importance of YSR * Elevation interaction
 ```
+
+
+```{r Stem density - complete correlation model}
+
+```
+
 
 
 ```{r Stem density - plot}
