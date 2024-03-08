@@ -554,23 +554,93 @@ ggplot(aes(x = YSR, y = Cover, group = Elevation, color = Elevation), data = plo
 
 
 # No interaction with elevation
-M14 <- lmer(log(1-salt_comm_rest_H$total_cover_prop) ~ poly(YSR,2) + poly(Elevation,2) + DomSpeciesSuperSimp + (1|Site), data = salt_comm_rest_H, na.action = na.exclude)
+M14 <- glmmTMB(log(1-total_cover_prop) ~ poly(YSR,2) + poly(Elevation,2) + DomSpeciesSuperSimp + (1|Site), data = salt_comm_rest_H, family = "gaussian")
 
 # plot this
 resid <- residuals(simulateResiduals(M14), quantileFunction = qnorm, outlierValues = c(-7,7))
 scatter.smooth(predict(M14,re.form = NA), resid) # not exactly straight but ok
 
 summary(M14)
+```
 
 
-
-
+```{r Total cover - plot predicted results}
 # visually interpret the results
 
 # elevation and YSR exist in a matrix with a lot of gaps. The only elevation value with data across the YSR range is ~0.4. Therefore plot YSR effects at elevation 0.4m.
 
 # we're not plotting interactions, we're just plotting the effect of one variable.
 
+# try with only an intermediate elevation value - 0.4
+plotting_single_elevation1 <- tibble(YSR = c(6,9,11,12,16,30,33),
+                                    Elevation = c(0.4,0.4,0.4,0.4,0.4,0.4,0.4),
+                                    Site = NA,
+                                    DomSpeciesSuperSimp = "Sporobolus")
+plotting_single_elevation2 <- plotting_single_elevation1 %>% 
+  mutate(DomSpeciesSuperSimp = "Sarcocornia")
+plotting_single_elevation3 <- plotting_single_elevation1 %>% 
+  mutate(DomSpeciesSuperSimp = "Other")
+plotting_single_elevation <- rbind(plotting_single_elevation1,plotting_single_elevation2,plotting_single_elevation3)
+plotting_single_elevation$predict_cover <- predict(M14, newdata = plotting_single_elevation, type = "response")
+
+# backtransform data 
+plotting_single_elevation <- plotting_single_elevation %>% 
+  mutate(Cover = (1 - exp(predict_cover))*100)
+
+ggplot(data = plotting_single_elevation, aes(x = YSR, y = Cover)) +
+  geom_point() +
+  facet_wrap(~DomSpeciesSuperSimp) +
+  ylim(0,100)
+
+
+# try at multiple levels of elevation
+plotting_space1 <- tibble(Elevation = c(0.1,0.2,0.3,0.4,
+                                       0.1,0.2,0.3,0.4,
+                                       0.1,0.2,0.3,0.4,
+                                       0.1,0.2,0.3,0.4,
+                                       0.5,0.6,0.7,0.8,
+                                       0.5,0.6,0.7,0.8),
+                         YSR = c(6,6,6,6,
+                                 9,9,9,9,
+                                 12,12,12,12,
+                                 16,16,16,16,
+                                 30,30,30,30,
+                                 33,33,33,33),
+                         Site = NA,
+                         DomSpeciesSuperSimp = "Sporobolus")
+
+plotting_space2 <- tibble(Elevation = c(0.2,0.3,0.4,0.5,
+                                        0.2,0.3,0.4,0.5,
+                                        0.2,0.3,0.4,0.5,
+                                        0.6),
+                          YSR = c(6,6,6,6,
+                                  9,9,9,9,
+                                  12,12,12,12,
+                                  30),
+                          Site = NA,
+                          DomSpeciesSuperSimp = "Sarcocornia")
+
+plotting_space3 <- tibble(Elevation = c(0,0.1,0.2,
+                                        0,0.1,0.2,
+                                        0.5,0.5),
+                          YSR = c(11,11,11,
+                                  16,16,16,
+                                  30,33),
+                          Site = NA,
+                          DomSpeciesSuperSimp = "Other")
+
+plotting_space <- rbind(plotting_space1, plotting_space2, plotting_space3)
+
+plotting_space$predict_cover <- predict(M14, newdata = plotting_space, type = "response")
+
+# backtransform data 
+plotting_space <- plotting_space %>% 
+  mutate(Cover = (1 - exp(predict_cover))*100)
+
+ggplot(data = plotting_space, aes(x = YSR, y = Cover, color = Elevation)) +
+  geom_point() +
+  facet_wrap(~DomSpeciesSuperSimp) +
+  ylim(0,100)
 ```
 
 Other assumptions (??)
@@ -801,6 +871,24 @@ anova(M10,M11)
 # significance here means the zero inflated part of the model does explain more of the variation, so therefore we should use the zero inflated model - M11
 
 summary(M11)
+
+
+# without elevation interaction
+# try negative binomial in glmmTMB - might be ok without zero inflation
+M12 <- glmmTMB(Burrows_0.5x0.5 ~ poly(YSR,2) + Elevation + DomSpeciesSuperSimp + (1|Site), data = salt_comm_rest_H_burrows, family = "nbinom2")
+
+# try zero inflated negative binomial model in glmmTMB
+M13 <- glmmTMB(Burrows_0.5x0.5 ~ poly(YSR,2) + Elevation + DomSpeciesSuperSimp + (1|Site), data = salt_comm_rest_H_burrows, family = "nbinom2", ziformula =~1)
+
+# plot residuals vs predicted values with adjustments for easier interpretation - should see a relatively flat, even spread of residuals with no clear trend
+resid <- residuals(simulateResiduals(M12), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M12,re.form = NA), resid) # good
+resid <- residuals(simulateResiduals(M13), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M13,re.form = NA), resid) # good
+
+anova(M12,M13)
+# lack of significance here means the zero inflated part of the model does not explain more of the variation, so therefore we should use the non-zero inflated model - M12
+
 ```
 
 ```{r Burrows - plot}
@@ -858,12 +946,11 @@ plotting_space3 <- tibble(Elevation = c(0,0.1,0.2,
 
 plotting_space <- rbind(plotting_space1, plotting_space2, plotting_space3)
 
-plotting_space$predict_burrows <- predict(M11, newdata = plotting_space, type = "response")
+plotting_space$predict_burrows <- predict(M12, newdata = plotting_space, type = "response")
 
 ggplot(data = plotting_space, aes(x = YSR, y = predict_burrows, color = Elevation)) +
   geom_point() +
-  facet_wrap(~DomSpeciesSuperSimp) +
-  ylim(0,100)
+  facet_wrap(~DomSpeciesSuperSimp)
 
 # try with only an intermediate elevation value - 0.4
 plotting_single_elevation1 <- tibble(YSR = c(6,9,11,12,16,30,33),
@@ -875,24 +962,12 @@ plotting_single_elevation2 <- plotting_single_elevation1 %>%
 plotting_single_elevation3 <- plotting_single_elevation1 %>% 
   mutate(DomSpeciesSuperSimp = "Other")
 plotting_single_elevation <- rbind(plotting_single_elevation1,plotting_single_elevation2,plotting_single_elevation3)
-plotting_single_elevation$predict_burrows <- predict(M11, newdata = plotting_single_elevation, type = "response")
+plotting_single_elevation$predict_burrows <- predict(M12, newdata = plotting_single_elevation, type = "response")
 
 
 ggplot(data = plotting_single_elevation, aes(x = YSR, y = predict_burrows)) +
   geom_point() +
   facet_wrap(~DomSpeciesSuperSimp)
-
-
-# create plots while holding interacting variable (elevation) at fixed levels
-# first calculate quantile values for elevation
-quantile(salt_comm_rest_H$Elevation)
-# histogram of elevation
-hist(salt_comm_rest_H$Elevation)
-# insert quantile 1 and quantile 3 values as Elevation values to use
-emmip(M11, Elevation~YSR, at = list(YSR = c(6,9,11,12,19,30,33), Elevation = c(0.143, 0.469), CIs = TRUE, type = "response"))
-# what do we do about negative values (impossible?)
-# results are counterintuitive - and different to the predict code below - show for low elevations that there would be more burrows at low YSR? and mostly negative values for high elevations?
-emmip(M11, Elevation~YSR, at = list(YSR = c(6,9,11,12,19,30,33), Elevation = c(0.2,0.4,0.6,0.8)), type = "response")
 
 
 
@@ -956,113 +1031,6 @@ plot(predict_YSR, ci = T) +
   ggtitle("") +  geom_line(linewidth = 1.2) +
   labs(y = "Burrows", x = "Years since restoration") +
   theme_classic() 
-```
-
-```{r Try relative elevation}
-salt_comm_rest_H_burrows <-
-  salt_comm_rest_H_burrows %>% group_by(Site) %>% 
-  mutate(relative_elevation = scale_this(Elevation)) %>% ungroup()
-
-# visualise scaled distribution for each site
-ggplot(data = salt_comm_rest_H_burrows, aes(y = relative_elevation)) +
-  geom_histogram() +
-  facet_wrap(~Site)
-
-# check that this worked and the mean of each site is very close to zero
-salt_comm_rest_H_burrows %>% group_by(Site) %>% summarise(mean(relative_elevation))
-
-# visualise relationship between relative_elevation and burrows
-plot(salt_comm_rest_H_burrows$Burrows_0.5x0.5 ~ salt_comm_rest_H_burrows$relative_elevation) # no obvious trend, include as a linear factor
-plot(salt_comm_rest_H_burrows$relative_elevation ~ salt_comm_rest_H_burrows$YSR)
-
-# try negative binomial in glmmTMB - might be ok without zero inflation
-M12 <- glmmTMB(Burrows_0.5x0.5 ~ poly(YSR,2)* relative_elevation + DomSpeciesSuperSimp + (1|Site), data = salt_comm_rest_H_burrows, family = "nbinom2")
-
-# try zero inflated negative binomial model in glmmTMB
-M13 <- glmmTMB(Burrows_0.5x0.5 ~ poly(YSR,2)* relative_elevation + DomSpeciesSuperSimp + (1|Site), data = salt_comm_rest_H_burrows, family = "nbinom2", ziformula =~1)
-
-# plot residuals vs predicted values with adjustments for easier interpretation - should see a relatively flat, even spread of residuals with no clear trend
-resid <- residuals(simulateResiduals(M12), quantileFunction = qnorm, outlierValues = c(-7,7))
-scatter.smooth(predict(M12,re.form = NA), resid) # good
-resid <- residuals(simulateResiduals(M13), quantileFunction = qnorm, outlierValues = c(-7,7))
-scatter.smooth(predict(M13,re.form = NA), resid) # looks a bit odd
-hist(resid) # check distribution of residuals - should be normal
-scatter.smooth(abs(resid), predict(M13,re.form = NA)) # test homogeneity of variance - looks fine with absolute values so should be ok
-
-anova(M12,M13)
-# no significance here means the zero inflated part of the model does not explain more of the variation, so therefore we should use the non zero inflated model - M12
-
-summary(M12)
-
-# for plotting, explore data space for each DomSpecies
-
-# also need to know how this is for each DomSpeciesSuperSimp.
-t <- salt_comm_rest_H_burrows %>% subset(DomSpeciesSuperSimp == "Sporobolus") 
-plot(t$relative_elevation ~ t$YSR) # can only predict high relative elevations (0 to 1.5) for 6,11 and 12 years and larger range (-1 to 1.5) for 16,30,33 YSR
-t <- salt_comm_rest_H_burrows %>% subset(DomSpeciesSuperSimp == "Sarcocornia") 
-plot(t$relative_elevation ~ t$YSR) # only one data point at YSR 30 (relative elevation ~1), most of the rest of data are YSR 6-12 & elevation -0.7 to 0.5. Also YSR and elevation are correlated for this variable
-t <- salt_comm_rest_H_burrows %>% subset(DomSpeciesSuperSimp == "Other") 
-plot(t$relative_elevation ~ t$YSR) # only one data point at YSR 33 (relative elevation ~-0.5), rest of data are YSR 11-16 & relative elevation ~-1.5 to 1
-
-plotting_space1 <- tibble(relative_elevation = c(0,0.5,1,1.5,
-                                      0,0.5,1,1.5,
-                                      0,0.5,1,1.5,
-                                      -1,-0.5,0,0.5,1,1.5,
-                                      -1,-0.5,0,0.5,1,1.5,
-                                      -1,-0.5,0,0.5,1,1.5),
-                         YSR = c(6,6,6,6,
-                                 9,9,9,9,
-                                 12,12,12,12,
-                                 16,16,16,16,16,16,
-                                 30,30,30,30,30,30,
-                                 33,33,33,33,33,33),
-                         Site = NA,
-                         DomSpeciesSuperSimp = "Sporobolus")
-
-plotting_space2 <- tibble(relative_elevation = c(-1,0,1,
-                                        -1,0,1,
-                                        -1,0,1,
-                                        1),
-                          YSR = c(6,6,6,
-                                  9,9,9,
-                                  12,12,12,
-                                  30),
-                          Site = NA,
-                          DomSpeciesSuperSimp = "Sarcocornia")
-
-plotting_space3 <- tibble(relative_elevation = c(-1.5,-1,-0.5,0,0.5,1,
-                                        -1.5,-1,-0.5,0,0.5,1,
-                                        -0.5),
-                          YSR = c(11,11,11,11,11,11,
-                                  16,16,16,16,16,16,
-                                  33),
-                          Site = NA,
-                          DomSpeciesSuperSimp = "Other")
-
-plotting_space_new <- rbind(plotting_space1, plotting_space2, plotting_space3)
-
-plotting_space_new$predict_burrows <- predict(M12, newdata = plotting_space_new, type = "response")
-
-ggplot(data = plotting_space_new, aes(x = YSR, y = predict_burrows, color = relative_elevation, group = relative_elevation)) +
-  geom_point() +
-  geom_line() +
-  facet_wrap(~DomSpeciesSuperSimp) 
-
-```
-
-```{r try with elevation as an offset}
-# try negative binomial in glmmTMB - might be ok without zero inflation
-M14 <- glmmTMB(Burrows_0.5x0.5 ~ poly(YSR,2) + DomSpeciesSuperSimp + (1|Site) + offset(log(Elevation + 0.3)), data = salt_comm_rest_H_burrows, family = "nbinom2")
-
-# try zero inflated negative binomial model in glmmTMB
-M15 <- glmmTMB(Burrows_0.5x0.5 ~ poly(YSR,2) + DomSpeciesSuperSimp + (1|Site) + offset(log(Elevation + 0.3)), data = salt_comm_rest_H_burrows, family = "nbinom2", ziformula =~1)
-# model convergence problem
-
-# plot residuals vs predicted values with adjustments for easier interpretation - should see a relatively flat, even spread of residuals with no clear trend
-resid <- residuals(simulateResiduals(M14), quantileFunction = qnorm, outlierValues = c(-7,7))
-scatter.smooth(predict(M14,re.form = NA), resid) # good
-hist(resid) # check distribution of residuals - should be normal
-scatter.smooth(abs(resid), predict(M14,re.form = NA)) # test homogeneity of variance - not ok!
 ```
 
 
@@ -2079,7 +2047,7 @@ ggplot(stem_dens_unique_H_res, aes(y = sp_prop, x = Site, group = Species)) +
   geom_point() +
   facet_wrap(~Species)
 
-plot(stem_dens_unique_H_res$sp_prop ~ stem_dens_unique_H_res$total_stems) # not correlated
+plot(stem_dens_unique_H_res$sp_prop ~ stem_dens_unique_H_res$total_stems) # not problematically correlated
 
 M2 <- glmmTMB(Stems ~ YSR * Elevation * Species + DomSpeciesSuperSimp + offset(log(Quadrat_area)) + (0 + Species|Combo) + (1|Site), family = "nbinom2", data = stem_dens_unique_H_res)
 # doesn't work with sp_prop, doesn't work with species() format
@@ -2093,6 +2061,13 @@ plotQQunif(M2) # looks great
 M3 <- glmmTMB(Stems ~ Species:(YSR + Elevation)  + DomSpeciesSuperSimp + offset(log(Quadrat_area)) + (0 + Species|Combo) + (1|Site), family = "nbinom2", data = stem_dens_unique_H_res)
 
 #summary(M2)
+
+
+
+
+# model without YSR/elevation interaction - works with interaction but not without? doesn't even work with only YSR * Species
+
+M4 <- glmmTMB(Stems ~ YSR * Species + Elevation + DomSpeciesSuperSimp + offset(log(Quadrat_area)) + (0 + Species|Combo) + (1|Site), family = "nbinom2", data = stem_dens_unique_H_res)
 ```
 
 
@@ -2556,6 +2531,32 @@ summary(M5)
 
 resid <- residuals(simulateResiduals(M5), quantileFunction = qnorm, outlierValues = c(-7,7))
 scatter.smooth(predict(M5,re.form = NA), resid)
+
+
+
+# without elevation/YSR interaction
+
+M6 <- glmmTMB(Stem_dia_mm ~ Species:(YSR + Elevation + sp_prop) + DomSpeciesSuperSimp + (1|Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_dia)
+# fixed effects are rank deficient if DomSpeciesSuperSimp is in the brackets (would be highly correlated with Species)
+
+plot(predict(M6), residuals(M6)) # looks weird with two distinct clumps. but maybe ok
+plotQQunif(M6) # terrible
+
+M7 <- glmmTMB(log(Stem_dia_mm) ~ Species:(YSR + Elevation + sp_prop) + DomSpeciesSuperSimp + (1|Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_dia)
+
+plot(predict(M7), residuals(M7)) # looks weird with two distinct clumps. but maybe ok
+plotQQunif(M7) # better but not good
+
+M8 <- glmmTMB(sqrt(Stem_dia_mm) ~ Species:(YSR + Elevation + sp_prop) + DomSpeciesSuperSimp + (1|Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_dia)
+
+plot(predict(M8), residuals(M8)) # looks good
+plotQQunif(M8) # not good
+
+# play around - no combos are making normality look ok.
+M9 <- glmmTMB(sqrt(Stem_dia_mm) ~ Species * YSR + Elevation  + sp_prop + DomSpeciesSuperSimp + (1|Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_dia)
+
+plot(predict(M9), residuals(M9)) # looks good
+plotQQunif(M9)
 ```
 
 ```{r Stem diameter - interpreting effects}
@@ -2660,6 +2661,24 @@ resid <- residuals(simulateResiduals(M5), quantileFunction = qnorm, outlierValue
 scatter.smooth(predict(M5,re.form = NA), resid) # decent
 
 summary(M5)
+
+
+
+# remove YSR/Elevation interaction
+
+M6 <- glmmTMB(log(Stem_ht_mm) ~ Species:(YSR + Elevation + sp_prop) + DomSpeciesSuperSimp + (1|Combo/Site) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_ht)
+
+plot(predict(M6), residuals(M6)) # a few outliers but probably ok?
+plotQQunif(M6) # looks good 
+
+M7 <- glmmTMB(sqrt(Stem_ht_mm) ~ Species:(YSR + Elevation + sp_prop) + DomSpeciesSuperSimp + (1|Combo/Site) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_ht)
+
+plot(predict(M7), residuals(M7)) # a couple outliers but probably ok
+plotQQunif(M7) # not great
+
+
+# therefore use M6
+summary(M6)
 ```
 
 
@@ -2668,6 +2687,14 @@ summary(M5)
 #5. Restored vs natural models
 
 Let's try these with all the data from both estuaries.
+
+```{r look at interaction between rest_status and elevation?}
+plot(salt_comm$Elevation ~ salt_comm$rest_status)
+# natural sites have elevations ~0.4-0.8
+# restoring sites have elevations ~0-0.8
+# therefore can include interactions but can only interpret results for 0.4-0.8m elevations
+```
+
 
 # 5.1 Community composition
 
@@ -2720,8 +2747,9 @@ salt_comm_comp_long_less <- salt_comm_comp_long %>% subset(Species %in% c("Sarco
 
 M1 <- glmmTMB(Sp_cover_prop ~ rest_status * Species * Elevation + (1|Combo/Site/Estuary) + rr(Species+0|Combo, d = 1), family = beta_family(link = "logit"), ziformula = ~ 1, data = salt_comm_comp_long_less)
 
-resid <- residuals(simulateResiduals(M1), quantilefunction = qnorm, outlierValues = c(-7,7))
-scatter.smooth(resid, predict(M1)) # not good!! trend + very extreme values. This is the case whether Estuary is included as a random, fixed and or both factor
+resid <- residuals(simulateResiduals(M1), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M1, REform = NA, type = "response"), resid) # not sure how/where to include REform?
+scatter.smooth(predict(M1, type = "response"), resid) # not good! trend and clumping and a couple outliers
  
 ```
 
@@ -2779,6 +2807,61 @@ MCMCglmm(fmla.MMLM1,
 # this is not working, and I don't quite understand it, so it might be too complex...
 ```
 
+Could try mvabund with Estuary as a fixed variable and no Site random effect?
+
+```{r Community composition - try mvabund}
+SaltCommNR <- mvabund(salt_comm_comp[,1:8])
+
+# check out spread of data
+par(mar = c(2, 10, 2, 2)) # adjusts the margins
+boxplot(salt_comm_comp[,1:8], horizontal = TRUE, las = 2, main = "Percent cover")
+# large differences in variance, therefore check out mean-variance relationship
+
+# check out mean-variance relationship
+meanvar.plot(SaltCommNR)
+# strong mean-variance relationship (close to linear but slightly curved like a negative quadratic function), therefore use a model that appropriately accounts for this
+
+# roughly visualise data
+plot(SaltCommNR ~ as.factor(salt_comm_comp$rest_status))
+
+
+
+# model with2 no interaction between Elevation and YSR
+
+fit_cover <- manyany(SaltCommNR ~ rest_status + Elevation + Estuary + Site, "glm", data = salt_comm_comp, family=tweedie(link = 0, var.power=1.1), var.power = 1.1) # doesn't work
+
+
+
+# above doesn't work so likely delete all this
+sum(fit_cover$logL) # 
+
+# now check the residuals vs fitted values plot and check for the optimum var.power value
+
+plot(fit_cover) # looks ok 
+
+# test for the best value of the var.power element
+vpwrs <- seq(1.1,1.8, by =.1) # only going up to 1.8 rather than 1.9 as 1.9 creates errors and would be a worse fit than 1.8 anyway
+LogL_vp <- rep(NA, length(vpwrs))
+for(i in 1:length(vpwrs)){ 
+  fit_vp <- manyany(SaltCommNR ~ rest_status + Elevation, "glm", data = salt_comm_comp, family=tweedie(link = 0, var.power=vpwrs[i]), var.power=vpwrs[i])
+  LogL_vp[i] <- sum(fit_vp$logL)
+}
+
+# looking for whichever model has the greatest log Likelihood
+plot(LogL_vp) # log likelihood maximised at 1.6
+
+# should create new model with var.power = 1.6. However, later at the null model stage, this doesn't work. Try lower values - 1.2 is the highest value that works
+fit_cover2 <- manyany(SaltCommNR ~ rest_status + Elevation, "glm", data = salt_comm_comp, family=tweedie(link = 0, var.power=1.2), var.power = 1.2)
+
+plot(fit_cover2) # residuals look ok - assumptions ok
+
+# test importance of rest_status by comparing it to a model without rest_status 
+fit_cover_null <- manyany(SaltCommNR ~ Elevation, "glm", data = salt_comm_comp, family=tweedie(link = 0, var.power=1.2), var.power = 1.2) # only works at max var.power = 1.4
+
+# test for differences between the models
+anova(fit_cover_null, fit_cover2) 
+# the two models have different numbers of terms - why?
+```
 
 
 # 5.2 Total cover
@@ -2820,6 +2903,16 @@ plot(M4) # not good
 
 M5 <- glmer(salt_comm$total_cover_prop ~ rest_status * Elevation +  DomSpeciesSuperSimp + Estuary * rest_status + (1|Site), family = "Gamma", data = salt_comm, na.action = na.exclude)
 plot(M5) # not good
+
+
+
+# with estuary as a random factor
+
+M6 <- lmer(log(1-salt_comm$total_cover_prop) ~ rest_status * Elevation +  DomSpeciesSuperSimp + (1|Site/Estuary), data = salt_comm, na.action = na.exclude)
+plot(M6) # looks great
+plotQQunif(M6) # ok - works with estuary as a random and not fixed effect (but aren't we interested in the fixed effect?)
+
+summary(M6)
 ```
 
 
@@ -2831,6 +2924,10 @@ plot(M5) # not good
 ggplot(data = salt_comm, aes(x = Burrows_0.5x0.5)) +
   geom_histogram() +
   facet_wrap(~Site)
+
+hist(salt_comm$Burrows_0.5x0.5) # highly right skewed
+hist(log(salt_comm$Burrows_0.5x0.5)) # roughly normal
+hist(sqrt(salt_comm$Burrows_0.5x0.5)) # right skewed
 
 # plot relationships between variables
 plot(salt_comm$Burrows_0.5x0.5 ~ salt_comm$rest_status) 
@@ -2850,47 +2947,71 @@ salt_comm_burrows <- salt_comm %>% subset(!is.na(Burrows_0.5x0.5))
 
 # try negative binomial in glmmTMB - might be ok without zero inflation
 M1 <- glmmTMB(Burrows_0.5x0.5 ~ rest_status * Elevation + DomSpeciesSuperSimp + (1|Site/Estuary), data = salt_comm_burrows, family = "nbinom2")
-resid <- residuals(simulateResiduals(M1), quantilefunction = qnorm, outlierValues = c(-7,7))
-scatter.smooth(resid, predict(M1)) # I don't think this is ok - trend
+resid <- residuals(simulateResiduals(M1), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M1, type = "response"), resid) # not ok
 
 # try zero inflated negative binomial model in glmmTMB
 M2 <- glmmTMB(Burrows_0.5x0.5 ~ rest_status * Elevation + DomSpeciesSuperSimp + Estuary + (1|Site), data = salt_comm_burrows, family = "nbinom2", ziformula =~1)
-resid <- residuals(simulateResiduals(M2), quantilefunction = qnorm, outlierValues = c(-7,7))
-scatter.smooth(resid, predict(M2)) # also has a trend...
+resid <- residuals(simulateResiduals(M2), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M2, type = "response"), resid) # not ok
 # didn't work with estuary as part of the random factor
 
 # try poisson?
 M3 <- glmmTMB(Burrows_0.5x0.5 ~ rest_status * Elevation + DomSpeciesSuperSimp + Estuary + (1|Site), data = salt_comm_burrows, family = "poisson")
-resid <- residuals(simulateResiduals(M3), quantilefunction = qnorm, outlierValues = c(-7,7))
-scatter.smooth(resid, predict(M3)) # not ok!
+resid <- residuals(simulateResiduals(M3), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M3, type = "response"), resid) # not ok!
 # didn't work with estuary as part of the random factor
 
 M4 <- glmmTMB(Burrows_0.5x0.5 ~ rest_status * Elevation + DomSpeciesSuperSimp + (1|Site/Estuary), data = salt_comm_burrows, family = "poisson", ziformula =~1)
-resid <- residuals(simulateResiduals(M4), quantilefunction = qnorm, outlierValues = c(-7,7))
-scatter.smooth(resid, predict(M4)) # not ok
+resid <- residuals(simulateResiduals(M4), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M4, type = "response"), resid) # not ok
 
 
 # try with different interactions...
 M5 <- glmmTMB(Burrows_0.5x0.5 ~ rest_status * Elevation +  DomSpeciesSuperSimp + Estuary * rest_status + (1|Site), data = salt_comm_burrows, family = "nbinom2")
-resid <- residuals(simulateResiduals(M5), quantilefunction = qnorm, outlierValues = c(-7,7))
-scatter.smooth(resid, predict(M5)) # not ok
+resid <- residuals(simulateResiduals(M5), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M5, type = "response"), resid) # not ok
 
 # try zero inflated negative binomial model in glmmTMB
 M6 <- glmmTMB(Burrows_0.5x0.5 ~ rest_status * Elevation + DomSpeciesSuperSimp + Estuary * rest_status + (1|Site), data = salt_comm_burrows, family = "nbinom2", ziformula =~1)
-resid <- residuals(simulateResiduals(M6), quantilefunction = qnorm, outlierValues = c(-7,7))
-scatter.smooth(resid, predict(M6)) # not ok
+resid <- residuals(simulateResiduals(M6), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M6, type = "response"), resid) # not ok
 
 # try poisson?
 M7 <- glmmTMB(Burrows_0.5x0.5 ~ rest_status * Elevation + DomSpeciesSuperSimp + Estuary * rest_status + (1|Site), data = salt_comm_burrows, family = "poisson")
-resid <- residuals(simulateResiduals(M7), quantilefunction = qnorm, outlierValues = c(-7,7))
-scatter.smooth(resid, predict(M7)) # not ok
+resid <- residuals(simulateResiduals(M7), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M7, type = "response"), resid) # not ok
 
 M8 <- glmmTMB(Burrows_0.5x0.5 ~ rest_status * Elevation + DomSpeciesSuperSimp + Estuary * rest_status + (1|Site), data = salt_comm_burrows, family = "poisson", ziformula =~1)
-resid <- residuals(simulateResiduals(M8), quantilefunction = qnorm, outlierValues = c(-7,7))
-scatter.smooth(resid, predict(M8))
-# this one is ok
+resid <- residuals(simulateResiduals(M8), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M8, type = "response"), resid) # not ok
 
-summary(M8)
+
+
+# without elevation interaction?
+M9 <- glmmTMB(Burrows_0.5x0.5 ~ rest_status + Elevation +  DomSpeciesSuperSimp + Estuary * rest_status + (1|Site), data = salt_comm_burrows, family = "nbinom2")
+resid <- residuals(simulateResiduals(M9), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M9, type = "response"), resid) # not ok
+
+# try zero inflated negative binomial model in glmmTMB
+M10 <- glmmTMB(Burrows_0.5x0.5 ~ rest_status + Elevation + DomSpeciesSuperSimp + Estuary * rest_status + (1|Site), data = salt_comm_burrows, family = "nbinom2", ziformula =~1)
+resid <- residuals(simulateResiduals(M10), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M10, type = "response"), resid) # not ok
+
+# try poisson?
+M11 <- glmmTMB(Burrows_0.5x0.5 ~ rest_status + Elevation + DomSpeciesSuperSimp + Estuary * rest_status + (1|Site), data = salt_comm_burrows, family = "poisson")
+resid <- residuals(simulateResiduals(M11), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M11, type = "response"), resid) # not ok
+
+M12 <- glmmTMB(Burrows_0.5x0.5 ~ rest_status + Elevation + DomSpeciesSuperSimp + Estuary * rest_status + (1|Site), data = salt_comm_burrows, family = "poisson", ziformula =~1)
+resid <- residuals(simulateResiduals(M12), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M12, type = "response"), resid) # not ok
+
+
+# try log-transformed and gaussian distribution
+M13 <- glmmTMB(log(Burrows_0.5x0.5) ~ rest_status * Elevation +  DomSpeciesSuperSimp + Estuary * rest_status + (1|Site), data = salt_comm_burrows, family = "gaussian")
+resid <- residuals(simulateResiduals(M13), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M13, type = "response"), resid)
 ```
 
 
