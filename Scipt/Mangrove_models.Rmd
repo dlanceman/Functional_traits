@@ -215,7 +215,7 @@ manleafall <- merge(manleaf, manleafAIwide, all = TRUE)
 # first, make dataset longer so there is one row for each leaf
 manleafall_long <- manleafall %>% 
   pivot_longer(cols = c(Leaf_1, Leaf_2, Leaf_3, Leaf_4, Leaf_5), names_prefix = "Leaf_", names_to = "Leaf", values_to = "value") %>% 
-  select(-Value_av) # remove average value column
+  dplyr::select(-Value_av) # remove average value column
 
 # make dataset wider - dataset with every value
 manleafall_wide <- manleafall_long %>% 
