@@ -2870,6 +2870,13 @@ plot(salt_comm$Elevation ~ salt_comm$rest_status)
 # natural sites have elevations ~0.4-0.8
 # restoring sites have elevations ~0-0.8
 # therefore can include interactions but can only interpret results for 0.4-0.8m elevations
+# although restoring sites don't have a lot of data between 0.6 and 0.8 which is where the majority of natural sites' data is, so might be safer to leave out the interaction. it's not our study question anyway.
+
+# for different species?
+ggplot(data = salt_comm_comp_long_less %>% subset(Sp_cover != 0), aes(x = rest_status, y = Elevation)) +
+  geom_point() +
+  facet_wrap(~Species)
+# with this subset of species, it looks like species other than Sporobolus don't really have a sufficient range of elevations to be able to look at the interaction between elevation and restoration status by species
 ```
 
 
@@ -2926,6 +2933,7 @@ M1 <- glmmTMB(Sp_cover_prop ~ Species:(rest_status * Elevation) + Estuary * rest
 
 resid <- residuals(simulateResiduals(M1), quantileFunction = qnorm, outlierValues = c(-7,7))
 scatter.smooth(predict(M1, re.form = NA), resid) # good, two outliers but fine
+# there is an increasing trend though.. will address this in M3 onwards below
 
 # make a dataset of predicted points
 predicted <- predict(M1, re.form = NA)
@@ -2944,6 +2952,72 @@ scatter.smooth(predict(M2, re.form = NA), resid) # now there is one new outlier
 summary(M1)
 summary(M2)
 # similar results but some slight differences in how significant they are
+
+
+# see if we can make the residuals plot look better (no trend)
+M3 <- glmmTMB(Sp_cover_prop ~ Species:(rest_status * Elevation) + (1|Estuary/Site/Combo) + rr(Species+0|Combo, d = 2), family = beta_family(link = "logit"), ziformula = ~ 1, data = salt_comm_comp_long_less)
+
+resid <- residuals(simulateResiduals(M3), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M3, re.form = NA), resid) # probably worse than M1
+
+M4 <- glmmTMB(Sp_cover_prop ~ Species:rest_status + rest_status * Elevation + (1|Estuary/Site/Combo) + rr(Species+0|Combo, d = 2), family = beta_family(link = "logit"), ziformula = ~ 1, data = salt_comm_comp_long_less)
+
+resid <- residuals(simulateResiduals(M4), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M4, re.form = NA), resid) # becomes very clustered and still has a slight trend
+
+M5 <- glmmTMB(Sp_cover_prop ~ Species:(rest_status + Elevation) + Estuary * rest_status + (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = beta_family(link = "logit"), ziformula = ~ 1, data = salt_comm_comp_long_less)
+
+resid <- residuals(simulateResiduals(M5), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M5, re.form = NA), resid) # still a trend but slightly better than M1 and hopefully good enough. 2 outliers too
+
+# check if these 2 outliers have a significant impact on the results
+# make a dataset of predicted points
+predicted <- predict(M5, re.form = NA)
+# bind this and the residuals to the initial dataframe
+with_predict <- bind_cols(salt_comm_comp_long_less, predicted = predicted, resid = resid)
+# can identify extreme values and test the effect of removing them
+# these are rows 74 and 434
+with_predict <- with_predict[-c(74,434),]
+
+# test if model is different without these points - how much leverage they have
+M6 <- glmmTMB(Sp_cover_prop ~ Species:(rest_status + Elevation) + Estuary * rest_status + (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = beta_family(link = "logit"), ziformula = ~ 1, data = with_predict)
+resid <- residuals(simulateResiduals(M6), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M6, re.form = NA), resid) # now there is one new outlier
+
+# regardless, let's see if results are very different between the two models
+summary(M5)
+summary(M6)
+# pretty similar, therefore the outliers aren't having a massive impact and we can use M5
+
+
+# Species needs to be connected to everything as species cover doesn't mean anything when looked at across species
+M7 <- glmmTMB(Sp_cover_prop ~ Species:(rest_status + Elevation) + (1|Estuary/Site/Combo) + rr(Species+0|Combo, d = 2), family = beta_family(link = "logit"), ziformula = ~ 1, data = salt_comm_comp_long_less)
+resid <- residuals(simulateResiduals(M7), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M7, re.form = NA), resid) # not ideal
+
+summary(M7)
+```
+
+
+```{r Community composition - nat vs rest - plot}
+
+ggplot(data = salt_comm_comp_long_less, aes(x = Estuary, y = Sp_cover + 0.0001, fill = as.factor(rest_status))) +
+  geom_boxplot() +
+  facet_wrap(~Species) +
+  scale_fill_viridis(discrete = TRUE, begin = 0.1, end = 1, option = "A",
+                     name="",
+                     breaks=c("0", "1"),
+                     labels=c("Natural", "Restoring")) +
+    theme(axis.text = element_text(size = 24),
+          axis.title = element_text(size = 28)) +
+  xlab("Years since restoration") +
+  ylab("Species percent cover") +
+  theme(strip.text = element_text(size = 24)) +
+  scale_y_continuous(trans='log10', breaks = c(0,1,10,100))
+# print at 
+
+# natural only
+
 ```
 
 
@@ -2997,6 +3071,31 @@ plotQQunif(M6) # ok - works with estuary as a random and not fixed effect
 
 summary(M6)
 
+
+# don't need an interaction with elevation
+
+M7 <- lmer(log(1-salt_comm$total_cover_prop) ~ rest_status * Estuary + Elevation +  DomSpeciesSuperSimp + (1|Site), data = salt_comm, na.action = na.exclude)
+plot(M7) # looks great
+plotQQunif(M7) # ok
+
+summary(M7)
+```
+
+```{r Total cover - natural vs restoring - plot}
+ggplot(salt_comm, aes(x=Estuary, y=total_cover_prop*100, fill = as.factor(rest_status))) +
+    geom_boxplot() +
+  geom_jitter(size = 3)  +
+    scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A",
+                      name="",
+                      breaks=c("0", "1"),
+                      labels=c("Natural", "Restoring")) +
+    theme_classic() +
+    theme(axis.text = element_text(size = 24),
+          axis.title = element_text(size = 28),
+          legend.text = element_text(size = 20)) +
+  xlab("Estuary") +
+  ylab("Saltmarsh cover (%)") +
+  ylim(0,100) 
 ```
 
 
@@ -3072,6 +3171,13 @@ scatter.smooth(predict(M8, re.form = NA), resid) # ok
 
 summary(M8)
 
+
+# no interaction with elevation
+M9 <- glmmTMB(Burrows_0.5x0.5 ~ Estuary * rest_status + Elevation + DomSpeciesSuperSimp + (1|Site), data = salt_comm_burrows, family = "poisson", ziformula =~1)
+resid <- residuals(simulateResiduals(M9), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M9, re.form = NA), resid) # pretty good
+
+summary(M9)
 ```
 
 
@@ -3113,7 +3219,7 @@ scatter.smooth(predict(M1, re.form = NA), resid)
 plotQQunif(M1) # good
 
 # try a gaussian distribution with sqrt transformed data?
-M2 <- glmmTMB(sqrt(Stems) ~ Species:(rest_status * Elevation) + (1|Estuary/Site/Combo) + rr(Species+0|Combo, d = 1) + offset(log(Quadrat_area)), family = "gaussian", data = stem_dens_unique_less)
+M2 <- glmmTMB(sqrt(Stems) ~ Species:(rest_status * Elevation) + (1|Estuary/Site/Combo) + rr(Species+0|Combo, d = 1) + offset(log(Quadrat_area)), family = "gaussian", data = stem_dens_unique_less) # now coming up with an error
 resid <- residuals(simulateResiduals(M2), quantileFunction = qnorm, outlierValues = c(-7,7))
 scatter.smooth(predict(M2, re.form = NA), resid) # ok, but three outliers
 plotQQunif(M2) #ok
@@ -3133,12 +3239,16 @@ scatter.smooth(predict(M4, re.form = NA), resid) # ok, but three outliers
 plotQQunif(M4)
 
 summary(M4)
+# probably because it's additionally testing for differences between species, which we don't care about, and these additional comparisons would reduce others' significance
+# so don't use M4
 
 
-
-M5 <- glmmTMB(Stems ~ Species:(rest_status * Elevation + sp_prop) + DomSpeciesSuperSimp + (1|Estuary/Site/Combo) + rr(Species+0|Combo, d = 1) + offset(log(Quadrat_area)), family = "nbinom2", data = stem_dens_unique_less)
+M5 <- glmmTMB(sqrt(Stems) ~ Species : rest_status + Elevation + DomSpeciesSuperSimp + (1|Estuary/Site/Combo) + rr(Species+0|Combo, d = 1) + offset(log(Quadrat_area)), family = "gaussian", data = stem_dens_unique_less)
 resid <- residuals(simulateResiduals(M5), quantileFunction = qnorm, outlierValues = c(-7,7))
-scatter.smooth(predict(M5, re.form = NA), resid)
+scatter.smooth(predict(M5, re.form = NA), resid) # ok 1 outlier
+plotQQunif(M5) # great
+
+summary(M5)
 
 ```
 
@@ -3187,16 +3297,22 @@ ggarrange(S_Dens_rest,S_Dens_nat,ncol =2,nrow=1,widths = c(4,2))
 
 
 # just natural vs restored
-ggplot(stem_dens_unique_less, aes(x=rest_status, y=total_stems, group = rest_status)) +
-    geom_boxplot(width=0.4) +
-  geom_jitter(width = 0.1)  +
+ggplot(stem_dens_unique_less, aes(x=as.factor(rest_status), y=total_stems + 0.0001, fill = Estuary)) +
+    geom_boxplot() +
+  geom_jitter()  +
     scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A") +
     theme_classic() +
-    theme(legend.position = "none",
-          axis.text = element_text(size = 24),
-          axis.title = element_text(size = 28)) +
+    theme(axis.text = element_text(size = 24),
+          axis.title = element_text(size = 28),
+          strip.text = element_text(size = 28),
+          legend.title = element_text(size = 20),
+          legend.text = element_text(size = 20))+
   xlab("Restoration status")  + 
-  facet_wrap(~Species)
+  ylab("Number of stems per m2") +
+  facet_wrap(~Species) +
+  scale_y_continuous(trans = "log10") + 
+  scale_x_discrete(labels = c('Natural','Restoring'))
+# print at 1200 x 800
 ```
 
 
@@ -3248,20 +3364,54 @@ plotQQunif(M7)
 # apparently infinite residuals values have been created
 
 # no elevation interaction ,log, estuary out of brackets
-M10 <- glmmTMB(log(Stem_dia_mm) ~ Species:(rest_status + Elevation + sp_prop) + DomSpeciesSuperSimp + rest_status * Estuary + (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_less)
+M10 <- glmmTMB(log(Stem_dia_mm) ~ Species:(rest_status + Elevation + sp_prop) + DomSpeciesSuperSimp + rest_status : Estuary + (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_less)
 resid <- residuals(simulateResiduals(M10), quantileFunction = qnorm, outlierValues = c(-7,7))
 scatter.smooth(predict(M10, re.form = NA), resid) # pretty decent, still lots of outliers
 plotQQunif(M10) # not good
+
+
 
 M11 <- glmmTMB(log(Stem_dia_mm+0.2) ~ Species:(rest_status + Elevation + sp_prop) + rest_status * Estuary + (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_less)
 resid <- residuals(simulateResiduals(M11), quantileFunction = qnorm, outlierValues = c(-7,7))
 scatter.smooth(predict(M11, re.form = NA), resid) # pretty decent
 plotQQunif(M11) # not good
 
-M12 <- glmmTMB(sqrt(Stem_dia_mm) ~ Species:(rest_status + Elevation + sp_prop) + DomSpeciesSuperSimp +(1|Estuary/Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_less)
+M12 <- glmmTMB(sqrt(Stem_dia_mm) ~ Species:(rest_status + Elevation + sp_prop) + DomSpeciesSuperSimp +(1|Estuary/Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_less) # now has an error
 resid <- residuals(simulateResiduals(M12), quantileFunction = qnorm, outlierValues = c(-7,7))
 scatter.smooth(predict(M12, re.form = NA), resid) # ok
 plotQQunif(M12) # not terrible
+
+
+
+M13 <- glmmTMB(log(Stem_dia_mm) ~ Species:rest_status + Elevation + Estuary * rest_status + sp_prop + DomSpeciesSuperSimp  + (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_less)
+resid <- residuals(simulateResiduals(M13), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M13, re.form = NA), resid) # not really good
+plotQQunif(M13) # not great
+
+
+#M10 is probably the best we have
+
+summary(M10)
+```
+
+
+```{r Stem diameter - natural vs rest - plot}
+ggplot(salt_less, aes(x=as.factor(rest_status), y=Stem_dia_mm, fill = Estuary)) +
+    geom_boxplot() +
+  geom_jitter()  +
+    scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A") +
+    theme_classic() +
+    theme(axis.text = element_text(size = 24),
+          axis.title = element_text(size = 28),
+          strip.text = element_text(size = 28),
+          legend.title = element_text(size = 20),
+          legend.text = element_text(size = 20))+
+  xlab("Restoration status")  + 
+  ylab("Stem diameter (mm)") +
+  facet_wrap(~Species) +
+  scale_x_discrete(labels = c('Natural','Restoring'))
+# print at 1200 x 800
+# warning about rows removed is because these are NAs (12)
 ```
 
 
