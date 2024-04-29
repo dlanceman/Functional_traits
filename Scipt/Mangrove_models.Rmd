@@ -30,6 +30,7 @@ knitr::opts_chunk$set(echo = TRUE)
 #install.packages("viridis")
 #install.packages("DHARMa)
 #install.packages("lmerTest)
+#install.packages("ggpubr")
 
 library(readxl)
 library(tidyverse)
@@ -46,6 +47,7 @@ library(robustlmm)
 library(viridis)
 library(DHARMa)
 library(lmerTest)
+library(ggpubr)
 ```
 
 
@@ -383,6 +385,22 @@ manleaf_wide_nat_t <- manleaf_wide_nat %>% subset(manleaf_wide_nat$Tree_sapling 
 manleaf_wide_H_rest_t <- manleaf_wide_H_rest %>% subset(manleaf_wide_H_rest$Tree_sapling == "Tree")
 ```
 
+
+```{r Summary stats}
+# number of quadrat observations for each species 
+
+mantree_sp <- mantree %>% distinct(Combo, Species, .keep_all = TRUE) 
+
+# hunter estuary
+mantree_sp_H <- mantree_sp %>% subset(Estuary == "Hunter")
+mantree_sp_H %>% count(Species)
+
+# maroochy estuary
+mantree_sp_M <- mantree_sp %>% subset(Estuary == "Maroochy")
+mantree_sp_M %>% count(Species)
+```
+
+
 # A. Hunter only (therefore grey mangroves only too)
 
 # 1. Population structure models
@@ -637,6 +655,70 @@ plot(mantree$DBH_cm ~ mantree$Basal_circ_cm) # they are correlated, but there is
 
 
 # B. Hunter and Maroochy together (for YSR)
+```{r Relationships between predictor variables}
+# YSR vs elevation
+plot(mantree_comm_rest$Elevation ~ mantree_comm_rest$YSR)
+# these variables are correlated (polynomial)! Therefore cannot model their interaction. and should check with Eve whether we can use both in models (there is variability within each YSR so it would be nice to..)
+boxplot(mantree_comm_rest$Elevation ~ mantree_comm_rest$YSR)
+
+# YSR vs estuary
+boxplot(mantree_comm_rest$YSR ~ mantree_comm_rest$Estuary) # not that overlapping, therefore don't model interaction
+
+# Elevation vs estuary
+boxplot(mantree_comm_rest$Elevation ~ mantree_comm_rest$Estuary) # quite overlapping, so can include an interaction if we think it's relevant. The effect of elevation could depend on estuary so I think leave interaction in where the model runs.
+```
+
+```{r Elevation - YSR - model}
+M1 <- lm(Elevation ~ poly(YSR,2) + Estuary, data = mantree_comm_rest)
+
+plot(M1) # looks roughly ok given it's a relatively small dataset
+
+summary(M1)
+
+# ideally we'd include Site as an additional random effect, but this has a problem with singular fits.
+
+M2 <- lme4::lmer(Elevation ~ poly(YSR,2) + Estuary + (1|Site), data = mantree_comm_rest)
+```
+
+```{r Elevation - YSR - plot}
+# restoring sites YSR
+m_elev_rest <- ggplot(mantree_comm_rest, aes(x=YSR, y=Elevation, fill=Estuary, group = YSR)) +
+    geom_boxplot(width = 2) +
+  geom_jitter() +
+    scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A") +
+    theme_classic() +
+    theme(legend.position = "none",
+          axis.text = element_text(size = 24),
+          axis.title = element_text(size = 28)) +
+  xlab("Years since restoration") +
+  ylab("Elevation (m)") +
+  xlim(0,35) +
+  scale_y_continuous(limits = c(-0.45,0.9), breaks = scales::pretty_breaks(n = 6))
+m_elev_rest
+# print 1500 x 729
+
+# natural sites
+m_elev_nat <- ggplot(mantree_comm_nat, aes(x=Site, y=Elevation, fill=Estuary, group = Site)) +
+    geom_boxplot(width = 0.4) +
+  geom_jitter(width = 0.1) +
+    scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A") +
+    theme_classic() +
+    theme(legend.text = element_text(size = 20),
+          legend.title = element_text(size = 24),
+          axis.text = element_text(size = 24),
+          axis.text.y = element_blank(), # remove y axis labels when combining plot with restored
+          axis.title = element_text(size = 28)) +
+  xlab("Site") +
+  ylab("") +
+  scale_y_continuous(limits = c(-0.45,0.9), breaks = scales::pretty_breaks(n = 6))
+m_elev_nat
+# print at 700 x 789
+
+# plot natural and restored together
+ggarrange(m_elev_rest,m_elev_nat,ncol =2,nrow=1,widths = c(1.5,1))
+# print at 1500 x 1200
+```
+
 
 ```{r Number of trees - YSR - model}
 # plot distribution of "Trees"
@@ -649,13 +731,13 @@ plot(mantree_comm_rest$total_trees ~ mantree_comm_rest$Elevation) # not obviousl
 
 # it's count data so probably not a normal distribution! try poisson or negative binomial
 
-M1 <- glm(Trees ~ poly(YSR,2) * Elevation * Estuary + offset(log(Quadrat_size_m2)), family = "poisson", data = mantree_comm_rest)
+M1 <- glm(Trees ~ poly(YSR,2) + Elevation * Estuary + offset(log(Quadrat_size_m2)), family = "poisson", data = mantree_comm_rest)
 
 plot(M1) # looks pretty good
 
 # try negative binomial
 
-M2 <- glm(Trees ~ poly(YSR,2) * Elevation * Estuary + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm_rest)
+M2 <- glm(Trees ~ poly(YSR,2) + Elevation * Estuary + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm_rest)
 
 plot(M2) # not great
 
@@ -711,12 +793,12 @@ plot(mantree_comm_rest$total_saplings ~ mantree_comm_rest$Elevation) # not obvio
 # count data so use poisson or negative binomial model
 
 # try poisson
-M1 <- glm(Saplings ~ poly(YSR,2) * Elevation * Estuary + offset(log(Quadrat_size_m2)), family = "poisson", data = mantree_comm_rest)
+M1 <- glm(Saplings ~ poly(YSR,2) + Elevation * Estuary + offset(log(Quadrat_size_m2)), family = "poisson", data = mantree_comm_rest)
 
 plot(M1) # pretty good
 
 # try negative binomial
-M2 <- glm(Saplings ~ poly(YSR,2) * Elevation * Estuary + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm_rest)
+M2 <- glm(Saplings ~ poly(YSR,2) + Elevation * Estuary + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm_rest)
 
 plot(M2) # pretty good
 
@@ -826,17 +908,17 @@ plot(mantree_comm_rest$total_hollows ~ mantree_comm_rest$Elevation) # not obviou
 # or zero-inflated model if these can't account for excessive zeroes
 
 # try poisson
-M1 <- glm(Hollows ~ poly(YSR,2) * Elevation * Estuary + offset(log(Quadrat_size_m2)), family = "poisson", data = mantree_comm_rest)
+M1 <- glm(Hollows ~ poly(YSR,2) + Elevation * Estuary + offset(log(Quadrat_size_m2)), family = "poisson", data = mantree_comm_rest)
 
 plot(M1) # not good
 
 # try negative binomial
-M2 <- glm(Hollows ~ poly(YSR,2) * Elevation * Estuary + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm_rest)
+M2 <- glm(Hollows ~ poly(YSR,2) + Elevation * Estuary + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm_rest)
 
 plot(M2) # not good
 
 # try zero-inflated negative binomial
-M3 <- glmmTMB(Hollows ~ poly(YSR,2) * Elevation * Estuary + offset(log(Quadrat_size_m2)), family = "nbinom2", ziformula =~1, data = mantree_comm_rest)
+M3 <- glmmTMB(Hollows ~ poly(YSR,2) + Elevation * Estuary + offset(log(Quadrat_size_m2)), family = "nbinom2", ziformula =~1, data = mantree_comm_rest)
 # model convergence problem
 
 # troubleshooting - see https://cran.r-project.org/web/packages/glmmTMB/vignettes/troubleshooting.html
@@ -881,7 +963,7 @@ plot(mantree_comm_rest$`Canopy_cover_%` ~ mantree_comm_rest$YSR) # could be non-
 plot(mantree_comm_rest$`Canopy_cover_%` ~ mantree_comm_rest$Elevation) # not obviously non-linear
 
 # try linear model to begin with
-M1 <- lm(`Canopy_cover_%` ~ poly(YSR,2) * Elevation * Estuary, data = mantree_comm_rest)
+M1 <- lm(`Canopy_cover_%` ~ poly(YSR,2) + Elevation * Estuary, data = mantree_comm_rest)
 
 plot(M1) # looks great
 
@@ -914,15 +996,15 @@ plot(manq_comm_rest$`Pneu_0.5x0.5` ~ manq_comm_rest$Elevation) # not obviously n
 
 # try linear model as data are normally distributed
 # need random factor for quadrat (Combo) - therefore linear mixed model
-M1 <- lmer(`Pneu_0.5x0.5` ~ poly(YSR,2) * Elevation * Estuary + (1|Combo), data = manq_comm_rest)
+M1 <- lmer(`Pneu_0.5x0.5` ~ poly(YSR,2) + Elevation * Estuary + (1|Combo), data = manq_comm_rest)
 # singular fit
 # it's because there are no overlap of Combo values in each Estuary - removing Estuary works but then we don't have estuary as a factor
 
 # try without Estuary
-M2 <- lmer(`Pneu_0.5x0.5` ~ poly(YSR,2) * Elevation + (1|Combo), data = manq_comm_rest)
+M2 <- lmer(`Pneu_0.5x0.5` ~ poly(YSR,2) + Elevation + (1|Combo), data = manq_comm_rest)
 
 # try with Estuary inside the random factor (don't think it will work as Estuary only has 2 levels)
-M3 <- lmer(`Pneu_0.5x0.5` ~ poly(YSR,2) * Elevation + (1|Combo/Estuary), data = manq_comm_rest)
+M3 <- lmer(`Pneu_0.5x0.5` ~ poly(YSR,2) + Elevation + (1|Combo/Estuary), data = manq_comm_rest)
 
 # that works, let's explore. unfortunately can't have interactions between YSR and Estuary this way...
 plot(M3) # just the residuals plot, looks ok
@@ -946,7 +1028,7 @@ plot(manq_rest$Pneu_ht_mm ~ manq_rest$Elevation) # not obviously non-linear
 
 # try linear model 
 # need random factor for quadrat (Combo) - therefore linear mixed model
-M1 <- lmer(Pneu_ht_mm ~ poly(YSR,2) * Elevation + (1|Subquadrat/Combo/Estuary), data = manq_rest)
+M1 <- lmer(Pneu_ht_mm ~ poly(YSR,2) + Elevation + (1|Subquadrat/Combo/Estuary), data = manq_rest)
 # not working...
 ```
 
