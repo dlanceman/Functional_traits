@@ -1,0 +1,1731 @@
+---
+title: "Saltmarsh models neat"
+author: "Dana Lanceman"
+format: html
+editor: visual
+---
+
+## Saltmarsh functional traits modelling
+
+This code is for analysis of saltmarsh functional traits analysis, analysing for associations between functional traits and time since restoration and between restoring and natural sites.
+
+# 1. Set up
+
+First, **load packages**.
+
+```{r Packages, echo = FALSE}
+#install.packages("readxl")
+#install.packages("tidyverse")
+#install.packages("lme4")
+#install.packages("MuMIn")
+#install.packages("car")
+#install.packages("performance")
+#install.packages("glmmTMB")
+#install.packages("bbmle")
+#install.packages("GLMMadaptive")
+#install.packages("ggeffects")
+#install.packages("emmeans")
+#install.packages("robustlmm")
+#install.packages("mvabund")
+#install.packages("plyr")
+#install.packages("ecostats")
+#install.packages("viridis")
+#install.packages("betareg")
+#install.packages("ggpubr")
+#install.packages("countreg", repos="http://R-Forge.R-project.org", type = "binary")
+#install.packages("statmod")
+#install.packages("lmerTest")
+#install.packages("sjPlot")
+#install.packages("DHARMa")
+#install.packages("MCMCglmm")
+#install.packages("ggbreak")
+#install.packages("multcomp")
+
+library(plyr)
+library(readxl)
+library(tidyverse)
+library(lme4)
+library(MuMIn)
+library(car)
+library(performance)
+library(bbmle)
+library(GLMMadaptive)
+library(ggeffects)
+library(emmeans)
+library(robustlmm)
+library(mvabund)
+require(statmod)
+library(ecostats)
+library(viridis)
+library(betareg)
+library(ggpubr)
+library(countreg)
+library(lmerTest)
+library(sjPlot)
+library(DHARMa)
+library(MCMCglmm)
+library(ggbreak) 
+require(tweedie)
+library(glmmTMB)
+library(multcomp)
+```
+
+Next, **load data**.
+
+-   using setwd() to set the working directory where the data are stored
+
+-   "salt" is the overall saltmarsh dataset
+
+    -   creating a "Quadrat_area" column to use as an offset
+
+    -   creating a "total_stems" column for total stem count per 1m2 for each species to standardise stem counts for plots. Round makes it an integer.
+
+    -   reassigning Buds and Flowers as numeric variables
+
+    -   standardising Seeds wording
+
+    -   creating a "rest_status" column for restoration status where 1 = restored and 0 = natural
+
+    -   creating a "YSR" column for years since restoration
+
+-   "salt_comm_comp" is the dataset for saltmarsh community composition, laid out in an appropriate wide format for community composition analysis
+
+```{r Data, echo = FALSE}
+setwd("C:/Users/z5204897/OneDrive - UNSW/Desktop/PhD/Data_analysis/Project/Functional_traits")
+
+salt <- read_excel("Data/Functional_traits_combined_data.xlsx", sheet = "Saltmarsh") %>% 
+  arrange(Date, Time) %>% 
+  mutate(Quadrat_area = Quad_length_cm^2, 
+    total_stems = round(Stems * 10000/Quad_length_cm^2), 
+         Buds = case_when( 
+           Buds == "Yes" ~ 1,
+           Buds == "No" ~ 0,
+           Buds == "Unknown" ~ NA,
+           Buds == "NA" ~ NA
+         ),
+         Flowers = case_when(  
+           Flowers == "Yes" ~ 1,
+           Flowers == "No" ~ 0,
+           Flowers == "Unknown" ~ NA,
+           Flowers == "NA" ~ NA
+         ),
+        Seeds = case_when( 
+          Seeds == "Yes" ~ "Yes",
+          Seeds == "Seeds" ~ "Yes",
+          Seeds == "No" ~ "No",
+          Seeds == "Lots" ~ "Lots",
+          Seeds == "Some" ~ "Some",
+          Seeds == "some" ~ "Some",
+          Seeds == "Few" ~ "Few",
+          Seeds == "Very few" ~ "Very few",
+          Seeds == "NA" ~ NA,
+          Seeds == "Unknown" ~ NA
+          ),
+         rest_status = case_when(
+           Site == "AE" ~ as.numeric("1"),
+           Site == "HS" ~ as.numeric("1"),
+           Site == "TA" ~ as.numeric("1"),
+           Site == "TB" ~ as.numeric("1"),
+           Site == "CC" ~ as.numeric("1"),
+           Site == "CF" ~ as.numeric("1"),
+           Site == "DLW" ~ as.numeric("1"),
+           .default = as.numeric("0"), 
+         ),
+         rest_year = case_when(
+           Site == "AE" ~ as.numeric("2017"),
+           Site == "HS" ~ as.numeric("2011"),
+           Site == "TA" ~ as.numeric("2007"),
+           Site == "TB" ~ as.numeric("2012"),
+           Site == "CC" ~ as.numeric("1990"),
+           Site == "CF" ~ as.numeric("1993"),
+           Site == "DLW" ~ as.numeric("2014")
+         ), # add a column for restoration years
+         YSR = case_when(
+           Site == "AE" ~ as.numeric("6"),
+           Site == "HS" ~ as.numeric("12"),
+           Site == "TA" ~ as.numeric("16"),
+           Site == "TB" ~ as.numeric("11"),
+           Site == "CC" ~ as.numeric("33"),
+           Site == "CF" ~ as.numeric("30"),
+           Site == "DLW" ~ as.numeric("9") 
+         ))  
+
+salt_comm_comp <- read_excel("Data/salt_comm_comp.xlsx", sheet = "alldata")
+salt_comm_comp$YSR <- as.numeric(salt_comm_comp$YSR)
+```
+
+Manipulate the "salt" dataframe:
+
+-   Create a "DomSpecies" column to summarise which species is dominant (greatest % cover) in each quadrat, including unvegetated.
+
+    -   Multiple species are initially listed if there is a tie in % covers, and then these tied dominant species are manually edited to list the "bulkier" species
+
+        -   i.e. Juncus \> Triglochin, Sarcocornia \> GSG, Juncus \> Sporobolus
+
+    -   The "DomSpeciesSuperSimp" column further simplifies this with only three options for dominant species - Sporobolus, Sarcocornia or Other
+
+-   Create a "sp_prop" column for proportion cover of each species (species cover/overall cover)
+
+-   Reassign Quadrat as an explictly nested variable within Site
+
+```{r Manipulations}
+salt <- salt %>%
+  group_by(Combo) %>% 
+  mutate(
+    MaxSpeciesCover = max(`Sp_cover_%`),
+    DomSpecies = ifelse(100 - `Total_cover_%` > MaxSpeciesCover, "unvegetated", 
+                        paste(unique(Species[`Sp_cover_%` == MaxSpeciesCover]), collapse = ", "))) %>% 
+  ungroup() %>%
+  dplyr::select(-MaxSpeciesCover) # Remove MaxSpeciesCover colummn
+
+salt <- salt %>% mutate(
+  DomSpecies = case_when(
+    DomSpecies == "Juncus_kraussii, Sporobolus" ~ "Juncus_kraussii",
+    DomSpecies == "Juncus_kraussii, Triglochin" ~ "Juncus_kraussii",
+    DomSpecies == "GSG, Sarcocornia" ~ "Sarcocornia",
+    .default = DomSpecies
+  ),
+  DomSpeciesSuperSimp = case_when(
+    DomSpecies == "Sporobolus" ~ "Sporobolus",
+    DomSpecies == "Sarcocornia" ~ "Sarcocornia",
+    .default = "Other"
+  )
+)
+
+salt <- salt %>% mutate(sp_prop = `Sp_cover_%`/`Total_cover_%`)
+
+salt$Quadrat <- as.character(salt$Quadrat)
+salt$Quadrat.f <- factor(interaction(salt$Site, salt$Quadrat, sep = ":"))
+salt$Quadrat.f <- as.character(salt$Quadrat.f)
+```
+
+Next, let's check for outliers that are ecologically unrealistic and would have resulted from errors in the data.
+
+Set up a function for visualising outliers:
+
+```{r Outliers_function}
+cleveland_plot <- function(vector,axislab){
+  par(mfrow= c(1,2), mar = c(5,4,2,1)) # set some parameters for the plot
+  boxplot(vector,  ylab = axislab)
+  dotchart(vector, xlab = axislab,
+         ylab = "Order of the data") 
+}
+```
+
+Run this subset on all data for community-level variables, and on specific species individually for species- and stem-level variables so we can see if any measured observations from a species seem unlikely for that particular species.
+
+```{r Outliers_allspecies}
+cleveland_plot(salt$`Total_cover_%`, "Total cover (%)") # left skewed, has outliers but values should be realistic
+cleveland_plot(salt$Burrows_0.5x0.5, "Number of burrows") # right skewed (and zero inflated), has outliers but values are realistic
+
+```
+
+For sporobolus.
+
+```{r Outliers_sporobolus}
+spor <- salt %>%
+  filter(Species == "Sporobolus")
+cleveland_plot(spor$`Sp_cover_%`, "Species cover (%)") # somewhat left skewed but decent. No outliers
+cleveland_plot(spor$Stem_ht_mm, "Stem height (mm)") # there are only a few values with height >600. When investigating- this is realistic for each large height value. Overall the distribution is fairly evenly spread.
+cleveland_plot(spor$Stem_dia_mm, "Stem diameter (mm)") # right skewed. There are some very large values that need investigating - plant net doesn't state the regular stem diameter so don't exclude. They are little overestimates, and the 0.1mm measurements are likely too low, but should be OK and no reason to remove, so retain
+cleveland_plot(spor$total_stems, "Stem density (number of stems)") # right skewed
+```
+
+For sarcocornia.
+
+```{r Outliers_sarcocornia}
+sarc <- salt %>%
+  filter(Species == "Sarcocornia")
+cleveland_plot(sarc$`Sp_cover_%`, "Species cover (%)") # evenly spread, no outliers
+cleveland_plot(sarc$Stem_ht_mm, "Stem height (mm)") # evenly distributed. One relatively large value but it is realistic. Two relatively small values but realistic.
+cleveland_plot(sarc$Stem_dia_mm, "Stem diameter (mm)") # slightly right skewed but very acceptable distribution. Three larger values but realistic
+cleveland_plot(sarc$total_stems, "Stem density (number of stems)") # right skewed, some relatively high values but realistic
+```
+
+For triglochin.
+
+```{r Outliers_triglochin}
+trig <- salt %>%
+  filter(Species == "Triglochin")
+cleveland_plot(trig$`Sp_cover_%`, "Species cover (%)") # very right skewed. Potential outlier high extreme value - checked photo and this is accurate.
+cleveland_plot(trig$Stem_ht_mm, "Stem height (mm)") # fairly evenly distributed except some very high potential outliers. There's no evidence for stems as high as 860mm or 556mm in photos and according to plantnet this species only grows to ~30cm, so 860 and 556 are likely data errors. Other high measurements are likely OK.
+cleveland_plot(trig$Stem_dia_mm, "Stem diameter (mm)") # there are some extreme outliers that need investigating. According to plantnet, leaf diameters (what we're calling stems) are usually 1-3mm. 7 out of 8 extreme values of 4 or more are from the same quadrat - potentially a consistent error with measuring there. These extreme values should be removed. The distribution is inflated by values of 1.
+cleveland_plot(trig$total_stems, "Stem density (number of stems)") # one extreme value but realistic. somewhat right skewed (mostly because of this value)
+```
+
+For pneumatophores.
+
+```{r Outliers_pneumatophores}
+pneu <- salt %>%
+  filter(Species == "Pneumatophores")
+cleveland_plot(pneu$Stem_ht_mm, "Stem height (mm)") # evenly distributed, no outliers
+cleveland_plot(pneu$Stem_dia_mm, "Stem diameter (mm)") # evenly distributed, one potential low outlier. This value is unrealistic and should be removed.
+cleveland_plot(pneu$total_stems, "Stem density (number of stems)") # right skewed. One potential high outlier, but it's realistic 
+```
+
+A couple other species had potential data issues flagged in the notes - check if these seem like outliers.
+
+```{r Outliers_other}
+junc.k <- salt %>% 
+  filter(Species == "Juncus_kraussii")
+
+aster <- salt %>% 
+  filter(Species == "Aster")
+
+# Juncus - need to investigate consistency of stem measurements
+cleveland_plot(junc.k$Stem_ht_mm, "Stem height (mm)") # looks great
+cleveland_plot(junc.k$Stem_dia_mm, "Stem diameter (mm)") # 2 of last (top) three look a bit large, but these weren't the data points I made a potential note about and they are close to plant net's guidelines for width (1.8-4.5mm), so retain. Slight right skew.
+
+# Aster - need to investigate stem height (potentially measured to the flower before 4:08pm 18/4/23)
+cleveland_plot(aster$Stem_ht_mm, "Stem height (mm)") # balanced distribution. There are no very high measurements after around the first 1/3 of data points. However, there are only 12 data points before 4:08pm 18/4/23 so there are large data points after this. We don't know how much to offset potential flower measurements so should retain with care.
+```
+
+Remove ecologically unrealistic outliers based on the above.
+
+```{r Outliers}
+salt[443,20] <- NA # remove triglochin measurement with unrealistic stem diameter >4mm
+salt[c(738:744), 20] <- NA # remove triglochin measurements with unrealistic stem diameter >4mm
+salt[802,19] <- NA # remove triglochin measurement with unrealistic stem height 556mm
+salt[1271,19] <- NA # remove triglochin measurement with unrealistic stem height 860mm
+salt[112,20] <- NA # remove pneumatophore measurement with unrealistic diameter 1mm
+salt[c(862,917),20] <- NA # remove sporobolus measurements with unrealistic diameters > 4mm
+```
+
+Create a "salt_comm" dataframe for community-level variables.
+
+-   Need to delete duplicates in this dataset, since there are many rows for each community-level variable given that there are subreplicates of other variables within each community-level measurement.
+
+-   Also remove rows that are irrelevant for community composition
+
+-   Turn total cover into a proportion between 0 and 1 instead of between 0 and 100
+
+    -   include a tiny offset since it doesn't like values of exactly 1 - must be below 1
+
+```{r Community}
+salt_comm <- salt %>% distinct(Combo, .keep_all = TRUE) 
+salt_comm <- salt_comm[,-c(11:20,22,26,27,33)] 
+salt_comm <- salt_comm %>% mutate(total_cover_prop = `Total_cover_%`/100)
+```
+
+Subset datasets:
+
+-   salt_H for just Hunter estuary data
+
+-   salt_H_rest for just Hunter estuary restored data
+
+-   salt_H_nat for just Hunter estuary natural data
+
+-   salt_comm_rest for just restored community-level data
+
+-   salt_comm_nat for just natural community-level data
+
+-   salt_comm_rest_H for just restored community-level data in Hunter estuary
+
+-   salt_comm_nat_H for just natural community-level data in Hunter estuary
+
+-   salt_comm_H for just Hunter estuary community-level data
+
+-   salt_comm_comp_H for just Hunter estuary community composition data
+
+-   salt_comm_comp_H_res for just Hunter estuary restored community composition data
+
+-   salt_comm_comp_H_nat for just Hunter estuary natural community composition data
+
+```{r Subset}
+salt_H <- salt %>% subset(Estuary == "Hunter")
+
+salt_H_rest <- salt_H %>% subset(rest_status == 1)
+
+salt_H_nat <- salt_H %>% subset(rest_status == 0)
+
+salt_comm_rest <- salt_comm %>% subset(salt_comm$rest_status == 1)
+salt_comm_nat <- salt_comm %>% subset(salt_comm$rest_status == 0)
+salt_comm_rest_H <- salt_comm_rest %>% subset(salt_comm_rest$Estuary == "Hunter")
+salt_comm_nat_H <- salt_comm_nat %>% subset(salt_comm_nat$Estuary == "Hunter")
+salt_comm_H <- salt_comm %>% subset(salt_comm$Estuary == "Hunter")
+
+salt_comm_comp_H <- salt_comm_comp %>% subset(Estuary == "Hunter")
+salt_comm_comp_H_res <- salt_comm_comp_H %>% subset(rest_status == "1")
+salt_comm_comp_H_nat <- salt_comm_comp_H %>% subset(rest_status == "0")
+```
+
+**Check for correlation between dependent variables**
+
+Before running models, we need to make sure none of our dependent variables are strongly correlated. If so, we cannot include all variables in analysis.
+
+Our dependent variables of interest are:
+
+-   Community composition (multivariate) (can't really test for relationships here as it's a matrix)
+
+-   Total cover (univariate)
+
+-   Stem density
+
+-   Stem diameter
+
+-   Stem height
+
+-   Reproduction (presence/absence) (can't really test for relationships here as they're binary variables?)
+
+Check for correlations using a correlation matrix of correlation coefficients and by creating correlation plots.
+
+Exclude variables if their correlation coefficient is very large (e.g. \>0.7).
+
+```{r Correlations}
+cor(salt[,c(9,10,19,20,27)], use = "pairwise.complete.obs") 
+
+salt_numeric <- salt[,c(9,10,19,20,27)]
+plot(salt_numeric)
+```
+
+# 2. Years Since Restoration Models
+
+Before we create any of these models, let's inspect the data space we're working with:
+
+-   relationship between YSR and Elevation (numeric predictors)
+
+```{r Predictor_association}
+plot(salt_comm_rest_H$Elevation ~ salt_comm_rest_H$YSR)
+```
+
+Given that elevations are lower with lower YSRs and higher with higher YSRs, we don't have a complete dataspace so can't model across a complete dataspace (i.e. missing data for low elevation and high YSR and low YSR and high elevation). Therefore, probably safest not to include an interaction between Elevation and YSR as the interaction would only be able to interpreted in small sections of the data.
+
+## 2a. Community composition
+
+First, let's prep the dataset by:
+
+-   checking which columns only have zeroes and removing these
+
+-   checking which species have at least 5 occurrences (less is too few occurrences for analysis) and subsetting for only these species
+
+    -   species with at least 5 values are Sarcocornia, Sporobolus, Triglochin, Pneumatophores, Bolboschoenus, Aster, Phragmites.
+
+    -   also remove Pneumatophores - they are not a saltmarsh species so are not that relevant for understanding community composition.
+
+-   converting the dataset into long format, which is suitable for glmmTMB
+
+    -   also create two alternative proportional cover columns with slight offsets to meet distribution requirements
+        -   for beta distribution, can't have zeroes or ones, so offset these accordingly
+        -   for zero-inflated beta distribution, can't have ones but can have zeroes, so offset ones only
+
+-   recoding Species as a factor variable (for post hoc tests)
+
+```{r Prep}
+salt_comm_comp_H_res[,1:25] %>% colSums() # the last four columns are all zeroes
+salt_comm_comp_H_res <- salt_comm_comp_H_res[,c(1:21,26:31)]
+
+colSums(salt_comm_comp_H_res != 0) 
+salt_comm_comp_H_res <- salt_comm_comp_H_res[,c(1:3,8,10,12,22:27)] 
+
+comm_comp_long <- salt_comm_comp_H_res %>% 
+  pivot_longer(cols = c(Sarcocornia, Sporobolus, Triglochin, Bolboschoenus, Aster, Phragmites), names_to = "Species", values_to = "Percent_cover") %>% 
+  unite("Combo",2:3,remove = FALSE) %>% 
+  mutate(cover_prop = Percent_cover/100,
+         cover_prop_no01 = case_when(
+            cover_prop == 0 ~ 0.0001,
+            cover_prop == 1 ~ 0.9999,
+    .default = Percent_cover/100),
+        cover_prop_no1 = case_when(
+          cover_prop == 1 ~ 0.9999,
+          .default = cover_prop)
+         )
+
+comm_comp_long$Species <- as.factor(comm_comp_long$Species)
+```
+
+Now, explore the data:
+
+-   relationships between predictor variables and the dependent variable (to check if there seems to be a linear or non-linear relationship)
+
+-   distribution of dependent variable with and without transformations
+
+```{r Explore}
+ggplot(data = comm_comp_long, aes(x = YSR, y = Percent_cover)) +
+  geom_point() +
+  facet_wrap(~Species) #no evidence of non-linearity
+ggplot(data = comm_comp_long, aes(x = Elevation, y = Percent_cover)) +
+  geom_point() +
+  facet_wrap(~Species) # no evidence of nonlinearity
+
+# distribution of data
+ggplot(data = comm_comp_long, aes(x = Percent_cover)) +
+  geom_histogram() +
+  facet_wrap(~Species) # highly zero inflated and right skewed
+ggplot(data = comm_comp_long, aes(x = log(Percent_cover + 0.00001))) +
+  geom_histogram() +
+  facet_wrap(~Species) # log not helpful
+ggplot(data = comm_comp_long, aes(x = sqrt(cover_prop))) +
+  geom_histogram() +
+  facet_wrap(~Species) # maybe slightly better
+```
+
+Now, create a model:
+
+-   As we're modelling community composition, we want to model how each species' percent cover varies with YSR after controlling for elevation, so model the interaction between Species and (Elevation + YSR)
+
+-   Include a random effect of site
+
+-   All species' covers within a quadrat (Combo) are dependent on one another, so need to add a reduced rank correlation structure for this
+
+-   Use a beta distribution, as the data are proportion data and do not appear normally distributed
+
+-   Use zero-inflation if residuals don't look good without it, as the data are highly zero-inflated
+
+Check the assumptions of the model using resid and scatter.smooth and plotQQunif.
+
+```{r Model_building}
+M <- glmmTMB(cover_prop_no01 ~ Species:(Elevation + YSR) + (1|Site) + rr(Species+0|Combo, d = 1), data = comm_comp_long, family = beta_family(link = "logit"))
+
+# check assumptions
+resid <- residuals(simulateResiduals(M), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M,re.form = NA), resid) # scaled residuals plot - not good.
+plotQQunif(M) # not good
+
+
+# therefore try zero-inflated model
+M1 <- glmmTMB(cover_prop_no1 ~ Species:(Elevation + YSR) + (1|Site) + rr(Species+0|Combo, d = 1), data = comm_comp_long, family = beta_family(link = "logit"), ziformula = ~1)
+
+# check assumptions
+resid <- residuals(simulateResiduals(M1), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M1,re.form = NA), resid) # wonderful!
+plotQQunif(M1) # wonderful
+
+# check collinearity on a model without interaction terms
+M0 <- glmmTMB(cover_prop_no1 ~ Species + Elevation + YSR + (1|Site) + rr(Species+0|Combo, d = 1), data = comm_comp_long, family = beta_family(link = "logit"), ziformula = ~1)
+check_collinearity(M0) # all low
+
+```
+
+Generate model results:
+
+-   joint_tests to test effect of each variable (p values)
+
+-   emmeans for parameter estimates - mean of each group
+
+-   summary for parameter estimates - differences between each groups
+
+```{r Model_testing}
+
+joint_tests(M1)
+emmeans(M1, specs = pairwise ~ YSR | Species, type = "response")
+summary(M1) # get parameter estimates
+
+
+```
+
+Now, let's run some post-hoc tests (multiple comparisons) to see where differences lie - which species are changing with YSR?
+
+-   Plot differences using ggplot
+
+-   **Need to code for multiple comparisons** (currently not working and/or not testing what we want to test)
+
+```{r Post-hoc}
+ggplot(data = comm_comp_long, aes(x = YSR, y = cover_prop_no1, group = YSR)) +
+  geom_boxplot() +
+  facet_wrap(~Species, scales = "free")
+
+t <- mcp(Species="Tukey")
+v <- glht(M1, linfct = t)
+summary(v)
+
+em <- emmeans(M1, specs = pairwise ~ Species | YSR, adjust = "tukey")
+summary(em, infer = TRUE)$contrasts
+```
+
+Plot
+
+-   emmip for predicted values
+
+-   ggplot for raw data
+
+```{r Plot}
+p <- emmip(M1, ~ YSR | Species, at = list(YSR = c(6,10,15,20,25,30,33)), type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Predicted proportion cover") +
+  geom_jitter(aes(x = YSR, y = cover_prop), data = comm_comp_long) +
+  theme_bw()
+p
+
+# make data longer
+salt_comm_comp_H_res_long <- salt_comm_comp_H_res %>% pivot_longer(cols = c(Sarcocornia, Sporobolus, Triglochin, Aster, Bolboschoenus, Phragmites), names_to = "Species", values_to = "Percent_cover")
+
+ggplot(data = salt_comm_comp_H_res_long, aes(x = as.factor(YSR), y = Percent_cover, fill = Species)) +
+  geom_boxplot() +
+  facet_wrap(~Species) +
+  scale_fill_viridis(discrete = TRUE, begin = 0.1, end = 1, option = "A") +
+    theme(legend.position = "none",
+          axis.text = element_text(size = 24),
+          axis.title = element_text(size = 28)) +
+  xlab("Years since restoration") +
+  ylab("Species percent cover") +
+  theme(strip.text = element_text(size = 24))
+# print at 1500 x 1200
+```
+
+## 2b. Total cover
+
+We expect to create a model along these lines:
+
+-   Total cover \~ YSR + DomSpecies + Elevation
+
+-   Site is a random factor
+
+-   beta distribution (proportional data with 2 categories - cover and non cover)
+
+First, explore the data:
+
+-   distribution of 'total_cover' - as is and with an inverse log transformation
+
+-   type of relationship between each predictor and total cover
+
+-   data space between predictors - YSR & dominant species; YSR & Elevation
+
+```{r Explore}
+hist(salt_comm_rest_H$total_cover_prop) # highly left skewed
+hist(log(1- salt_comm_rest_H$total_cover_prop)) # closer to normal
+
+plot(salt_comm_rest_H$total_cover_prop ~ salt_comm_rest_H$YSR) # possibly non-linear
+plot(salt_comm_rest_H$total_cover_prop ~ salt_comm_rest_H$Elevation) # possibly non-linear
+
+ggplot(data = salt_comm_rest_H, aes(x = YSR, y = total_cover_prop, group = DomSpeciesSuperSimp)) +
+  geom_point() +
+  facet_wrap(~DomSpeciesSuperSimp)
+
+ggplot(data = salt_comm_rest_H, aes(x = YSR, y = Elevation, group = DomSpeciesSuperSimp)) +
+  geom_point() +
+  facet_wrap(~DomSpeciesSuperSimp)
+```
+
+Next, create a model.
+
+-   use a beta distribution because the dependent variable is proportion data and the raw distribution is highly left skewed. The proportion data need to be offset slightly from 1 to fit beta family requirements of 0 \< y \< 1.
+
+-   both YSR and elevation looked like they might have a non-linear relationship with total_cover when we plotted them earlier so include them as polynomial variables
+
+-   there are insufficient data across the matrix to model interactions between any of the predictors
+
+-   check assumptions using resid and scatter.smooth
+
+-   check covariance between predictors using check_collinearity
+
+-   test model using joint_tests
+
+-   calculate parameter estimates using summary and emmeans
+
+```{r Model}
+M2 <- glmmTMB((total_cover_prop - 0.001) ~ poly(Elevation,2) + DomSpeciesSuperSimp + poly(YSR,2) + (1|Site), data = salt_comm_rest_H, family = "beta_family")
+
+resid <- residuals(simulateResiduals(M2), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M2,re.form = NA), resid) # looks great
+check_collinearity(M2) # all low
+plotQQunif(M2) # great
+
+joint_tests(M2)
+summary(M2)
+emmeans(M2, pairwise~DomSpeciesSuperSimp)
+```
+
+Now, create some plots.
+
+-   boxplot of total cover at different YSRs
+
+-   boxplot of total cover at different natural sites
+
+-   combine these
+
+-   predicted results
+
+```{r Plot}
+S_Cov_rest <- ggplot(salt_comm_rest_H, aes(x=YSR, y=total_cover_prop*100, group = YSR, fill = Estuary)) +
+    geom_boxplot(width = 2) +
+  geom_jitter(height = 0)  +
+    scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A") +
+    theme_classic() +
+    theme(legend.position = "none",
+          axis.text = element_text(size = 32),
+          axis.title = element_text(size = 36)) +
+  xlab("Years since restoration") +
+  ylab("Saltmarsh cover (%)") +
+  xlim(0,35) + 
+  ylim(0,100) 
+S_Cov_rest
+
+S_Cov_nat <- ggplot(salt_comm_nat_H, aes(x=Site, y=`Total_cover_%`, fill=Estuary, group = Site)) +
+    geom_boxplot(width=0.4) +
+  geom_jitter(width = 0.1, height = 0)  +
+    scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A") +
+    theme_classic() +
+    theme(legend.position = "none",
+          axis.text = element_text(size = 32),
+          axis.text.y = element_blank(), # remove y axis labels when combining plot with restored
+          axis.title = element_text(size = 36)) +
+  xlab("Site") +
+  ylab("")  +
+  ylim(0,100)
+S_Cov_nat
+
+# plot natural and restored together
+ggarrange(S_Cov_rest,S_Cov_nat,ncol =2,nrow=1,widths = c(3,1))
+# print at 1500 x 800 for paper, 2400 x 800 for preso
+
+emmip(M2, ~ poly(YSR,2), at = list(YSR = c(6,10,15,20,25,30,33)), type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Predicted proportion cover") +
+  geom_jitter(aes(x = YSR, y = cover_prop), data = comm_comp_long) +
+  theme_bw()
+```
+
+## 2c. Burrows
+
+Characteristics of the data:
+
+-   zero-inflated count data (therefore use a poisson or negative binomial model or a zero-inflated version of either)
+
+First, explore the data.
+
+-   histogram of all data
+
+-   histograms by site
+
+-   \% of data that are zeroes
+
+-   relationships between burrows and each numeric predictor
+
+Also prepare data by creating a dataset without the NA data.
+
+```{r Explore/prep}
+hist(salt_comm_rest_H$Burrows_0.5x0.5) # right skewed / zero inflated
+ggplot(data = salt_comm_rest_H, aes(x = Burrows_0.5x0.5)) +
+  geom_histogram() +
+  facet_wrap(~Site)
+
+100*sum(salt_comm_rest_H_burrows$Burrows_0.5x0.5 == 0, na.rm = TRUE)/nrow(salt_comm_rest_H_burrows)
+
+
+plot(salt_comm_rest_H$Burrows_0.5x0.5 ~ salt_comm_rest_H$YSR) # potentially non-linear
+plot(salt_comm_rest_H$Burrows_0.5x0.5 ~ salt_comm_rest_H$Elevation) # potentially non-linear
+
+# remove NA data
+salt_comm_rest_H_burrows <- salt_comm_rest_H %>% subset(!is.na(Burrows_0.5x0.5))
+```
+
+Next, create a model.
+
+-   Negative binomial model for count data
+
+-   Elevation and YSR as polynomial factors
+
+-   No interaction between predictors given the data matrix is limited
+
+-   Site as a random factor
+
+-   Given we showed above that the data are 67% zeroes, we may need to use a zero-inflated model. We can create a model with and without zero-inflation and see if zero-inflation improves the model and explains more variation.
+
+    -   if there is no significant difference between the models using an ANOVA, just use the non-zero-inflated model.
+
+-   Test assumptions using resid and scatter.smooth
+
+-   Test model using joint_tests
+
+-   Generate estimates for model paramaters using summary
+
+```{r Model}
+M3 <- glmmTMB(Burrows_0.5x0.5 ~ poly(Elevation,2) + DomSpeciesSuperSimp + poly(YSR,2) +  (1|Site), data = salt_comm_rest_H_burrows, family = "nbinom2")
+
+M4 <- glmmTMB(Burrows_0.5x0.5 ~ poly(Elevation,2) + DomSpeciesSuperSimp + poly(YSR,2) + (1|Site), data = salt_comm_rest_H_burrows, family = "nbinom2", ziformula =~1)
+
+resid <- residuals(simulateResiduals(M3), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M3,re.form = NA), resid) # good
+resid <- residuals(simulateResiduals(M4), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M4,re.form = NA), resid) # good
+
+anova(M3,M4) # no evidence of difference, so use M4
+
+# check collinearity on a model without polynomial terms
+M0 <- glmmTMB(Burrows_0.5x0.5 ~ Elevation + DomSpeciesSuperSimp + YSR +  (1|Site), data = salt_comm_rest_H_burrows, family = "nbinom2")
+check_collinearity(M0) # all low
+
+joint_tests(M3) 
+summary(M3)
+
+```
+
+Next, plot the data.
+
+-   boxplots of raw data with restoring and natural sites
+
+-   arrange restoring and natural plot together
+
+-   export at 1500\*800 for paper, 2200\*800 for preso
+
+```{r Plot}
+S_Bur_rest <- ggplot(salt_comm_rest_H, aes(x=YSR, y=(Burrows_0.5x0.5+0.01), group = YSR, fill = Estuary)) +
+    geom_boxplot(width = 2) +
+  geom_jitter(height = 0)  +
+    scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A") +
+    theme_classic() +
+    theme(legend.position = "none",
+          axis.text = element_text(size = 24),
+          axis.title = element_text(size = 28)) +
+  xlab("Years since restoration") +
+  ylab("Number of burrows") +
+  xlim(0,35)  + ylim(0,62)
+S_Bur_rest
+
+S_Bur_nat <- ggplot(salt_comm_nat_H, aes(x=Site, y=Burrows_0.5x0.5, fill=Estuary, group = Site)) +
+    geom_boxplot(width=0.4) +
+  geom_jitter(width = 0.1, height = 0)  +
+    scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A") +
+    theme_classic() +
+    theme(legend.position = "none",
+          axis.text = element_text(size = 24),
+          axis.text.y = element_blank(), # remove y axis labels when combining plot with restored
+          axis.title = element_text(size = 28)) +
+  xlab("Site") +
+  ylab("")  +
+  #scale_y_log10() + 
+  ylim(0,62)
+S_Bur_nat
+
+ggarrange(S_Bur_rest,S_Bur_nat,ncol =2,nrow=1,widths = c(3,1))
+
+emmip(M3, ~ YSR, at = list(YSR = c(6:33)), type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Number of burrows") +
+  geom_jitter(aes(x = YSR, y = Burrows_0.5x0.5), data = salt_comm_rest_H)
+```
+
+## 2d. Stem density
+
+First, prepare data.
+
+-   create a stem density dataframe "stem_dens" with just stem density data
+
+-   remove replicate rows that resulted from measuring multiple stems for each species per quadrat but only one stem density measurement using a "unique" column with every unique quadrat combo
+
+-   subset for only Hunter estuary and restored data
+
+-   determine which species have at least 5 values and subset for these species
+
+-   remove NA data
+
+Note, this dataset has two variables for stems. Stems is the raw data, and should be used with a Quadrat_area offset for modelling, whereas total_stems has been multiplied out factoring in different Quadrat_areas, and should be used for plotting.
+
+```{r Prep}
+stem_dens <- salt[,c(5,6,7,11,13,14,24:34)]
+
+stem_dens$unique <- factor(interaction(stem_dens$Combo, stem_dens$Species, sep = ":"))
+stem_dens_unique <- stem_dens %>% distinct(unique, .keep_all = TRUE) 
+
+stem_dens_unique_H_res <- stem_dens_unique %>% subset(Estuary == "Hunter") %>% subset(rest_status == 1)
+
+Stem_dens_count <-
+  stem_dens_unique_H_res %>% 
+  group_by(Species) %>% 
+  summarise(count_non_na = sum(!is.na(Stems)))
+print(Stem_dens_count, n = 21)
+#  Aster, Bolboschoenus, Phragmites, Pneumatophores, Sarcocornia, Sporobolus and Triglochin have >5 values, but exclude Pneumatophores as they only occur at 1 site
+
+stem_dens_unique_H_res <- stem_dens_unique_H_res %>% 
+  subset(Species %in% c("Aster", "Bolboschoenus", "Phragmites", "Sarcocornia", "Sporobolus", "Triglochin"))
+
+# remove NAs
+stem_dens_unique_H_res <- stem_dens_unique_H_res %>% subset(!is.na(Stems))
+```
+
+Next, explore data:
+
+-   Histograms of distribution
+
+-   Relationships between dependent and predictor variables
+
+Also prep data by recording Species as a factor (rather than character) variable.
+
+```{r Explore/prep}
+hist(stem_dens_unique_H_res$total_stems) # right skewed
+
+plot(stem_dens_unique_H_res$total_stems ~ stem_dens_unique_H_res$YSR) # not sure if it's non-linear
+ggplot(data = stem_dens_unique_H_res, aes(x = YSR, y = total_stems)) +
+  geom_point() +
+  geom_smooth() # potentially non-linear
+ggplot(data = stem_dens_unique_H_res, aes(y = total_stems, x = YSR)) +
+  geom_point() +
+  facet_wrap(~Species) # however it's probably overfitting the model to include a polynomial factor per species
+
+# without accounting for offset
+ggplot(data = stem_dens_unique_H_res, aes(y = Stems, x = YSR)) +
+  geom_point() +
+  facet_wrap(~Species)
+
+plot(stem_dens_unique_H_res$total_stems ~ stem_dens_unique_H_res$Elevation) # no evidence it's non linear
+
+stem_dens_unique_H_res$Species <- as.factor(stem_dens_unique_H_res$Species)
+```
+
+Create a model:
+
+-   The data are count data, so use either a poisson or negative binomial model.
+
+-   We are interested in how stem densities change for each species considering all other factors, so create interactions with as many factors as possible (take factors outside of the brackets if the model doesn't run with them inside).
+
+-   Stem densities of each species in a quadrat are correlated, so include a reduced rank correlation structure for this
+
+-   Need to include an offset of Quadrat_area since not all stem densities were counted in the same area
+
+-   Including site as a random factor
+
+Check assumptions:
+
+-   resid and scatter.smooth for mean-variance relationship
+
+-   plotQQunif for transformed normal assumption
+
+-   check_collinearity with a model without interactions and polynomial terms for collinearity
+
+```{r Model_building}
+M <- glmmTMB(Stems ~ DomSpeciesSuperSimp + Species:(Elevation + sp_prop + YSR) +  offset(log(Quadrat_area)) + rr(Species+0|Combo, d = 2) + (1|Site), family = "poisson", data = stem_dens_unique_H_res)
+
+resid <- residuals(simulateResiduals(M), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M, re.form = NA), resid) # has a trend, not great but ok
+plotQQunif(M) # ok
+
+M5 <- glmmTMB(Stems ~ DomSpeciesSuperSimp + Species:(Elevation + sp_prop + YSR)+ offset(log(Quadrat_area)) + rr(Species+0|Combo, d = 2) + (1|Site), family = "nbinom2", data = stem_dens_unique_H_res)
+
+resid <- residuals(simulateResiduals(M5), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M5, re.form = NA), resid) # has a trend.. however this is only driven by a few points so should be ok
+scatter.smooth(predict(M5, re.form = NA), abs(resid)) # looks pretty fine
+plotQQunif(M5) # pretty good
+
+M0 <- glmmTMB(Stems ~ DomSpeciesSuperSimp + Species + Elevation + sp_prop + YSR + offset(log(Quadrat_area)) + rr(Species+0|Combo, d = 2) + (1|Site), family = "nbinom2", data = stem_dens_unique_H_res)
+
+check_collinearity(M0) # all low
+```
+
+Generate model results:
+
+-   joint_tests for model testing
+
+-   summary for estimates of differences between groups
+
+-   emmeans for parameter estimates. Include offset = log(10000) so we're looking at results in terms of stem density in a 100 x 100 cm quadrat
+
+-   ref_grid to understand the mean values of each variable, including the offset, included in the model
+
+```{r Model_testing}
+joint_tests(M5)
+summary(M5)
+emmeans(M5, ~ Species | YSR, type = "response", offset = log(10000))
+
+ref_grid(M5)
+```
+
+Now, let's run some post-hoc tests (multiple comparisons) to see where differences lie - which species are changing with YSR?
+
+-   Plot differences using ggplot
+
+-   **Need to code for multiple comparisons** (currently not working and/or not testing what we want to test)
+
+```{r Post-hoc}
+ggplot(data = stem_dens_unique_H_res, aes(x = YSR, y = total_stems, group = YSR)) + 
+  geom_boxplot() +   
+  facet_wrap(~Species, scales = "free")  
+
+t <- mcp(Species="Tukey") 
+v <- glht(M5, linfct = t) 
+summary(v)  
+
+em <- emmeans(M5, specs = pairwise ~ Species | YSR, adjust = "tukey") 
+summary(em, infer = TRUE)$contrasts
+```
+
+Now, plot the results.
+
+-   **Need to make sure plot is for total stems not stems without offset**
+
+```{r Plot}
+emmip(M5, ~ YSR | Species, at = list(YSR = c(6:33)), type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Number of stems", offset = log(10000)) +
+  geom_jitter(aes(x = YSR, y = total_stems), data = stem_dens_unique_H_res) +
+  theme_bw()
+
+ggplot(data = stem_dens_unique_H_res, aes(y = total_stems, x = YSR, group = YSR)) +
+  geom_boxplot() +
+  geom_jitter() +
+  facet_wrap(~Species, scales = "free")
+```
+
+## 2e. Stem diameter
+
+Prepare data:
+
+-   Create a stems dataset (we'll use this for diameter and height) with the six species that have enough stem data
+
+-   Then remove stem diameter NA data
+
+```{r Prep}
+salt_H_rest_stems <- salt_H_rest %>% subset(Species %in% c("Aster", "Bolboschoenus", "Phragmites", "Sarcocornia", "Sporobolus", "Triglochin"))
+
+salt_H_rest_stems_dia <- salt_H_rest_stems %>% subset(!is.na(Stem_dia_mm))
+```
+
+Explore
+
+```{r Explore}
+# explore distribution
+hist(salt_H_rest_stems_dia$Stem_dia_mm) # highly right skewed
+hist(log(salt_H_rest_stems_dia$Stem_dia_mm)) # better
+hist(sqrt(salt_H_rest_stems_dia$Stem_dia_mm)) # better but worse than log
+
+# explore relationship between dependent and predictor variables
+plot(salt_H_rest_stems_dia$Stem_dia_mm ~ salt_H_rest_stems_dia$YSR) # not clearly non-linear
+ggplot(data = salt_H_rest_stems_dia, aes(y = Stem_dia_mm, x = YSR)) +
+  geom_point() +
+  facet_wrap(~Species) # no evidence of non-linear species relationships
+
+plot(salt_H_rest_stems_dia$Stem_dia_mm ~ salt_H_rest_stems_dia$Elevation) # not clearly non-linear
+
+```
+
+Next, create a model:
+
+-   We are interested in how stem diameters change for each species considering all other factors, so create interactions with as many factors as possible (take factors outside of the brackets if the model doesn't run with them inside).
+
+-   Stem diameters of each species in a quadrat might be correlated, so include a reduced rank correlation structure for this
+
+-   Including quadrat (Combo) as a random factor
+
+Check assumptions
+
+-   plot for mean-variance relationship
+
+-   plotQQunit for normality
+
+-   check_collinearity for predictor collinearity on model without interactions
+
+```{r Model_building}
+M <- glmmTMB(Stem_dia_mm ~ DomSpeciesSuperSimp + Species:(Elevation + sp_prop + YSR) + (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_dia)
+
+plot(predict(M, re.form = NA), residuals(M)) # ok but clumped
+plotQQunif(M) # ok but not great
+
+M6 <- glmmTMB(sqrt(Stem_dia_mm) ~ DomSpeciesSuperSimp + Species:(Elevation + sp_prop + YSR) + (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_dia)
+
+plot(predict(M6, re.form = NA), residuals(M6)) # looks ok
+plotQQunif(M6) # not great but better than M - but these models are robust to deviations from normality for this sample size so it's totally fine.
+
+M0 <- glmmTMB(sqrt(Stem_dia_mm) ~ DomSpeciesSuperSimp + Species + Elevation + sp_prop + YSR + (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_dia)
+
+check_collinearity(M0) # all low
+```
+
+Test model:
+
+-   joint_tests for model testing
+
+-   summary for estimates of differences between groups
+
+-   emmeans for parameter estimates
+
+```{r Model_testing}
+joint_tests(M6)
+summary(M6)
+emmeans(M6, ~ YSR | Species)
+```
+
+Plot:
+
+-   emmip for predicted values
+
+-   ggplot with boxplot and jitter for raw data
+
+```{r Plot}
+emmip(M6, ~ YSR | Species, at = list(YSR = c(6:33)), type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Stem diameter (mm)") +
+  geom_jitter(aes(x = YSR, y = Stem_dia_mm), data = salt_H_rest_stems_dia) +
+  theme_bw()
+
+ggplot(data = salt_H_rest_stems_dia, aes(y = Stem_dia_mm, x = YSR, group = YSR)) +
+  geom_boxplot() +
+  geom_jitter() +
+  facet_wrap(~Species, scales = "free")
+```
+
+## 2f. Stem height
+
+Prep/explore
+
+-   Remove NA data
+
+-   explore histograms of raw and transformed data
+
+-   explore relationship between dependent and predictor variables
+
+```{r Prep/explore}
+salt_H_rest_stems_ht <- salt_H_rest_stems %>% subset(!is.na(Stem_ht_mm))
+
+hist(salt_H_rest_stems_ht$Stem_ht_mm) # highly right skewed
+hist(log(salt_H_rest_stems_ht$Stem_ht_mm)) # pretty good
+hist(sqrt(salt_H_rest_stems_ht$Stem_ht_mm)) # still right skewed
+
+plot(salt_H_rest_stems_ht$Stem_ht_mm ~ salt_H_rest_stems_ht$YSR) # not clearly non-linear
+plot(salt_H_rest_stems_ht$Stem_ht_mm ~ salt_H_rest_stems_ht$Elevation) # not clearly non-linear
+
+```
+
+Now, build a model:
+
+-   Use log-transformed data as raw data are right-skewed and come up with model errors (see M below)
+
+-   We are interested in how stem heights change for each species considering all other factors, so create interactions with as many factors as possible (take factors outside of the brackets if the model doesn't run with them inside).
+
+-   Stem heights of each species in a quadrat might be correlated, so include a reduced rank correlation structure for this
+
+-   Including quadrat (Combo) as a random factor
+
+Check assumptions
+
+-   plot for mean-variance relationship
+
+-   plotQQunit for normality
+
+-   check_collinearity for collinearity between predictors on a model without interactions
+
+```{r Model_building}
+# M <- glmmTMB(Stem_ht_mm ~ Elevation + sp_prop + DomSpeciesSuperSimp + Species*YSR +  (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_ht)
+
+M7 <- glmmTMB(log(Stem_ht_mm) ~ DomSpeciesSuperSimp + Species:(Elevation + sp_prop + YSR) +  (1|Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_ht)
+
+plot(predict(M7), residuals(M7)) # clumped but ok
+plotQQunif(M7) # great
+
+M0 <- glmmTMB(log(Stem_ht_mm) ~ DomSpeciesSuperSimp + Species + Elevation + sp_prop + YSR +  (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_ht) 
+
+check_collinearity(M0) # all low
+```
+
+Generate model results:
+
+-   joint_tests for model testing
+
+-   summary for estimates of differences between groups
+
+-   emmeans for parameter estimates
+
+```{r Model_testing}
+joint_tests(M7)
+summary(M7)
+emmeans(M7, ~ YSR | Species)
+```
+
+Plot:
+
+-   emmip for predicted values
+
+-   ggplot with boxplot and jitter for raw data
+
+```{r Plot}
+emmip(M7, ~ YSR | Species, at = list(YSR = c(6:33)), type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Stem height (mm)") +   
+  geom_jitter(aes(x = YSR, y = Stem_ht_mm), data = salt_H_rest_stems_ht)   
+
+ggplot(data = salt_H_rest_stems_ht, aes(y = Stem_ht_mm, x = YSR, group = YSR)) +   geom_boxplot() +   
+  geom_jitter() +   
+  facet_wrap(~Species, scales = "free")
+```
+
+## 
+
+## 2g. Reproduction
+
+First, prep data:
+
+-   create a new dataframe with just reproduction data
+
+-   recode seeds as a binary presence/absence variable - view unique values and recode these
+
+-   remove replicates that originated from measuring multiple stems for each species per quadrat (but only one reproduction value)
+
+    -   first create a column for every unique site/quadrat/species combination
+
+-   subset for only restored and Hunter
+
+-   count number of non-na values for each species (can only analyse species with at least 5 values) and subset for only these species
+
+-   make data longer with one row for reproduction type and another for presence/absence
+
+-   remove NAs
+
+-   there are actually only enough data for three species (sporobolus, sarcocornia, triglochin) so subset for only these
+
+-   there are actually only enough data for flowers and seeds so subset for just these
+
+```{r Prep}
+reprod <- salt[,c(5,6,7,11,16:18,24,25,28,30:34)]
+
+reprod$Seeds %>% unique() # view unique values
+reprod <- reprod %>% mutate(Seeds = case_when(
+  Seeds == "No" ~ 0,
+  Seeds == "Yes" ~ 1,
+  Seeds == "Lots" ~ 1,
+  Seeds == "Some" ~ 1,
+  Seeds == "Few" ~ 1,
+  Seeds == "Very few" ~ 1,
+  Seeds == "NA" ~ NA
+))
+
+reprod$unique <- factor(interaction(reprod$Combo, reprod$Species, sep = ":"))
+reprod_unique <- reprod %>% distinct(unique, .keep_all = TRUE) 
+
+reprod_unique_H_res <- reprod_unique %>% subset(Estuary == "Hunter") %>% subset(rest_status == 1)
+
+Reprod_count <-
+  reprod_unique_H_res %>% 
+  group_by(Species) %>% 
+  summarise(count_non_na = sum(!is.na(Seeds))) 
+print(Reprod_count, n = 21)
+
+reprod_unique_H_res <- reprod_unique_H_res %>% subset(Species %in% c("Aster", "Bolboschoenus", "Phragmites", "Sarcocornia", "Sporobolus", "Triglochin"))
+
+reprod_long <- reprod_unique_H_res %>% pivot_longer(cols = c("Buds", "Flowers", "Seeds"), names_to = "reprod_type", values_to = "Reproduction")
+
+reprod_long <- reprod_long %>% subset(!is.na(Reproduction))
+
+reprod.s <- reprod_long %>% subset(Species %in% c("Sporobolus", "Sarcocornia", "Triglochin"))
+
+reprod.s_sf <- reprod.s %>% subset(reprod_type %in% c("Flowers", "Seeds"))
+```
+
+Explore
+
+-   the data are binary (presence/absence) so can't plot the same way as other data
+
+-   plot the proportion of flowers and seeds of each of the three species
+
+```{r Explore}
+reprod_proportions <- reprod_long %>% 
+  group_by(Site, Species, reprod_type) %>% 
+  summarise(avg = mean(Reproduction), 
+            se = sd(Reproduction)/sqrt(n()), 
+            YSR = mean(YSR)) %>% 
+  ungroup()
+
+reprod_proportions <- reprod_proportions %>% mutate(Site = factor(Site, levels = c("AE", "TB", "HS", "TA", "CF", "CC")))
+
+reprod_proportions %>% 
+  subset(Species %in% c("Sporobolus", "Sarcocornia", "Triglochin")) %>% 
+  subset(reprod_type != "Buds") %>% 
+  ggplot(aes(x = YSR, y = avg, group = reprod_type, color = reprod_type)) +
+  geom_point(size = 4) +
+  facet_wrap(~Species) +
+  ylab("Proportion of quadrats with reproduction") +
+  xlab("Years since restoration") +
+  labs(color = "Reproduction type") +
+  theme_bw() +
+  theme(axis.title = element_text(size = 28), axis.text = element_text(size = 24), legend.title = element_blank(), legend.text = element_text(size = 24), strip.text = element_text(size = 24)) +
+  scale_color_viridis(discrete = TRUE, begin = 0.4, end = 0.8, option = "A") 
+# print at 1500 x 789
+```
+
+Create a model:
+
+-   data are binary so use a binomial model
+
+-   We are interested in how reproduction changes for each species considering all other factors, so create interactions with as many factors as possible (take factors outside of the brackets if the model doesn't run with them inside).
+
+-   We are also interested if there's a trend in reproduction regardless of species so also include this as a separate term
+
+-   Reproduction types of each species might be correlated, so include a random effect for this
+
+-   Including quadrat (Combo) as a random factor
+
+-   **Justify contrasts = list(reprod_type = "contr.sum")**
+
+Check model assumptions
+
+-   mean-variance relationship using resid and scatter.smooth
+
+-   normality using plotQQunit
+
+-   collinearity of predictors using check_collinearity on a model without interactions (M0)
+
+```{r Model_building}
+M8 <- glmmTMB(Reproduction ~ Elevation +  Species:(reprod_type * YSR) + reprod_type * YSR + (1+reprod_type|Species) + (1|Combo), contrasts = list(reprod_type = "contr.sum"), family = "binomial", data = reprod.s_sf)
+
+resid <- residuals(simulateResiduals(M8), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M8,re.form = NA), resid) # looks great.
+
+plotQQunif(M8) # amazing
+
+M0 <- glmmTMB(Reproduction ~ Elevation +  Species + reprod_type + YSR + reprod_type * YSR + (1+reprod_type|Species) + (1|Combo), contrasts = list(reprod_type = "contr.sum"), family = "binomial", data = reprod.s_sf)
+
+check_collinearity(M0) # all low
+```
+
+Generate model results:
+
+-   joint_tests for model testing
+
+-   summary for estimates of differences between groups
+
+-   emmeans for parameter estimates
+
+```{r Model_testing}
+joint_tests(M8)
+summary(M8)
+emmeans(M8, ~ Species | YSR | reprod_type, type = "response")
+```
+
+Plot
+
+-   first calculate raw average proportion of quadrats at each site with seeds or flowers for each species of interest
+
+-   emmip for predicted values + add raw averages
+
+-   boxplot and jitter for raw values (**needs work**)
+
+```{r Plot}
+reprod_proportions <- reprod_long %>% 
+  group_by(Site, Species, reprod_type) %>% 
+  summarise(avg = mean(Reproduction), 
+            se = sd(Reproduction)/sqrt(n()), 
+            YSR = mean(YSR)) %>% 
+  subset(Species %in% c("Sporobolus", "Sarcocornia", "Triglochin")) %>% 
+  subset(reprod_type != "Buds") %>% 
+  ungroup()
+
+emmip(M8, ~ YSR | Species | reprod_type, at = list(YSR = c(6:33)), type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Reproduction likelihood") +   
+  geom_point(data = reprod_proportions, aes(x = YSR, y = avg, group = reprod_type))   
+
+ggplot(data = reprod.s_sf, aes(y = Reproduction, x = YSR, group = YSR, color = reprod_type, fill = reprod_type)) +   geom_boxplot() +   
+  geom_jitter() +   
+  facet_wrap(~Species)
+```
+
+# 3. Natural vs restored models
+
+Before we create any of these models, let's inspect the data space we're working with:
+
+-   relationship between restoration status and Elevation
+
+```{r Predictor_association}
+plot(salt_comm$Elevation ~ salt_comm$rest_status)
+```
+
+From this, we can conclude:
+
+-   natural sites have elevations \~0.4-0.8, however most data is between \~0.5-0.8
+
+-   restoring sites have elevations \~0-0.8, however most data is between \~0-0.6
+
+-   therefore we could potentially include interactions (but only interpret results in the overlapping region, 0.4-0.8m), however given there is not that much overlap in this region, it might be safer to leave out the interaction, especially as it's not our study question anyway
+
+## 3a. Community composition
+
+First, prepare data.
+
+-   subset for only species with sufficient data across the dataset - these are the same species we identified in the YSR models above (Sarcocornia, Sporobolus, Triglochin, Pneumatophores, Bolboschoenus, Aster, Phragmites), as even if there may be more species we could include from natural sites, we need sufficient restored data to be able to contrast natural vs restored
+
+-   convert community composition data to long format, suitable for glmmTMB
+
+-   create a proportional cover column (Sp_cover_prop) and offset 1's slightly so data are suitable for models that can only have values 0 \<= x \< 1.
+
+-   create a "Combo" column that is a combination of Site and Quadrat
+
+Also explore the data by plotting:
+
+-   histograms of raw data, log-transformed data and square-root-transformed data
+
+    -   note, raw data are highly zero-inflated as we've included zeroes every time a species was absent
+
+    -   log- or sqrt-transforms don't fix the distribution
+
+-   view distribution of values by species for restored and natural data separately to explore if there are any species missing from either restored status
+
+    -   pneumatophores looks like it's only zeroes in restored data, but observing the data, you can see there are also some very small proportions
+
+    -   pneumatophores, aster, bolboschoenus and phragmites look like they're only zeroes for natural sites. Upon inspecting data, we can see aster, bolboschoenus and phragmites are all zeroes for natural sites, but there are some pneumatophores.
+
+-   therefore, subset for only Sarcocornia, Sporobolus, Triglochin and Pneumatophores
+
+-   plot relationships between species' cover and elevation to determine if this should be included as a linear or polynomial factor
+
+    -   no evidence of a non-linear relationship, therefore include as a linear factor
+
+```{r Prep/explore}
+salt_comm_comp_long <- salt_comm_comp %>% 
+  dplyr::select(Sarcocornia, Sporobolus, Triglochin, Pneumatophores, Bolboschoenus, Aster, Phragmites, Estuary, Site, Quadrat, Elevation, rest_status) %>%  
+  pivot_longer(cols = c("Sarcocornia", "Sporobolus", "Triglochin", "Pneumatophores", "Bolboschoenus", "Aster", "Phragmites"), names_to = "Species", values_to = "Sp_cover") %>% 
+  mutate(Sp_cover_prop = 
+           case_when(Sp_cover == 0 ~ 0, # keep zeroes as zeroes
+                     .default = Sp_cover/100 - 0.00001), 
+         Combo = paste0(Site, Quadrat)) 
+
+hist(salt_comm_comp_long$Sp_cover_prop) 
+hist(log(salt_comm_comp_long$Sp_cover_prop)) 
+hist(sqrt(salt_comm_comp_long$Sp_cover_prop))
+
+salt_comm_comp_long %>% subset(rest_status == 1) %>% 
+  ggplot(aes(x = Sp_cover_prop, group = Species)) +
+  geom_histogram() +
+  facet_wrap(~Species) 
+
+salt_comm_comp_long %>% subset(rest_status == 0) %>% 
+  ggplot(aes(x = Sp_cover_prop, group = Species)) +
+  geom_histogram() +
+  facet_wrap(~Species) 
+
+salt_comm_comp_long_less <- salt_comm_comp_long %>% subset(Species %in% c("Sarcocornia", "Sporobolus", "Triglochin", "Pneumatophores"))
+
+ggplot(data = salt_comm_comp_long_less, aes(x = Elevation, y = Sp_cover_prop)) +
+  geom_point() +
+  facet_wrap(~Species) 
+```
+
+Next, create a model:
+
+-   use a beta distribution because it's proportional data
+
+-   include quadrat (Combo) nested within Site as a random factor
+
+-   include Estuary as a fixed factor as even though we don't care about the identity of the estuaries, there are only 2 levels
+
+-   included a reduced rank correlation structure because species covers within the same quadrat are not independent so we need to account for this
+
+-   as we're modelling community composition, we want to model how each species' percent cover varies with YSR after controlling for elevation, so model the interaction between Species and (Elevation + rest_status)
+
+-   use a zero-inflated model structure if the number of zeroes can't be accounted for without it
+
+    -   in the non-zero inflated model, need to add a tiny offset so there are no zeroes in the data
+
+    -   as residuals don't look good in the non-zero-inflated model, but look acceptable in the zero-inflated model, use that
+
+Test assumptions using resid and scatter.smooth and plotQQunif.
+
+```{r Model_create}
+M <- glmmTMB((Sp_cover_prop + 0.000001) ~ Estuary + Species*(Elevation + rest_status) + (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = beta_family(link = "logit"), data = salt_comm_comp_long_less)
+
+resid <- residuals(simulateResiduals(M), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M, re.form = NA), resid) 
+scatter.smooth(predict(M, re.form = NA), abs(resid))
+plotQQunif(M)
+
+M9 <- glmmTMB(Sp_cover_prop ~ Estuary + Species*(Elevation + rest_status) + (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = beta_family(link = "logit"), ziformula = ~ 1, data = salt_comm_comp_long_less)
+
+resid <- residuals(simulateResiduals(M9), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M9, re.form = NA), resid) 
+scatter.smooth(predict(M9, re.form = NA), abs(resid))
+plotQQunif(M9)
+```
+
+Generate model results:
+
+-   joint_tests to test effect of each variable (p values)
+
+-   emmeans for parameter estimates - mean of each group
+
+-   summary for parameter estimates - differences between each groups
+
+```{r Model_test}
+joint_tests(M9)
+emmeans(M9, pairwise~rest_status|Species, type = "response") 
+summary(M9) 
+```
+
+Next, plot the results:
+
+-   emtrends for confidence intervals for slopes of elevation for each species (plot these using plot)
+
+-   ggplot to make boxplots for natural vs restored cover by species (print at 1200 x 800)
+
+```{r Plot}
+k <- emtrends(M9, var = "Elevation", ~Species, type = "response")
+k
+plot(k) 
+
+emmip(M9, ~ Elevation | Species, at = list(Elevation = c(-0.5,-0.4,-0.3,-0.2,-0.1,0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1)), type = "response", CIs = TRUE, engine = "ggplot", xlab = "Elevation", ylab = "Predicted proportion cover") +
+  geom_jitter(data = salt_comm_comp_long_less, aes(x = Elevation, y = Sp_cover_prop))
+
+ggplot(data = salt_comm_comp_long_less, aes(x = Species, y = Sp_cover + 0.0001, fill = as.factor(rest_status))) +
+  geom_boxplot() +
+  scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A",
+                     name="",
+                     breaks=c("0", "1"),
+                     labels=c("Natural", "Restoring")) +
+    theme(axis.text = element_text(size = 24),
+          axis.title = element_text(size = 28),
+          legend.text = element_text(size = 20)) +
+  xlab("Species") +
+  ylab("Species percent cover") 
+
+ggplot(data = salt_comm_comp_long_less, aes(x = Elevation, y = Sp_cover + 0.0001, fill = Species)) +
+  geom_smooth(method = "lm") +
+  geom_jitter() +
+  ylab("Species cover (%)") +
+  theme_bw() +
+  facet_wrap(~Species, scales = "free")
+```
+
+## 3b. Total cover
+
+First, prepare and explore the data.
+
+-   create an additional proportional cover variable that is slightly offset to account for the fact that beta models can't include values equal to 1
+
+-   use histograms to explore the distribution of raw and transformed data
+
+    -   it's left skewed, so transform with log(1-x)
+
+-   plot relationships between variables
+
+    -   the relationship between total cover and elevation is not obviously non-linear, so include as a linear factor
+
+```{r Prep/Explore}
+salt_comm$total_cover_prop_offset <- salt_comm$total_cover_prop - 0.0001
+
+hist(salt_comm$total_cover_prop) 
+hist(log(1 - salt_comm$total_cover_prop)) 
+
+plot(salt_comm$total_cover_prop ~ salt_comm$rest_status)
+plot(salt_comm$total_cover_prop ~ salt_comm$Elevation)
+```
+
+Next, create a model:
+
+-   **Need to decide whether either of these models is ok and if so which is better. Then write up the aspects of the chosen model**
+
+-   **??** Use log(1-x) transformed data as the original data were highly left skewed
+
+-   Include Site as a random factor
+
+-   Include Elevation, DomSpeciesSuperSimp and Estuary as covariates
+
+```{r Model_create}
+M <- glmmTMB(total_cover_prop_offset ~ Elevation +  DomSpeciesSuperSimp + Estuary * rest_status + (1|Site), family = "beta_family", data = salt_comm)
+
+resid <- residuals(simulateResiduals(M), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M,re.form = NA), resid)
+scatter.smooth(predict(M,re.form = NA), abs(resid))
+check_collinearity(M) 
+plotQQunif(M)
+
+
+M10 <- glmmTMB(log(1-total_cover_prop_offset) ~ Elevation +  DomSpeciesSuperSimp + Estuary * rest_status + (1|Site), data = salt_comm)
+
+resid <- residuals(simulateResiduals(M10), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M10,re.form = NA), resid) 
+scatter.smooth(predict(M10,re.form = NA), abs(resid))
+check_collinearity(M10) 
+plotQQunif(M10)
+
+anova(M, M10)
+```
+
+Next, test the model.
+
+-   test model using joint_tests
+
+-   calculate parameter estimates using summary and emmeans
+
+```{r Model_test}
+joint_tests(M)
+summary(M)
+emmeans(M, pairwise ~ rest_status, type = "response")
+emmeans(M, pairwise ~ Estuary, type = "response")
+emmeans(M, pairwise ~ DomSpeciesSuperSimp, type = "response")
+
+joint_tests(M10)
+summary(M10)
+emmeans(M10, pairwise ~ rest_status, type = "response")
+```
+
+Finally, plot the data.
+
+-   ggplot to plot natural vs restoring boxplots in the Hunter and Maroochy estuaries
+
+```{r Plot}
+ggplot(salt_comm, aes(x=Estuary, y=total_cover_prop*100, fill = as.factor(rest_status))) +
+    geom_boxplot() +
+  geom_jitter(size = 3)  +
+    scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A",
+                      name="",
+                      breaks=c("0", "1"),
+                      labels=c("Natural", "Restoring")) +
+    theme_classic() +
+    theme(axis.text = element_text(size = 24),
+          axis.title = element_text(size = 28),
+          legend.text = element_text(size = 20)) +
+  xlab("Estuary") +
+  ylab("Saltmarsh cover (%)") 
+```
+
+## 3c. Burrows
+
+First, prepare and explore the data:
+
+-   histogram faceted by site
+
+-   histogram of raw and transformed data
+
+    -   raw is right skewed, so try log (best) and sqrt transforms
+
+-   plot relationships between variables
+
+    -   no evidence of a non-linear relationship between burrows and elevation
+
+-   remove NA data
+
+```{r Prep/explore}
+ggplot(data = salt_comm, aes(x = Burrows_0.5x0.5)) +
+  geom_histogram() +
+  facet_wrap(~Site)
+
+hist(salt_comm$Burrows_0.5x0.5)
+hist(log(salt_comm$Burrows_0.5x0.5)) 
+hist(sqrt(salt_comm$Burrows_0.5x0.5)) 
+
+plot(salt_comm$Burrows_0.5x0.5 ~ salt_comm$rest_status) 
+plot(salt_comm$Burrows_0.5x0.5 ~ salt_comm$Elevation)
+
+salt_comm_burrows <- salt_comm %>% subset(!is.na(Burrows_0.5x0.5))
+```
+
+Next, create a model:
+
+-   include interactions between Estuary and restoration status, and between Elevation and restoration status, because we could expect these interactions may impact burrow numbers
+
+-   include Dominant Species as a covariate
+
+-   include Site as a random factor
+
+-   poisson distribution because it's count data
+
+-   try both a non-zero-inflated and a zero-inflated model
+
+    -   the zero-inflated model has slightly better looking assumptions graphs and a significantly lower AIC value, so use that (M11)
+
+```{r Model_create}
+M <- glmmTMB(Burrows_0.5x0.5 ~ DomSpeciesSuperSimp + Estuary * rest_status + Elevation * rest_status + (1|Site), data = salt_comm_burrows, family = "poisson")
+
+resid <- residuals(simulateResiduals(M), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M, re.form = NA), resid)
+check_collinearity(M) # low collinearity
+plotQQunif(M)
+
+M11 <- glmmTMB(Burrows_0.5x0.5 ~ DomSpeciesSuperSimp + Estuary * rest_status + Elevation * rest_status + (1|Site), data = salt_comm_burrows, family = "poisson", ziformula =~1)
+
+resid <- residuals(simulateResiduals(M11), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M11, re.form = NA), resid)
+check_collinearity(M11) # low collinearity
+plotQQunif(M11)
+
+anova(M, M11)
+```
+
+Next, test the model.
+
+-   test model using joint_tests
+
+-   calculate parameter estimates using summary and emmeans
+
+```{r Model_test}
+joint_tests(M11)
+summary(M11)
+emmeans(M11, pairwise ~ rest_status, type = "response")
+emmeans(M11, pairwise ~ DomSpeciesSuperSimp, type = "response")
+```
+
+Finally, plot the data.
+
+```{r Plot}
+ggplot(salt_comm, aes(x=Estuary, y=total_cover_prop*100, fill = as.factor(DomSpeciesSuperSimp))) +
+    geom_boxplot() +
+  geom_jitter(size = 3)  +
+    scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A",
+                      name="",
+                      labels=c("Sporobolus", "Sarcocornia", "Other")) +
+    theme_classic() +
+    theme(axis.text = element_text(size = 24),
+          axis.title = element_text(size = 28),
+          legend.text = element_text(size = 20)) +
+  xlab("Dominant Species") +
+  ylab("Number of burrows per 0.25m^2") 
+```
+
+## 3d. Stem density
+
+First, prepare and explore the data.
+
+```{r Prep/explore}
+```
+
+Next, create a model.
+
+```{r Model_create}
+```
+
+Next, test the model.
+
+```{r Model_test}
+```
+
+Finally, plot the data.
+
+```{r Plot}
+```
+
+## 3e. Stem diameter
+
+First, prepare and explore the data.
+
+```{r Prep/explore}
+```
+
+Next, create a model.
+
+```{r Model_create}
+```
+
+Next, test the model.
+
+```{r Model_test}
+```
+
+Finally, plot the data.
+
+```{r Plot}
+```
+
+## 3f. Stem height
+
+First, prepare and explore the data.
+
+```{r Prep/explore}
+```
+
+Next, create a model.
+
+```{r Model_create}
+```
+
+Next, test the model.
+
+```{r Model_test}
+```
+
+Finally, plot the data.
+
+```{r Plot}
+```
+
+## 3g. Reproduction
+
+First, prepare and explore the data.
+
+```{r Prep/explore}
+```
+
+Next, create a model.
+
+```{r Model_create}
+```
+
+Next, test the model.
+
+```{r Model_test}
+```
+
+Finally, plot the data.
+
+```{r Plot}
+```

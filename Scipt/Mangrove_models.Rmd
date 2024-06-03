@@ -717,8 +717,8 @@ m_elev_nat
 # print at 700 x 789
 
 # plot natural and restored together
-ggarrange(m_elev_rest,m_elev_nat,ncol =2,nrow=1,widths = c(1.5,1))
-# print at 1500 x 1200
+ggarrange(m_elev_rest,m_elev_nat,ncol =2,nrow=1,widths = c(1.3,1))
+# print at 1500 x 1200 or 2400 x 800 for preso
 ```
 
 
@@ -830,12 +830,12 @@ ggplot(mantree_comm_rest, aes(x=YSR, y=total_saplings, fill=Estuary, group = YSR
   geom_jitter() +
     scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A") +
     theme_classic() +
-    theme(legend.text = element_text(size = 20),
-          legend.title = element_text(size = 24),
-          axis.text = element_text(size = 24),
-          axis.title = element_text(size = 28)) +
+    theme(legend.text = element_text(size = 28),
+          legend.title = element_text(size = 32),
+          axis.text = element_text(size = 32),
+          axis.title = element_text(size = 36)) +
   xlab("Years since restoration") +
-  ylab("Number of mangrove saplings") +
+  ylab("Number of saplings") +
   xlim(0,35)
 # print at 1820 x 789
 
@@ -870,10 +870,10 @@ ggplot(mantree_comm_nat, aes(x=Site, y=total_saplings, fill=Estuary, group = Sit
   geom_jitter(width = 0.2) +
     scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A") +
     theme_classic() +
-    theme(legend.text = element_text(size = 20),
-          legend.title = element_text(size = 24),
-          axis.text = element_text(size = 24),
-          axis.title = element_text(size = 28)) +
+    theme(legend.text = element_text(size = 28),
+          legend.title = element_text(size = 32),
+          axis.text = element_text(size = 32),
+          axis.title = element_text(size = 36)) +
   xlab("Site") +
   ylab("") +
   ylim(0,440)
@@ -885,10 +885,10 @@ ggplot(mantree_comm_nat, aes(x=Site, y=total_saplings, fill=Estuary, group = Sit
   geom_jitter(width = 0.2) +
     scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A") +
     theme_classic() +
-    theme(legend.text = element_text(size = 20),
-          legend.title = element_text(size = 24),
-          axis.text = element_text(size = 24),
-          axis.title = element_text(size = 28)) +
+    theme(legend.text = element_text(size = 28),
+          legend.title = element_text(size = 32),
+          axis.text = element_text(size = 32),
+          axis.title = element_text(size = 36)) +
   xlab("Site") +
   ylab("") +
   ylim(0,440)
@@ -1090,7 +1090,7 @@ ggplot(mantree_grey_rest, aes(x=YSR, y=Height_m, fill=Estuary, group = YSR)) +
   xlab("Years since restoration") +
   ylab("Tree height (m)") +
   xlim(0,35) +
-  ylim(0,10.4)
+  ylim(0,10.5)
 # print at 1820 x 789
 
 # plot natural sites - violin plot
@@ -1105,8 +1105,47 @@ ggplot(mantree_grey_nat, aes(x=Site, y=Height_m, fill=Estuary, group = Site)) +
           axis.title = element_text(size = 28)) +
   xlab("Site") +
   ylab("") +
-  ylim(0,10.4)
+  ylim(0,10.5)
 # print at default
+
+# box plots
+
+# plot restoring sites  - box plot
+m_ht_rest <- ggplot(mantree_grey_rest, aes(x=YSR, y=Height_m, fill=Estuary, group = YSR)) +
+    geom_boxplot(width=1.4) +
+  geom_jitter() +
+    scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A") +
+    theme_classic() +
+    theme(legend.position = "none",
+          axis.text = element_text(size = 32),
+          axis.title = element_text(size = 36)) +
+  xlab("Years since restoration") +
+  ylab("Tree height (m)") +
+  xlim(0,35) +
+  ylim(0,10.5)
+m_ht_rest
+# print at 1820 x 789
+
+# plot natural sites - box plot
+m_ht_nat <- ggplot(mantree_grey_nat, aes(x=Site, y=Height_m, fill=Estuary, group = Site)) +
+    geom_boxplot(width=0.2) +
+  geom_jitter(width = 0.1, height = 0) +
+    scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A") +
+    theme_classic() +
+    theme(legend.text = element_text(size = 28),
+          legend.title = element_text(size = 32),
+          axis.text = element_text(size = 32),
+          axis.text.y = element_blank(), # remove y axis labels when combining plot with restored
+          axis.title = element_text(size = 36)) +
+  xlab("Site") +
+  ylab("") +
+  ylim(0,10.5)
+m_ht_nat
+# print at default
+
+# plot natural and restored together
+ggarrange(m_ht_rest,m_ht_nat,ncol =2,nrow=1,widths = c(1,1))
+# print at 1500 x 800 for paper, 2400 x 800 for preso
 ```
 
 ```{r DBH - YSR - plot}

@@ -595,6 +595,21 @@ resid <- residuals(simulateResiduals(M14), quantileFunction = qnorm, outlierValu
 scatter.smooth(predict(M14,re.form = NA), resid) # not exactly straight but ok
 
 summary(M14)
+joint_tests(M14)
+emmeans(M14, pairwise~YSR)
+emmeans(M14, pairwise~DomSpeciesSuperSimp)
+emmeans(M14, pairwise~YSR|DomSpeciesSuperSimp)
+
+
+M15 <- glmmTMB(log(1-total_cover_prop) ~ poly(YSR,2)* DomSpeciesSuperSimp + poly(Elevation,2)   + (1|Site), data = salt_comm_rest_H, family = "gaussian")
+resid <- residuals(simulateResiduals(M15), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M15,re.form = NA), resid) # fine
+
+joint_tests(M15)
+emmeans(M15, pairwise~YSR)
+emmeans(M15, pairwise~DomSpeciesSuperSimp)
+emmeans(M15, pairwise~YSR|DomSpeciesSuperSimp)
+
 ```
 
 
@@ -708,12 +723,12 @@ ggplot(salt_comm_rest_H, aes(x=YSR, y=total_cover_prop, group = YSR, fill = Estu
 # plot restoring sites  - box plot
 S_Cov_rest <- ggplot(salt_comm_rest_H, aes(x=YSR, y=total_cover_prop*100, group = YSR, fill = Estuary)) +
     geom_boxplot(width = 2) +
-  geom_jitter()  +
+  geom_jitter(height = 0)  +
     scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A") +
     theme_classic() +
     theme(legend.position = "none",
-          axis.text = element_text(size = 24),
-          axis.title = element_text(size = 28)) +
+          axis.text = element_text(size = 32),
+          axis.title = element_text(size = 36)) +
   xlab("Years since restoration") +
   ylab("Saltmarsh cover (%)") +
   xlim(0,35) + 
@@ -737,15 +752,15 @@ ggplot(salt_comm_nat_H, aes(x=Site, y=total_cover_prop, fill=Estuary, group = Si
 # print at 700 x 789
 
 # plot natural sites - box plot
-S_Cov_nat <- ggplot(salt_comm_nat_H, aes(x=Site, y=total_cover_prop*100, fill=Estuary, group = Site)) +
+S_Cov_nat <- ggplot(salt_comm_nat_H, aes(x=Site, y=`Total_cover_%`, fill=Estuary, group = Site)) +
     geom_boxplot(width=0.4) +
-  geom_jitter(width = 0.1)  +
+  geom_jitter(width = 0.1, height = 0)  +
     scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A") +
     theme_classic() +
     theme(legend.position = "none",
-          axis.text = element_text(size = 24),
+          axis.text = element_text(size = 32),
           axis.text.y = element_blank(), # remove y axis labels when combining plot with restored
-          axis.title = element_text(size = 28)) +
+          axis.title = element_text(size = 36)) +
   xlab("Site") +
   ylab("")  +
   ylim(0,100)
@@ -754,7 +769,7 @@ S_Cov_nat
 
 # plot natural and restored together
 ggarrange(S_Cov_rest,S_Cov_nat,ncol =2,nrow=1,widths = c(3,1))
-# print at 1500 x 800
+# print at 1500 x 800 for paper, 2400 x 800 for preso
 
 # Elevation
 ggplot(salt_comm_rest_H, aes(x = Elevation, y = total_cover_prop)) +   
@@ -1029,7 +1044,7 @@ salt_comm_rest_H$Burrows_ln <- log(salt_comm_rest_H$Burrows_0.5x0.5 + 0.001)
 # boxplots - restored sites
 S_Bur_rest <- ggplot(salt_comm_rest_H, aes(x=YSR, y=(Burrows_0.5x0.5+0.01), group = YSR, fill = Estuary)) +
     geom_boxplot(width = 2) +
-  geom_jitter()  +
+  geom_jitter(height = 0)  +
     scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A") +
     theme_classic() +
     theme(legend.position = "none",
@@ -1043,7 +1058,7 @@ S_Bur_rest
 # boxplots - natural sites
 S_Bur_nat <- ggplot(salt_comm_nat_H, aes(x=Site, y=Burrows_0.5x0.5, fill=Estuary, group = Site)) +
     geom_boxplot(width=0.4) +
-  geom_jitter(width = 0.1)  +
+  geom_jitter(width = 0.1, height = 0)  +
     scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A") +
     theme_classic() +
     theme(legend.position = "none",
@@ -1052,12 +1067,14 @@ S_Bur_nat <- ggplot(salt_comm_nat_H, aes(x=Site, y=Burrows_0.5x0.5, fill=Estuary
           axis.title = element_text(size = 28)) +
   xlab("Site") +
   ylab("")  +
-  scale_y_log10() 
+  #scale_y_log10() + 
+  ylim(0,62)
 S_Bur_nat
 
 # plot natural and restored together
 ggarrange(S_Bur_rest,S_Bur_nat,ncol =2,nrow=1,widths = c(3,1))
 # print at 1500 x 800
+# export at 2200 x 800 for preso, 1500 x 800 for paper
 
 # predict effects of YSR when controlling for the other factors
 predict_YSR <- ggemmeans(M12, terms = c("YSR [all]"))
@@ -1468,8 +1485,8 @@ ggplot(spor_comm_H_res, aes(x=YSR, y=sq.stem.dens, group = YSR, fill = Estuary))
     scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A") +
     theme_classic() +
     theme(legend.position = "none",
-          axis.text = element_text(size = 24),
-          axis.title = element_text(size = 28)) +
+          axis.text = element_text(size = 32),
+          axis.title = element_text(size = 32)) +
   xlab("Years since restoration") +
   ylab("Sporobolus stem density (stems/m2)") +
   xlim(0,35) 
@@ -1484,8 +1501,8 @@ ggplot(spor_comm_H_nat, aes(x=Site, y=sq.stem.dens, fill=Estuary, group = Site))
     scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A") +
     theme_classic() +
     theme(legend.position = "none",
-          axis.text = element_text(size = 24),
-          axis.title = element_text(size = 28)) +
+          axis.text = element_text(size = 32),
+          axis.title = element_text(size = 32)) +
   xlab("Site") +
   ylab("") 
 # print at 700 x 789
@@ -1949,7 +1966,9 @@ resid <- residuals(simulateResiduals(M3), quantileFunction = qnorm, outlierValue
 scatter.smooth(predict(M3, re.form = NA), resid) # has a trend.. however this is only driven by a few points so might be ok
 plotQQunif(M3) # looks great
 
-summary(M3)
+
+joint_tests(M3)
+emmeans(M3, pairwise~YSR|Species)
 
 ```
 
@@ -2437,7 +2456,7 @@ ggplot(data = reprod_long, aes(x = Reproduction, y = Species)) +
 reprod_proportions <- reprod_long %>% 
   group_by(Site, Species, reprod_type) %>% 
   summarise(avg = mean(Reproduction), 
-            #se = sd(Reproduction)/sqrt(n()), 
+            se = sd(Reproduction)/sqrt(n()), 
             YSR = mean(YSR)) %>% 
   ungroup()
 
@@ -3056,7 +3075,7 @@ summary(M6)
 
 # don't need an interaction with elevation
 
-M7 <- lmer(log(1-salt_comm$total_cover_prop) ~ rest_status * Estuary + Elevation +  DomSpeciesSuperSimp + (1|Site), data = salt_comm)
+M7 <- lmer(log(1-(total_cover_prop - 0.0001)) ~ rest_status * Estuary + Elevation +  DomSpeciesSuperSimp + (1|Site), data = salt_comm)
 plot(M7) # looks great
 plotQQunif(M7) # ok
 
