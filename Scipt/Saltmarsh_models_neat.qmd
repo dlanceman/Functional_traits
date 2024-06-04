@@ -474,7 +474,7 @@ Now, create a model:
 Check the assumptions of the model using resid and scatter.smooth and plotQQunif.
 
 ```{r Model_building}
-M <- glmmTMB(cover_prop_no01 ~ Species:(Elevation + YSR) + (1|Site) + rr(Species+0|Combo, d = 1), data = comm_comp_long, family = beta_family(link = "logit"))
+M <- glmmTMB(cover_prop_no01 ~ Species*(Elevation + YSR) + (1|Site) + rr(Species+0|Combo, d = 1), data = comm_comp_long, family = beta_family(link = "logit"))
 
 # check assumptions
 resid <- residuals(simulateResiduals(M), quantileFunction = qnorm, outlierValues = c(-7,7))
@@ -483,16 +483,25 @@ plotQQunif(M) # not good
 
 
 # therefore try zero-inflated model
-M1 <- glmmTMB(cover_prop_no1 ~ Species:(Elevation + YSR) + (1|Site) + rr(Species+0|Combo, d = 1), data = comm_comp_long, family = beta_family(link = "logit"), ziformula = ~1)
+M1 <- glmmTMB(cover_prop_no1 ~ Species + Species:Elevation + Species:YSR + YSR + (1|Site) + rr(Species+0|Combo, d = 1), data = comm_comp_long, family = beta_family(link = "logit"), ziformula = ~1)
 
 # check assumptions
 resid <- residuals(simulateResiduals(M1), quantileFunction = qnorm, outlierValues = c(-7,7))
-scatter.smooth(predict(M1,re.form = NA), resid) # wonderful!
-plotQQunif(M1) # wonderful
+scatter.smooth(predict(M1,re.form = NA), resid)
+plotQQunif(M1) 
 
 # check collinearity on a model without interaction terms
 M0 <- glmmTMB(cover_prop_no1 ~ Species + Elevation + YSR + (1|Site) + rr(Species+0|Combo, d = 1), data = comm_comp_long, family = beta_family(link = "logit"), ziformula = ~1)
 check_collinearity(M0) # all low
+
+
+Mx <- glmmTMB(cover_prop_no1 ~ Species:(Elevation + YSR) + (1|Site) + rr(Species+0|Combo, d = 1), data = comm_comp_long, family = beta_family(link = "logit"), ziformula = ~1)
+
+resid <- residuals(simulateResiduals(Mx), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(Mx,re.form = NA), resid) # wonderful!
+plotQQunif(Mx)
+
+anova(M1, Mx)
 
 ```
 
@@ -877,20 +886,20 @@ Check assumptions:
 -   check_collinearity with a model without interactions and polynomial terms for collinearity
 
 ```{r Model_building}
-M <- glmmTMB(Stems ~ DomSpeciesSuperSimp + Species:(Elevation + sp_prop + YSR) +  offset(log(Quadrat_area)) + rr(Species+0|Combo, d = 2) + (1|Site), family = "poisson", data = stem_dens_unique_H_res)
+M <- glmmTMB(Stems ~ DomSpeciesSuperSimp + Species*(Elevation + YSR) +  offset(log(Quadrat_area)) + rr(Species+0|Combo, d = 2) + (1|Site), family = "poisson", data = stem_dens_unique_H_res)
 
 resid <- residuals(simulateResiduals(M), quantileFunction = qnorm, outlierValues = c(-7,7))
 scatter.smooth(predict(M, re.form = NA), resid) # has a trend, not great but ok
 plotQQunif(M) # ok
 
-M5 <- glmmTMB(Stems ~ DomSpeciesSuperSimp + Species:(Elevation + sp_prop + YSR)+ offset(log(Quadrat_area)) + rr(Species+0|Combo, d = 2) + (1|Site), family = "nbinom2", data = stem_dens_unique_H_res)
+M5 <- glmmTMB(Stems ~ DomSpeciesSuperSimp + Species*(Elevation + YSR)+ offset(log(Quadrat_area)) + rr(Species+0|Combo, d = 2) + (1|Site), family = "nbinom2", data = stem_dens_unique_H_res)
 
 resid <- residuals(simulateResiduals(M5), quantileFunction = qnorm, outlierValues = c(-7,7))
 scatter.smooth(predict(M5, re.form = NA), resid) # has a trend.. however this is only driven by a few points so should be ok
 scatter.smooth(predict(M5, re.form = NA), abs(resid)) # looks pretty fine
 plotQQunif(M5) # pretty good
 
-M0 <- glmmTMB(Stems ~ DomSpeciesSuperSimp + Species + Elevation + sp_prop + YSR + offset(log(Quadrat_area)) + rr(Species+0|Combo, d = 2) + (1|Site), family = "nbinom2", data = stem_dens_unique_H_res)
+M0 <- glmmTMB(Stems ~ DomSpeciesSuperSimp + Species + Elevation + YSR + offset(log(Quadrat_area)) + rr(Species+0|Combo, d = 2) + (1|Site), family = "nbinom2", data = stem_dens_unique_H_res)
 
 check_collinearity(M0) # all low
 ```
@@ -987,6 +996,10 @@ Next, create a model:
 
 -   Including quadrat (Combo) as a random factor
 
+-   Try a model with raw data and a model with square root transformed data
+
+    -   the former only runs with Elevation in the brackets while the latter only runs when it's outside the bracket, so that's why they differ slightly
+
 Check assumptions
 
 -   plot for mean-variance relationship
@@ -996,12 +1009,12 @@ Check assumptions
 -   check_collinearity for predictor collinearity on model without interactions
 
 ```{r Model_building}
-M <- glmmTMB(Stem_dia_mm ~ DomSpeciesSuperSimp + Species:(Elevation + sp_prop + YSR) + (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_dia)
+M <- glmmTMB(Stem_dia_mm ~ DomSpeciesSuperSimp + Species*(Elevation + sp_prop + YSR) + (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_dia)
 
 plot(predict(M, re.form = NA), residuals(M)) # ok but clumped
 plotQQunif(M) # ok but not great
 
-M6 <- glmmTMB(sqrt(Stem_dia_mm) ~ DomSpeciesSuperSimp + Species:(Elevation + sp_prop + YSR) + (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_dia)
+M6 <- glmmTMB(sqrt(Stem_dia_mm) ~ DomSpeciesSuperSimp + Elevation + Species*(sp_prop + YSR) + (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_dia)
 
 plot(predict(M6, re.form = NA), residuals(M6)) # looks ok
 plotQQunif(M6) # not great but better than M - but these models are robust to deviations from normality for this sample size so it's totally fine.
@@ -1009,6 +1022,8 @@ plotQQunif(M6) # not great but better than M - but these models are robust to de
 M0 <- glmmTMB(sqrt(Stem_dia_mm) ~ DomSpeciesSuperSimp + Species + Elevation + sp_prop + YSR + (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_dia)
 
 check_collinearity(M0) # all low
+
+anova(M, M6) # M6 is better
 ```
 
 Test model:
@@ -1083,9 +1098,9 @@ Check assumptions
 -   check_collinearity for collinearity between predictors on a model without interactions
 
 ```{r Model_building}
-# M <- glmmTMB(Stem_ht_mm ~ Elevation + sp_prop + DomSpeciesSuperSimp + Species*YSR +  (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_ht)
+#M <- glmmTMB(Stem_ht_mm ~ DomSpeciesSuperSimp + Species*(Elevation + sp_prop + YSR) + (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_ht)
 
-M7 <- glmmTMB(log(Stem_ht_mm) ~ DomSpeciesSuperSimp + Species:(Elevation + sp_prop + YSR) +  (1|Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_ht)
+M7 <- glmmTMB(log(Stem_ht_mm) ~ DomSpeciesSuperSimp + Species*(Elevation + sp_prop + YSR) +  (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_ht)
 
 plot(predict(M7), residuals(M7)) # clumped but ok
 plotQQunif(M7) # great
@@ -1237,17 +1252,17 @@ Check model assumptions
 
 -   normality using plotQQunit
 
--   collinearity of predictors using check_collinearity on a model without interactions (M0)
+-   collinearity of predictors using check_collinearity on a model without interactions (M0) **(having issues with model convergence)**
 
 ```{r Model_building}
-M8 <- glmmTMB(Reproduction ~ Elevation +  Species:(reprod_type * YSR) + reprod_type * YSR + (1+reprod_type|Species) + (1|Combo), contrasts = list(reprod_type = "contr.sum"), family = "binomial", data = reprod.s_sf)
+M8 <- glmmTMB(Reproduction ~ DomSpeciesSuperSimp + Species*(Elevation  + reprod_type * YSR) + (1+reprod_type|Species) + (1|Combo), contrasts = list(reprod_type = "contr.sum"), family = "binomial", data = reprod.s_sf)
 
 resid <- residuals(simulateResiduals(M8), quantileFunction = qnorm, outlierValues = c(-7,7))
 scatter.smooth(predict(M8,re.form = NA), resid) # looks great.
 
 plotQQunif(M8) # amazing
 
-M0 <- glmmTMB(Reproduction ~ Elevation +  Species + reprod_type + YSR + reprod_type * YSR + (1+reprod_type|Species) + (1|Combo), contrasts = list(reprod_type = "contr.sum"), family = "binomial", data = reprod.s_sf)
+M0 <- glmmTMB(Reproduction ~ DomSpeciesSuperSimp + Species + Elevation +   reprod_type + YSR  + (1+reprod_type|Species) + (1|Combo), contrasts = list(reprod_type = "contr.sum"), family = "binomial", data = reprod.s_sf)
 
 check_collinearity(M0) # all low
 ```
@@ -1491,7 +1506,7 @@ Next, create a model:
 -   Include Elevation, DomSpeciesSuperSimp and Estuary as covariates
 
 ```{r Model_create}
-M <- glmmTMB(total_cover_prop_offset ~ Elevation +  DomSpeciesSuperSimp + Estuary * rest_status + (1|Site), family = "beta_family", data = salt_comm)
+M <- glmmTMB(total_cover_prop_offset ~ Elevation +  DomSpeciesSuperSimp + Estuary + rest_status + (1|Site), family = "beta_family", data = salt_comm)
 
 resid <- residuals(simulateResiduals(M), quantileFunction = qnorm, outlierValues = c(-7,7))
 scatter.smooth(predict(M,re.form = NA), resid)
@@ -1500,7 +1515,7 @@ check_collinearity(M)
 plotQQunif(M)
 
 
-M10 <- glmmTMB(log(1-total_cover_prop_offset) ~ Elevation +  DomSpeciesSuperSimp + Estuary * rest_status + (1|Site), data = salt_comm)
+M10 <- glmmTMB(log(1-total_cover_prop_offset) ~ Elevation +  DomSpeciesSuperSimp + Estuary + rest_status + (1|Site), data = salt_comm)
 
 resid <- residuals(simulateResiduals(M10), quantileFunction = qnorm, outlierValues = c(-7,7))
 scatter.smooth(predict(M10,re.form = NA), resid) 
@@ -1582,8 +1597,6 @@ salt_comm_burrows <- salt_comm %>% subset(!is.na(Burrows_0.5x0.5))
 
 Next, create a model:
 
--   include interactions between Estuary and restoration status, and between Elevation and restoration status, because we could expect these interactions may impact burrow numbers
-
 -   include Dominant Species as a covariate
 
 -   include Site as a random factor
@@ -1595,14 +1608,14 @@ Next, create a model:
     -   the zero-inflated model has slightly better looking assumptions graphs and a significantly lower AIC value, so use that (M11)
 
 ```{r Model_create}
-M <- glmmTMB(Burrows_0.5x0.5 ~ DomSpeciesSuperSimp + Estuary * rest_status + Elevation * rest_status + (1|Site), data = salt_comm_burrows, family = "poisson")
+M <- glmmTMB(Burrows_0.5x0.5 ~ DomSpeciesSuperSimp + Elevation + Estuary + rest_status + (1|Site), data = salt_comm_burrows, family = "poisson")
 
 resid <- residuals(simulateResiduals(M), quantileFunction = qnorm, outlierValues = c(-7,7))
 scatter.smooth(predict(M, re.form = NA), resid)
 check_collinearity(M) # low collinearity
 plotQQunif(M)
 
-M11 <- glmmTMB(Burrows_0.5x0.5 ~ DomSpeciesSuperSimp + Estuary * rest_status + Elevation * rest_status + (1|Site), data = salt_comm_burrows, family = "poisson", ziformula =~1)
+M11 <- glmmTMB(Burrows_0.5x0.5 ~ DomSpeciesSuperSimp + Elevation + Estuary + rest_status + (1|Site), data = salt_comm_burrows, family = "poisson", ziformula =~1)
 
 resid <- residuals(simulateResiduals(M11), quantileFunction = qnorm, outlierValues = c(-7,7))
 scatter.smooth(predict(M11, re.form = NA), resid)
@@ -1644,63 +1657,266 @@ ggplot(salt_comm, aes(x=Estuary, y=total_cover_prop*100, fill = as.factor(DomSpe
 
 ## 3d. Stem density
 
-First, prepare and explore the data.
+First, prepare and explore the data:
+
+-   Because there are multiple stem height/diameter measurements per species per quadrat but only one stem density measurement, we need to first create a dataset with one stem density row per species/quadrat ("stem_dens_unique")
+
+-   Subset for only species with enough data and remove NAs
+
+-   Explore the data (both while accounting for quadrat size - total stems - and without accounting - Stems) using histograms of raw and transformed data
+
+-   Plot relationship between elevation and stem density
 
 ```{r Prep/explore}
+stem_dens <- salt[,c(5,6,7,11,13,14,24:34)]
+stem_dens$unique <- factor(interaction(stem_dens$Combo, stem_dens$Species, sep = ":"))
+stem_dens_unique <- stem_dens %>% distinct(unique, .keep_all = TRUE) 
+
+stem_dens_unique_less <- stem_dens_unique %>% 
+  subset(Species %in% c("Sporobolus", "Sarcocornia", "Triglochin", "Pneumatophores")) %>% 
+  subset(!is.na(Stems)) 
+
+hist(stem_dens_unique_less$total_stems) # highly right skewed
+hist(log(stem_dens_unique_less$total_stems)) # weird but better
+hist(sqrt(stem_dens_unique_less$total_stems)) # still right skewed
+
+hist(stem_dens_unique_less$Stems) #  right skewed
+hist(log(stem_dens_unique_less$Stems)) # left skewed
+hist(sqrt(stem_dens_unique_less$Stems)) # pretty good
+
+plot(stem_dens_unique_less$Stems ~ stem_dens_unique_less$Elevation) # not non-linear
 ```
 
-Next, create a model.
+Next, create a model:
+
+-   The data are count data, so first try poisson or negative binomial models. If these don't meet assumptions, the square-root transform above seems to make the data approximate a normal distribution, so try a gaussian model with sqrt(Stems) as the dependent variable.
+
+-   We expect stem density changes with Species, and that elevation and restoration status may impact each species differently. So include these terms in interaction with Species.
+
+-   Also include additional fixed predictors Estuary and Dominant Species
+
+-   Include quadrat (Combo) within Site as a random factor
+
+-   As stem densities of each species within a quadrat are not independent, include a reduced rank correlation structure to account for this
+
+-   As stems were counted in quadrats of different size, need to include an offset for quadrat area
+
+-   Check collinearity using an equivalent model without interactions. The interaction-less model has warnings so test it without Dominant Species.
 
 ```{r Model_create}
+M <- glmmTMB(Stems ~ Estuary + DomSpeciesSuperSimp + Species*(Elevation + rest_status) + (1|Site/Combo) + rr(Species+0|Combo, d = 1) + offset(log(Quadrat_area)), family = "poisson", data = stem_dens_unique_less)
+
+resid <- residuals(simulateResiduals(M), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M, re.form = NA), resid)
+plotQQunif(M)
+
+M0 <- glmmTMB(Stems ~ Estuary + DomSpeciesSuperSimp + Species*(Elevation + rest_status) + (1|Site/Combo) + rr(Species+0|Combo, d = 1) + offset(log(Quadrat_area)), family = "nbinom2", data = stem_dens_unique_less)
+
+resid <- residuals(simulateResiduals(M0), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M0, re.form = NA), resid)
+plotQQunif(M0)
+
+M12 <- glmmTMB(sqrt(Stems) ~ Estuary + DomSpeciesSuperSimp + Species * (Elevation +  rest_status) +  (1|Site/Combo) + rr(Species+0|Combo, d = 1) + offset(log(Quadrat_area)), family = "gaussian", data = stem_dens_unique_less)
+
+resid <- residuals(simulateResiduals(M12), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M12, re.form = NA), resid)
+plotQQunif(M12)
+
+Mx <- glmmTMB(sqrt(Stems) ~ Estuary + Species + Elevation +  rest_status +  (1|Site/Combo) + rr(Species+0|Combo, d = 1) + offset(log(Quadrat_area)), family = "gaussian", data = stem_dens_unique_less)
+check_collinearity(Mx) # all low
 ```
 
 Next, test the model.
 
+-   test model using joint_tests
+
+-   calculate parameter estimates using summary and emmeans
+
 ```{r Model_test}
+
+joint_tests(M12)
+emmeans(M12, pairwise~rest_status|Species)
+emmeans(M12, pairwise~Elevation|Species)
+summary(M12)
 ```
 
-Finally, plot the data.
+Finally, plot the data:
+
+-   emtrends to look at direction of trend with elevation for each species
+
+-   ggplot to compare stem densities for each species between natural and restoring sites (don't include, no difference) and to inspect elevation trends for each species
 
 ```{r Plot}
+k <- emtrends(M12, var = "Elevation", ~Species)
+plot(k)
+
+ggplot(stem_dens_unique_less, aes(x=as.factor(rest_status), y=total_stems + 0.0001, fill = as.factor(rest_status))) +
+    geom_boxplot() +
+  geom_jitter()  +
+    scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A") +
+    theme_bw() +
+    theme(axis.text = element_text(size = 24),
+          axis.title = element_text(size = 28),
+          strip.text = element_text(size = 28),
+          legend.position = "none")+
+  xlab("Restoration status")  + 
+  ylab("Number of stems per m2") +
+  facet_wrap(~Species) +
+  scale_y_continuous(trans = "log10") + 
+  scale_x_discrete(labels = c('Natural','Restoring'))
+# print at 1200 x 800
+
+ggplot(stem_dens_unique_less, aes(x=Elevation, y=total_stems + 0.0001)) +
+    geom_smooth(method = lm) +
+  geom_jitter()  +
+    theme_bw() +
+    theme(axis.text = element_text(size = 24),
+          axis.title = element_text(size = 28),
+          strip.text = element_text(size = 28))+
+  xlab("Elevation")  + 
+  ylab("Number of stems per m2") +
+  facet_wrap(~Species)
 ```
 
 ## 3e. Stem diameter
 
-First, prepare and explore the data.
+First, prepare and explore the data:
+
+-   subset for only Sporobolus, Sarcocornia, Pneumatophores and Triglochin as these are the only species that exist in both natural and restored sites
+
+-   remove NA data
+
+-   explore using histograms of raw and transformed data
+
+-   plot relationship between elevation and stem diameter
+
+    -   given the linear relationship is similar to the gam plotted, stick with linear
 
 ```{r Prep/explore}
+salt_less <- salt %>% 
+  subset(Species %in% c("Sporobolus", "Sarcocornia", "Pneumatophores", "Triglochin")) %>% 
+  subset(!is.na(Stem_dia_mm)) 
+
+hist(salt_less$Stem_dia_mm) # highly right skewed
+hist(log(salt_less$Stem_dia_mm)) # weird but more similar to normal
+hist(sqrt(salt_less$Stem_dia_mm)) # worse than log
+
+ggplot(salt_less, aes(x = Elevation, y = Stem_dia_mm)) +
+  geom_smooth() +
+  geom_smooth(method = lm) +
+  geom_point()
 ```
 
-Next, create a model.
+Next, create a model:
+
+-   log-transform the dependent variable as that meant it approximated normal
+
+-   as we expect each species to have different responses, include interactions between Species and Elevation, species proportion and restoration status
+
+-   also include Dominant Species and Estuary as additional predictors
+
+-   include quadrat (Combo) nested within site as a random factor
+
+-   include a reduced rank correlation matrix to account for measurements in the same quadrat not being independent
+
+-   gaussian distribution **(alternative is Gamma with log-link, but residuals look almost identical)**
 
 ```{r Model_create}
+M13 <- glmmTMB(log(Stem_dia_mm) ~ DomSpeciesSuperSimp + Estuary + Species*(Elevation + sp_prop + rest_status) +  (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_less)
+
+resid <- residuals(simulateResiduals(M13), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M13, re.form = NA), resid) 
+plotQQunif(M13) 
+scatter.smooth(predict(M13, re.form = NA), abs(resid))
 ```
 
-Next, test the model.
+Next, test the model:
+
+-   test model using joint_tests
+
+-   calculate parameter estimates using summary and emmeans
 
 ```{r Model_test}
+joint_tests(M13)
+emmeans(M13, pairwise ~ rest_status | Species, type = "response")
+summary(M13)
 ```
 
 Finally, plot the data.
 
 ```{r Plot}
+ggplot(salt_less, aes(x=as.factor(rest_status), y=Stem_dia_mm, fill = as.factor(rest_status))) +
+    geom_boxplot() +
+  geom_jitter()  +
+    scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A") +
+    theme_classic() +
+    theme(axis.text = element_text(size = 24),
+          axis.title = element_text(size = 28),
+          strip.text = element_text(size = 28),
+          legend.position = "none")+
+  xlab("Restoration status")  + 
+  ylab("Stem diameter (mm)") +
+  facet_wrap(~Species) +
+  scale_x_discrete(labels = c('Natural','Restoring'))
+# print at 1200 x 800
 ```
 
 ## 3f. Stem height
 
-First, prepare and explore the data.
+First, prepare and explore the data:
+
+-   subset for only species with enough data and remove NAs
+
+-   explore data using histograms of raw and transformed data
+
+-   plot relationship between stem height and the continuous predictor elevation
 
 ```{r Prep/explore}
+salt_less <- salt %>% 
+  subset(Species %in% c("Sporobolus", "Sarcocornia", "Pneumatophores", "Triglochin")) %>% subset(!is.na(Stem_ht_mm))
+
+hist(salt_less$Stem_ht_mm) # somewhat right skewed
+hist(log(salt_less$Stem_ht_mm)) # somewhat left skewed
+hist(sqrt(salt_less$Stem_ht_mm)) # normal!
+
+plot(salt_less$Stem_ht_mm ~ salt_less$Elevation) # could be non-linear
+ggplot(salt_less, aes(x = Elevation, y = Stem_ht_mm)) +
+  geom_point() +
+  facet_wrap(~Species)
 ```
 
-Next, create a model.
+Next, create a model:
+
+-   Use square-root transformed stem height, as it makes a beautiful normal distribution and when you try to run the below model with non-transformed data, it comes up with model convergence issues.
+
+-   as we expect each species to have different responses, include interactions between Species and Elevation, species proportion and restoration status
+
+-   also include Dominant Species, Estuary and Species (without interactions) as additional predictors
+
+-   include quadrat (Combo) nested within site as a random factor
+
+-   include a reduced rank correlation matrix to account for measurements in the same quadrat not being independent
+
+-   gaussian distribution
 
 ```{r Model_create}
+M14 <- glmmTMB(sqrt(Stem_ht_mm) ~ Estuary + DomSpeciesSuperSimp + Species + Species*(Elevation + sp_prop + rest_status) +  (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_less)
+
+resid <- residuals(simulateResiduals(M14), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M14, re.form = NA), resid) # fine but some outliers
+plotQQunif(M14)
+
+M0 <- glmmTMB(sqrt(Stem_ht_mm) ~ Estuary + Species + Elevation + sp_prop + rest_status +  (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_less)
+
+check_collinearity(M0)
 ```
 
 Next, test the model.
 
+-   joint_tests to test the model
+
 ```{r Model_test}
+joint_tests(M14)
 ```
 
 Finally, plot the data.
@@ -1710,19 +1926,114 @@ Finally, plot the data.
 
 ## 3g. Reproduction
 
-First, prepare and explore the data.
+First, prepare the data.
 
-```{r Prep/explore}
+-   as done in the reproduction section above (but so this section can be run independently): create a reproduction dataframe with relevant columns, recode the Seeds variable into a binary factor, create a unique column for each unique species per quadrat, and only take one of each unique combination as a new dataframe "reprod_unique"
+
+-   subset for only species with enough data in both natural and restored sites
+
+-   convert to long format with one row for reproduction type and another for presence/absence
+
+-   subset for only flowers and seeds because there are not enough bud data and remove NAs
+
+-   also similarly make a dataset for unique sporobolus but retain the qualitative values here and recode as an ordinal categorical variable with no \< very few \< few \< some \< lots
+
+```{r Prepare}
+reprod <- salt[,c(5,6,7,11,16:18,24,25,28,30:34)]
+
+reprod$Seeds %>% unique() # view unique values
+reprod <- reprod %>% mutate(Seeds = case_when(
+  Seeds == "No" ~ 0,
+  Seeds == "Yes" ~ 1,
+  Seeds == "Lots" ~ 1,
+  Seeds == "Some" ~ 1,
+  Seeds == "Few" ~ 1,
+  Seeds == "Very few" ~ 1,
+  Seeds == "NA" ~ NA
+))
+
+reprod$unique <- factor(interaction(reprod$Combo, reprod$Species, sep = ":"))
+reprod_unique <- reprod %>% distinct(unique, .keep_all = TRUE) 
+
+reprod_unique_less <- reprod_unique %>% subset(Species %in% c("Sporobolus", "Sarcocornia", "Triglochin"))
+
+reprod_all_long <- reprod_unique_less %>% pivot_longer(cols = c("Buds", "Flowers", "Seeds"), names_to = "reprod_type", values_to = "Reproduction")
+
+reprod_all_long <- reprod_all_long %>% subset(!is.na(Reproduction)) %>% 
+  subset(reprod_type %in% c("Flowers", "Seeds"))
+
+reprod_spor <- salt[,c(5,6,7,11,18,24,25,28,30:34)] %>% 
+  subset(Species == "Sporobolus") %>% 
+  mutate(unique = factor(interaction(Combo, Species, sep = ":")))
+
+reprod_spor_unique <- reprod_spor %>% 
+  distinct(unique, .keep_all = TRUE) %>% 
+  subset(!is.na(Seeds))
+
+reprod_spor_unique$Seeds <- factor(reprod_spor_unique$Seeds, order = TRUE, levels = c("No", "Very few", "Few", "Some", "Lots"))
 ```
 
-Next, create a model.
+Next, explore the data.
+
+-   explore proportion of reproduction of each type of each species at each site using a "reprod_all_proportions" dataframe
+
+-   for sporobolus seeds dataframe (reprod_spor_unique), plot the count of each category of seeds in each site and each restoration status
+
+-   histograms are not very meaningful as the data are only zeroes and ones, likewise a non-linear relationship with a continuous predictor is impossible
+
+```{r Explore}
+reprod_all_proportions <- reprod_all_long %>% 
+  group_by(Site, Species, reprod_type) %>% 
+  summarise(avg = mean(Reproduction), se = sd(Reproduction)/sqrt(n()), rest_status = mean(rest_status)) %>% 
+  ungroup()
+
+reprod_all_proportions %>%  
+  subset(rest_status == 0) %>% 
+  ggplot(aes(x = Site, y = avg, group = reprod_type, color = reprod_type, ymin = avg-se, ymax = avg+se)) +
+  geom_point() +
+  geom_errorbar() +
+  facet_wrap(~Species)
+
+reprod_all_proportions %>%  
+  subset(rest_status == 1) %>% 
+  ggplot(aes(x = Site, y = avg, group = reprod_type, color = reprod_type, ymin = avg-se, ymax = avg+se)) +
+  geom_point() +
+  geom_errorbar() +
+  facet_wrap(~Species)
+
+ggplot(reprod_spor_unique, aes(y = Seeds, fill = as.factor(rest_status))) +
+  geom_bar() +
+  facet_wrap(~Site)
+
+ggplot(reprod_spor_unique, aes(y = Seeds, fill = as.factor(rest_status))) +
+  geom_bar() +
+  facet_wrap(~rest_status)
+```
+
+Next, create a model:
+
+-   it's binary data so use a binomial distribution
+
+-   as we expect each species to have different responses, include interactions between Species and Elevation, species proportion and restoration status
+
+-   also include Dominant Species, Estuary and Species (without interactions) as additional predictors
+
+-   include quadrat (Combo) nested within site as a random factor
+
+-   include a reduced rank correlation matrix to account for measurements in the same quadrat not being independent
 
 ```{r Model_create}
+M15 <- glmmTMB(Reproduction ~ DomSpeciesSuperSimp + sp_prop + Estuary + Species*(Elevation + rest_status * reprod_type) + (1+reprod_type|Species) + (1|Site/Combo), contrasts = list(reprod_type = "contr.sum"), family = "binomial", data = reprod_all_long)
+
+resid <- residuals(simulateResiduals(M15), quantilefunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(resid, predict(M15)) 
+plotQQunif(M15) 
 ```
 
 Next, test the model.
 
 ```{r Model_test}
+joint_tests(M15)
 ```
 
 Finally, plot the data.
