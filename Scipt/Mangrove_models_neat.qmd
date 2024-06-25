@@ -1,0 +1,1595 @@
+---
+title: "Mangrove models neat"
+author: "Dana Lanceman"
+format: html
+editor: visual
+---
+
+## Mangrove functional trait modelling
+
+This code is for analysis of mangrove functional traits analysis, analysing for associations between functional traits and time since restoration and between restoring and natural sites.
+
+# 1. Set up
+
+First, **load packages**.
+
+```{r Packages}
+#install.packages("readxl")
+#install.packages("tidyverse")
+#install.packages("lme4")
+#install.packages("MuMIn")
+#install.packages("car")
+#install.packages("performance")
+#install.packages("glmmTMB")
+#install.packages("bbmle")
+#install.packages("GLMMadaptive")
+#install.packages("ggeffects")
+#install.packages("emmeans")
+#install.packages("robustlmm")
+#install.packages("viridis")
+#install.packages("DHARMa)
+#install.packages("lmerTest)
+#install.packages("ggpubr")
+
+library(readxl)
+library(tidyverse)
+library(lme4)
+library(MuMIn)
+library(car)
+library(performance)
+library(glmmTMB)
+library(bbmle)
+library(GLMMadaptive)
+library(ggeffects)
+library(emmeans)
+library(robustlmm)
+library(viridis)
+library(DHARMa)
+library(lmerTest)
+library(ggpubr)
+```
+
+### Load and prepare data
+
+-   using setwd() to set the working directory where the data are stored
+
+-   "mantree" is the main mangrove dataset - for **overall quadrat and tree data**
+
+    -   create additional columns "total_trees", "total_saplings" and "total_hollows" that take into account sampling size for visualisation purposes (standardise to 100m2)
+
+    -   reassign Buds, Flowers_live, Flowers_dead and Fruits as numeric variables
+
+    -   create a rest_status column that codes for the restoration status of each site (1 = restored, 0 = natural)
+
+    -   create a rest_year column that codes for the restoration year of each restoration site
+
+    -   create a YSR (years since restoration) column that codes for the number of years since restoration (as of 2023 when sampling was undertaken) for each restoration site
+
+```{r Data_mangrove_tree}
+setwd("C:/Users/z5204897/OneDrive - UNSW/Desktop/PhD/Data_analysis/Project/Functional_traits")
+
+mantree <- read_excel("Data/Functional_traits_combined_data.xlsx", sheet = "Mangrove_tree") %>% 
+  arrange(Date, Time) %>% 
+  mutate(total_trees = Trees * 100/Quadrat_size_m2, 
+         total_saplings = Saplings * 100/Quadrat_size_m2,
+         total_hollows = Hollows * 100/Quadrat_size_m2,
+         Buds = case_when(  
+           Buds == "Yes" ~ 1,
+           Buds == "No" ~ 0
+         ),
+         Flowers_live = case_when(  
+           Flowers_live == "Yes" ~ 1,
+           Flowers_live == "No" ~ 0
+         ),
+         Flowers_dead = case_when(  
+           Flowers_dead == "Yes" ~ 1,
+           Flowers_dead == "No" ~ 0
+         ),
+         Fruits = case_when(  
+           Fruits == "Yes" ~ 1,
+           Fruits == "No" ~ 0
+         ),
+         rest_status = case_when(
+           Site == "HS" ~ as.numeric("1"),
+           Site == "CC" ~ as.numeric("1"),
+           Site == "CF" ~ as.numeric("1"),
+           Site == "DLW" ~ as.numeric("1"),
+           Site == "YCW" ~ as.numeric("1"),
+           Site == "CCW" ~ as.numeric("1"),
+           .default = as.numeric("0"),
+         ),
+         rest_year = case_when(
+           Site == "HS" ~ as.numeric("2011"),
+           Site == "CC" ~ as.numeric("1990"),
+           Site == "CF" ~ as.numeric("1993"),
+           Site == "DLW" ~ as.numeric("2014"),
+           Site == "CCW" ~ as.numeric("2007"),
+           Site == "YCW" ~ as.numeric("2018")
+         ), # add a column for restoration years
+         YSR = case_when(
+           Site == "HS" ~ as.numeric("12"),
+           Site == "CC" ~ as.numeric("33"),
+           Site == "CF" ~ as.numeric("30"),
+           Site == "DLW" ~ as.numeric("9"),
+           Site == "CCW" ~ as.numeric("16"),
+           Site == "YCW" ~ as.numeric("5")))
+```
+
+Also load **mangrove subquadrat data** - these are data from two 1 x 1 m subquadrats that were sampled within each larger 10 x 10 m or 5 x 5 m quadrat.
+
+-   Mangrove subquadrat data are stored in the "manq" dataframe
+
+-   create a rest_status column that codes for the restoration status of each site (1 = restored, 0 = natural)
+
+-   create a rest_year column that codes for the restoration year of each restoration site
+
+-   create a YSR (years since restoration) column that codes for the number of years since restoration (as of 2023 when sampling was undertaken) for each restoration site
+
+-   create a variable for the relationship between pneumatophore height and diameter ("pneu_h_d")
+
+-   create a subquadrat variable to label subquadrat 1 and 2 in each quadrat
+
+```{r Data_mangrove_quadrat}
+setwd("C:/Users/z5204897/OneDrive - UNSW/Desktop/PhD/Data_analysis/Project/Functional_traits")
+
+manq <- read_excel("Data/Functional_traits_combined_data.xlsx", sheet = "Mangrove_quadrat") %>% 
+  arrange(Date, Time) %>% 
+  filter(Pneu_dia_mm > 2.5) %>% # excluding unrealistic data point
+  mutate(rest_status = case_when(
+           Site == "HS" ~ as.numeric("1"),
+           Site == "CC" ~ as.numeric("1"),
+           Site == "CF" ~ as.numeric("1"),
+           Site == "DLW" ~ as.numeric("1"),
+           Site == "YCW" ~ as.numeric("1"),
+           Site == "CCW" ~ as.numeric("1"),
+           .default = as.numeric("0"), 
+         ),
+         rest_year = case_when(
+           Site == "HS" ~ as.numeric("2011"),
+           Site == "CC" ~ as.numeric("1990"),
+           Site == "CF" ~ as.numeric("1993"),
+           Site == "DLW" ~ as.numeric("2014"),
+           Site == "CCW" ~ as.numeric("2007"), 
+           Site == "YCW" ~ as.numeric("2018")
+         ),  
+         YSR = case_when(
+           Site == "HS" ~ as.numeric("12"),
+           Site == "CC" ~ as.numeric("33"),
+           Site == "CF" ~ as.numeric("30"),
+           Site == "DLW" ~ as.numeric("9"),
+           Site == "CCW" ~ as.numeric("16"),
+           Site == "YCW" ~ as.numeric("5")),
+         pneu_h_d = Pneu_ht_mm/Pneu_dia_mm, 
+         Subquadrat = paste0(Combo, match(`Pneu_0.5x0.5`, unique(`Pneu_0.5x0.5`)))
+         ) 
+```
+
+Also import mangrove leaf data - leaf morphology and herbivory measurements:
+
+-   "manherb" is the mangrove leaf herbivory dataframe
+
+    -   convert this to long format
+
+    -   add a YSR (years since restoration) column
+
+    -   add a rest_status (restoration status - 1 = restored and 0 = natural) column
+
+-   "manleaf" contains leaf area and weight (dry and fresh) data
+
+    -   add a YSR (years since restoration) column
+
+    -   add a rest_status (restoration status - 1 = restored and 0 = natural) column
+
+-   "manleafAI" contains additional mangrove leaf area data that was generated via a machine learning approach
+
+    -   add a YSR (years since restoration) column
+
+    -   add a rest_status (restoration status - 1 = restored and 0 = natural) column
+
+    -   set up in the same format as the rest of the leaf area data
+
+        -   rename leaf number column
+
+        -   add additional columns corresponding to the other leaf dataframe
+
+            -   all leaves in this dataset were measured on trees (not sapling) so code for "Tree_sapling" is "tree" for all
+
+        -   edit Method and Measurer for rows where they included manual components
+
+-   merge both "manleaf" and "manleafAI" datasets together into "manleaf_all"
+
+    -   make this dataframe longer with one row per leaf
+
+    -   then make this dataframe wider with one column per variable (area, dry weight or fresh weight)
+
+    -   note, CC1-2 has missing data (area and fresh weight) but all other columns are complete (not including many of the Maroochy leaves, which only have areas)
+
+-   merge manleaf_all and manherb_long to make one leaf dataset
+
+    -   also, add elevation data (from mantree) to this dataset
+
+```{r Data_mangrove_leaf}
+setwd("C:/Users/z5204897/OneDrive - UNSW/Desktop/PhD/Data_analysis/Project/Functional_traits")
+
+manherb <- read_excel("Data/Functional_traits_combined_data.xlsx", sheet = "Mangrove_herb") 
+
+manherb_long <- manherb %>% 
+  pivot_longer(cols = c(Leaf_1, Leaf_2, Leaf_3, Leaf_4, Leaf_5), names_prefix = "Leaf_", names_to = "Leaf", values_to = "Herb_%") %>% 
+  mutate(Leaf = as.double(Leaf),
+         YSR = case_when(
+           Site == "HS" ~ as.numeric("12"),
+           Site == "CC" ~ as.numeric("33"),
+           Site == "CF" ~ as.numeric("30"),
+           Site == "YCW" ~ as.numeric("5"),
+           Site == "DLW" ~ as.numeric("9"),
+           Site == "CCW" ~ as.numeric("16"),
+         ),
+         rest_status = case_when(
+           Site == "AI" ~ 0,
+           Site == "SI" ~ 0,
+           Site == "VSR" ~ 0,
+           Site == "MWS" ~ 0,
+           .default = 1
+         ))
+
+manleaf <- read_excel("Data/Functional_traits_combined_data.xlsx", sheet = "Mangrove_leaf") %>% 
+  rowwise() %>% 
+  mutate(YSR = case_when(
+           Site == "HS" ~ as.numeric("12"),
+           Site == "CC" ~ as.numeric("33"),
+           Site == "CF" ~ as.numeric("30"),
+           Site == "YCW" ~ as.numeric("5"),
+           Site == "DLW" ~ as.numeric("9"),
+           Site == "CCW" ~ as.numeric("16"),
+         ),
+         rest_status = case_when(
+           Site == "AI" ~ 0,
+           Site == "SI" ~ 0,
+           Site == "VSR" ~ 0,
+           Site == "MWS" ~ 0,
+           .default = 1
+         )) %>% subset(select = -Quadrat_full)
+
+manleafAI <- read_excel("Data/leafarea_machinelearning.xlsx", sheet = "refined") %>%
+  mutate(YSR = case_when(
+           Site == "HS" ~ as.numeric("12"),
+           Site == "CC" ~ as.numeric("33"),
+           Site == "CF" ~ as.numeric("30"),
+           Site == "YCW" ~ as.numeric("5"),
+           Site == "DLW" ~ as.numeric("9"),
+           Site == "CCW" ~ as.numeric("16"),
+         ),
+         rest_status = case_when(
+           Site == "AI" ~ 0,
+           Site == "SI" ~ 0,
+           Site == "VSR" ~ 0,
+           Site == "MWS" ~ 0,
+           .default = 1
+         ))
+
+manleafAIwide <- manleafAI %>% pivot_wider(id_cols = c(Estuary, Site, Quadrat, Combo, Species, Tree, YSR, rest_status), names_from = "leaf_number", values_from = "area_mm2") %>% 
+  rename("Leaf_1" = "1", 
+         "Leaf_2" = "2",
+         "Leaf_3" = "3",
+         "Leaf_4" = "4",
+         "Leaf_5" = "5") %>% 
+  mutate(Method = "Machine_learning",
+         Measurer = "AI",
+         Measure = "Area",
+         Notes = "",
+         Tree_sapling = "Tree") # need to specify if any of these are saplings
+
+manleafAIwide$Measurer[c(2,9,10,15,16,21,23,25,26,29,31,34)] <- "AI + Dana"
+manleafAIwide$Method[c(2,9,10,15,16,21,23,25,26,29,31,34)] <- "Machine_Learning + Scan_Manual"
+
+manleafall <- merge(manleaf, manleafAIwide, all = TRUE)
+
+# first, make dataset longer so there is one row for each leaf
+manleafall_long <- manleafall %>% 
+  pivot_longer(cols = c(Leaf_1, Leaf_2, Leaf_3, Leaf_4, Leaf_5), names_prefix = "Leaf_", names_to = "Leaf", values_to = "value")
+
+# make dataset wider - dataset with every value
+manleafall_wide <- manleafall_long %>% 
+  pivot_wider(id_cols = c(Site, Combo, Quadrat, Tree, Leaf, Tree_sapling, Species, Estuary, YSR, rest_status), names_from = "Measure", values_from = "value") # column for each dry and fresh weight and area
+manleafall_wide <- manleafall_wide %>% 
+  mutate(dfratio = Dry_weight/Fresh_weight,
+         LMA = Dry_weight/Area,
+         Quadrat = as.double(Quadrat),
+         Tree = as.double(Tree),
+         Leaf = as.double(Leaf))
+
+# combine with leaf herbivory dataframe
+
+manleafandherb <- full_join(x = manleafall_wide, y = manherb_long, by = c("Estuary","Site","YSR","rest_status", "Quadrat", "Species", "Tree", "Leaf"))
+
+manleafandherb <- merge(manleafandherb, mantree[,c("Estuary","Site","Combo","Species","Tree","Elevation")], all.x = TRUE)
+
+```
+
+### Outliers
+
+Check for outliers that are ecologically unrealistic and would have resulted from errors in the data.
+
+Set up a function for visualising outliers:
+
+```{r Outlier_function}
+cleveland_plot <- function(vector,axislab){
+  par(mfrow= c(1,2), mar = c(5,4,2,1)) # set some parameters for the plot
+  boxplot(vector,  ylab = axislab)
+  dotchart(vector, xlab = axislab,
+         ylab = "Order of the data") 
+}
+```
+
+Check outliers in mangrove tree data.
+
+-   All seem ok except one quadrat with a large number of Trees
+
+    -   This number is the same on the raw datasheet and photos show a very high tree density, so this seems realistic. Therefore retain.
+
+```{r Outliers_mangrove_tree}
+# mangrove tree data
+cleveland_plot(mantree$Trees, "Trees") # fairly even spread, one outlier quadrat with >200 trees
+cleveland_plot(mantree$Saplings, "Saplings") # right skewed, no outliers
+cleveland_plot(mantree$Hollows, "Hollows") # right skewed, there are some large values but they're realistic
+cleveland_plot(mantree$`Canopy_cover_%`, "`Canopy_cover_%`") # fairly even distribution, slightly left skewed
+cleveland_plot(mantree$Stems, "Stems") # right skewed, some large values but realistic
+cleveland_plot(mantree$DBH_cm, "DBH_cm") # right skewed, one large value but it's realistic
+cleveland_plot(mantree$Basal_circ_cm, "Basal_circ_cm") # right skewed, some large values but they're realistic
+cleveland_plot(mantree$Height_m, "Height_m") # even spread, no outliers
+```
+
+Check outliers in mangrove subquadrat data.
+
+-   Propagules, vege % and algae % are almost entirely zeroes - therefore insufficient data to model, don't model.
+
+-   There are some large pneumatophore diameter values - investigate these:
+
+    -   pneumatophore diameter at AI 5 is 19mm. In my experience this is not a realistic value - therefore remove
+
+    -   pneumatophore diameter at HS 1 is 17.5mm. Also seems unrealistic - remove.
+
+    -   pneumatophore diameter at VSR 5 is 15 mm. The pneumatophores in the photo look quite thick - therefore retain.
+
+```{r Outliers_mangrove_subquadrat}
+cleveland_plot(manq$`Seedlings_<30cm_1x1`, "`Seedlings_<30cm_1x1`") # right skewed, some large values but realistic
+cleveland_plot(manq$`Seedlings_30-100cm_1x1`, "`Seedlings_30-100cm_1x1`") # right skewed, some large values but realistic
+cleveland_plot(manq$`Propagules_1x1`, "`Propagules_1x1`") # highly zero inflated, probably cannot model. one extreme outlier - realistic but would be a challenge
+cleveland_plot(manq$`Pneu_0.5x0.5`, "`Pneu_0.5x0.5`") # pretty even spread, no outliers
+cleveland_plot(manq$`Bare_%`, "`Bare_%`") # left skewed, all realistic
+cleveland_plot(manq$`Litter_%`, "`Litter_%`") # right skewed, all realistic
+cleveland_plot(manq$`Algae_%`, "`Algae_%`") # highly zero inflated, probably cannot model
+cleveland_plot(manq$`Vege_%`, "`Vege_%`") # highly zero inflated, probably cannot model
+cleveland_plot(manq$Pneu_ht_mm, "Pneu_ht_mm") # right skewed, some large values but realistic
+cleveland_plot(manq$Pneu_dia_mm, "Pneu_dia_mm") # right skewed, a couple very large values - investigate
+```
+
+Check outliers in mangrove leaf data.
+
+-   Check leaf areas:
+
+    -   Largest areas are all for orange and red mangroves, which have bigger leaves, so makes sense.
+
+    -   Remeasured the 15 leaves with the largest leaf areas. Replacing values of leaves where the remeasured value was very different from the original measurement (see below).
+
+-   Check dry:fresh weight ratios to see if any measurements have been input wrong:
+
+    -   no reason to suggest any large values are unrealistic/incorrect except 2 leaf dry weights were in the wrong order - HS2 Tree 7 Leaf 3 and 5 - swap these values as they would have been input in the wrong order, then recalculate dry:fresh ratio.
+
+-   Investigate extreme LMA values:
+
+    -   The large and small data points are realistic - very small LMA values are mostly saplings, and very large LMA values are likely because leaves had dried somewhat before scanning so may have shriveled a little? If there is an issue with analysis later, we can look more into these values and consider removing.
+
+```{r Outliers_mangrove_leaf}
+cleveland_plot(manleafandherb$Area, "Area") # right skewed, some large values - should be realistic but check
+cleveland_plot(manleafandherb$Dry_weight, "Dry_weight") # fairly even distribution, some large values but realistic
+cleveland_plot(manleafandherb$Fresh_weight, "Fresh_weight") # fairly even distribution, some large values but realistic
+cleveland_plot(manleafandherb$dfratio, "dfratio") # even spread, with a few outliers on each side - check these out in case there were any mistakes in the order of weight measurements
+cleveland_plot(manleafandherb$LMA, "LMA") # even spread but there are outliers - check these out
+cleveland_plot(manleafandherb$`Herb_%`, "Herb_%") # right skewed, some large values but realistic
+```
+
+Now remove ecologically unrealistic outliers and replace leaf areas with recalculated areas.
+
+```{r Outliers_remove}
+# AI5 pneumatophore diameter of 19mm
+manq$Pneu_dia_mm[854] <- NA
+# HS1 pneumatophore diameter of 17.5mm
+manq$Pneu_dia_mm[51] <- NA
+
+#- CCW4 Orange 1 Leaf 1
+manleafandherb$Area[591] <- 7952
+#- CCW3 Orange1 Leaf 3, 4, 5
+manleafandherb$Area[583] <- 5679
+manleafandherb$Area[584] <- 6447
+manleafandherb$Area[585] <- 5459
+#- VSR 5 Orange 3 Leaf 4
+manleafandherb$Area[954] <- 5198
+#- CCW 2 Orange 1 Leaf 2, 4
+manleafandherb$Area[577] <- 5334
+manleafandherb$Area[579] <- 6039
+#- VSR 1 Orange 2 Leaf 3, 4
+manleafandherb$Area[853] <- 4925
+manleafandherb$Area[854] <- 5940
+
+manleafandherb$Dry_weight[323] # dry weight 0.311
+manleafandherb$Dry_weight[325] # dry weight 0.484
+# swap these
+manleafandherb$Dry_weight[323] <- 0.484
+manleafandherb$Dry_weight[325] <- 0.311
+# recalculate dfratio
+manleafandherb <- manleafandherb %>% mutate(dfratio = Dry_weight/Fresh_weight)
+```
+
+### Data manipulation and subsetting
+
+Fix a couple mistakes identified in the data:
+
+-   upon inspection of the DEM, it looks like the original RTK value (1.096) of CF3 is not accurate. Adopt the DEM value (0.732) for elevation of CF3 instead. This is probably also an overestimate due to tree cover but it's the best we have to work with.
+
+-   there is a grey mangrove height measurement listed as 1m, which is too short to be a tree so must be a transcription error. Removing this data cell.
+
+Create some transformed (log and sqrt) variables.
+
+```{r Manipulation}
+mantree$Elevation[11:15] <- 0.732
+manq$Elevation[31:50] <- 0.732
+
+mantree$Height_m[15] <- NA 
+
+mantree <- mantree %>% mutate(ln_total_trees = log(total_trees),
+                              sq_total_trees = sqrt(total_trees),
+                              ln_total_sap = log(total_saplings + 0.01),
+                              sq_total_sap = sqrt(total_saplings))
+
+manq <- manq %>% mutate(ln_seedling = log(`Seedlings_30-100cm_1x1` + 0.01),
+                        sq_seedling = sqrt(`Seedlings_30-100cm_1x1`))
+```
+
+Also, subset data:
+
+-   Delete duplicate columns to create community-level dataframes: "mantree_comm" and "manq_comm"
+
+-   Create Hunter only, grey mangrove only, restored only and natural only dataframes
+
+-   Create trees-only dataframes for mangrove leaves
+
+```{r Subset}
+mantree_comm <- mantree %>% distinct(Combo, .keep_all = TRUE)
+mantree_comm <- mantree_comm[,-c(18:22,24)]
+manq_comm <- manq %>% distinct(Combo,Pneu_0.5x0.5, .keep_all = TRUE)
+
+# Hunter only
+mantree_H <- mantree %>% subset(mantree$Estuary == "Hunter")
+mantree_comm_H <- mantree_comm %>% subset(mantree_comm$Estuary == "Hunter")
+manq_H <- manq %>% subset(manq$Estuary == "Hunter")
+manq_comm_H <- manq_comm %>% subset(manq_comm$Estuary == "Hunter")
+manleaf_wide_H <- manleafandherb %>% subset(manleafandherb$Estuary == "Hunter")
+
+# Grey mangroves only
+mantree_grey <- mantree %>% subset(mantree$Species == "Grey")
+mantree_grey_comm <- mantree_grey %>% distinct(Combo, .keep_all = TRUE)
+mantree_grey_comm <- mantree_grey_comm[,-c(18:22,24)]
+mantree_grey_comm_rest <- mantree_grey_comm %>% subset(rest_status == 1)
+manleaf_wide_grey <- manleafandherb %>% subset(Species == "Grey")
+
+# restored sites only
+mantree_rest <- mantree %>% subset(mantree$rest_status == 1)
+mantree_comm_rest <- mantree_comm %>% subset(mantree_comm$rest_status == 1)
+mantree_H_rest <- mantree_H %>% subset(mantree_H$rest_status == 1)
+mantree_comm_H_rest <- mantree_comm_H %>% subset(mantree_comm_H$rest_status == 1)
+manq_rest <- manq %>% subset(manq$rest_status == 1)
+manq_comm_rest <- manq_comm %>% subset(manq_comm$rest_status == 1)
+manq_H_rest <- manq_H %>% subset(manq_H$rest_status == 1)
+manq_comm_H_rest <- manq_comm_H %>% subset(manq_comm_H$rest_status == 1)
+mantree_grey_rest <- mantree_grey %>% subset(mantree_grey$rest_status == 1)
+manleaf_wide_rest <- manleafandherb %>% subset(manleafandherb$rest_status == 1)
+manleaf_wide_H_rest <- manleaf_wide_H %>% subset(manleaf_wide_H$rest_status == 1)
+manleaf_wide_grey_rest <- manleaf_wide_grey %>% subset(rest_status == 1)
+
+# natural sites only
+mantree_nat <- mantree %>% subset(mantree$rest_status == 0)
+mantree_comm_nat <- mantree_comm %>% subset(mantree_comm$rest_status == 0)
+mantree_H_nat <- mantree_H %>% subset(mantree_H$rest_status == 0)
+mantree_comm_H_nat <- mantree_comm_H %>% subset(mantree_comm_H$rest_status == 0)
+manq_nat <- manq %>% subset(manq$rest_status == 0)
+manq_comm_nat <- manq_comm %>% subset(manq_comm$rest_status == 0)
+manq_H_nat <- manq_H %>% subset(manq_H$rest_status == 0)
+manq_comm_H_nat <- manq_comm_H %>% subset(manq_comm_H$rest_status == 0)
+mantree_grey_nat <- mantree_grey %>% subset(mantree_grey$rest_status == 0)
+manleaf_wide_nat <- manleafandherb %>% subset(manleafandherb$rest_status == 0)
+manleaf_wide_grey_nat <- manleaf_wide_grey %>% subset(rest_status == 0)
+
+# mangrove leaves - trees only
+manleaf_wide_t <- manleafandherb %>% subset(manleafandherb$Tree_sapling == "Tree")
+manleaf_wide_H_t <- manleaf_wide_H %>% subset(manleaf_wide_H$Tree_sapling == "Tree")
+manleaf_wide_rest_t <- manleaf_wide_rest %>% subset(manleaf_wide_rest$Tree_sapling == "Tree")
+manleaf_wide_nat_t <- manleaf_wide_nat %>% subset(manleaf_wide_nat$Tree_sapling == "Tree")
+manleaf_wide_H_rest_t <- manleaf_wide_H_rest %>% subset(manleaf_wide_H_rest$Tree_sapling == "Tree")
+```
+
+If we want to analyse seedlings and saplings together, we need to combine the two datasets (mantree_comm_rest and manq_comm_rest).
+
+-   Because there are two subquadrats for manq where there is only one quadrat for mantree, sum these two quadrats together and create a Quadrat_size_m2 column where all values are 2 (1 + 1 m2)
+
+-   Now, simplify the mantree dataset so it just has the relevant columns for saplings
+
+-   pivot these both longer so that one column has SizeClass (seedlingSmall, seedlingMed, sapling), one column has count and one column has the quadrat size offset
+
+-   Now, append mangrove sapling data from mantree onto this
+
+```{r Seedling_dataset}
+manq_comm_rest_seedling <- manq_comm_rest %>% 
+  group_by(Estuary, Site, Elevation, rest_status, YSR, Combo) %>% 
+  summarise(SeedlingSmall = sum(`Seedlings_<30cm_1x1`),
+            SeedlingMed = sum(`Seedlings_30-100cm_1x1`)) %>% 
+  ungroup() %>% 
+  mutate(Quadrat_size_m2 = 2) %>% 
+  pivot_longer(cols = c(SeedlingSmall, SeedlingMed), names_to = "SizeClass", values_to = "Count")
+
+mantree_comm_rest_sapling <- mantree_comm_rest %>% 
+  select(Estuary, Site, Elevation, rest_status, YSR, Combo, Saplings, Quadrat_size_m2) %>% 
+  pivot_longer(cols = Saplings, names_to = "SizeClass", values_to = "Count")
+
+seedlings <- rbind(manq_comm_rest_seedling, mantree_comm_rest_sapling) %>% 
+  mutate(Total = Count * 100/Quadrat_size_m2,
+         SizeClass = as.factor(SizeClass))
+```
+
+### Correlation checks
+
+Before running models, we need to make sure none of our dependent variables are strongly correlated. If so, we cannot include all variables in analysis.
+
+Our dependent variables of interest are:
+
+-   Mantree variables
+
+    -   Number of trees
+
+    -   Number of saplings
+
+    -   Number of hollows
+
+    -   Canopy cover
+
+    -   Number of stems
+
+    -   Tree DBH
+
+    -   Tree height
+
+    -   Reproduction (can't test for relationships here as it's presence/absence)
+
+-   Subquadrat variables
+
+    -   Number of pneumatophores
+
+    -   Pneumatophore height
+
+    -   Pneumatophore diameter
+
+    -   Number of seedlings
+
+    -   Groundcover (% bare and % litter)
+
+-   Leaf variables (note that herbivory was measured on different leaves to area, so any correlation would be at the tree level rather than the leaf level)
+
+    -   Leaf dry matter content
+
+    -   Leaf mass per area
+
+    -   Leaf area
+
+    -   Leaf herbivory
+
+Check for correlations using a correlation matrix of correlation coefficients and by creating correlation plots.
+
+Exclude variables if their correlation coefficient is very large (e.g. \>0.7).
+
+-   All man_tree variables have low to moderate correlations and plots don't look very correlated except DBH and Tree height, which are correlated and have a correlation 0.68. This is just below the arbitrary threshold, so model them both for now.
+
+-   All manq variables have low to moderate correlations except Litter and Bare which are almost completely negatively correlated - only use one of these
+
+-   All manleaf variables have low to moderate correlations except LMA and dfratio which have a correlation of 0.71.. this is not ideal. **Decide what to do**
+
+```{r Correlations}
+t <- cor(mantree[,c(13,19,20,22,27,28,29)], use = "pairwise.complete.obs") 
+t
+
+mantree_numeric <- mantree[,c(13,19,20,22,27,28,29)]
+plot(mantree_numeric)
+
+u <- cor(manq[,c(8,9,11,12,13,16,17)], use = "pairwise.complete.obs")
+u
+
+manq_numeric <- manq[,c(8,9,11,12,13,16,17)]
+plot(manq_numeric)
+
+v <- cor(manleafandherb[,c(11,14,15,17)], use = "pairwise.complete.obs")
+v
+
+manleaf_numeric <- manleafandherb[,c(11,14,15,17)]
+plot(manleaf_numeric)
+```
+
+# 2. Years since restoration models
+
+Before we create any of these models, let's inspect the data space we're working with:
+
+-   relationship between YSR and Elevation (numeric predictors)
+    -   These variables are correlated (polynomial relationship)
+    -   Therefore we can't model their interaction
+    -   However, given there is variability in their relationship, we can still include both terms in models.
+-   relationship between YSR and Estuary
+    -   These are not that overlapping, therefore don't model interaction
+-   relationship between Elevation and Estuary
+    -   These are quite overlapping, so can include an interaction if we think it's relevant. The effect of elevation could depend on estuary so I think leave interaction in where the model runs.
+
+```{r Predictor_association}
+plot(mantree_comm_rest$Elevation ~ mantree_comm_rest$YSR)
+boxplot(mantree_comm_rest$Elevation ~ mantree_comm_rest$YSR)
+
+boxplot(mantree_comm_rest$YSR ~ mantree_comm_rest$Estuary) 
+
+boxplot(mantree_comm_rest$Elevation ~ mantree_comm_rest$Estuary) 
+
+ggplot(mantree_comm_rest, aes(y = Elevation, x = YSR)) +
+  geom_point() +
+  facet_wrap(~Estuary)
+```
+
+The plotted association between YSR and Elevation is interesting, let's model this. We would expect that with restoration age, mangroves would accumulate sediments and therefore increase in elevation.
+
+-   Create a model with YSR as a polynomial predictor, also controlling for Estuary and the random effect of Site
+
+-   Check assumptions using resid and scatter.smooth and plotQQunif
+
+    -   look fine for this dataset size
+
+-   Test the importance of YSR by comparing models without the polynomial term and without YSR altogether using anova
+
+-   Calculate parameter estimates and confidence intervals using emmeans
+
+```{r Elevation_model}
+M1 <- glmmTMB(Elevation ~ Estuary + poly(YSR,2) + (1|Site), data = mantree_comm_rest)
+
+resid <- residuals(simulateResiduals(M1), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M1,re.form = NA), resid) 
+plotQQunif(M1)
+
+M <- glmmTMB(Elevation ~ Estuary + YSR + (1|Site), data = mantree_comm_rest)
+M0 <- glmmTMB(Elevation ~ Estuary + (1|Site), data = mantree_comm_rest)
+
+anova(M1,M,M0)
+
+em <- emmeans(M1, ~ YSR, at = list(YSR = c(5,9,12,16,30,33)))
+
+em
+
+plot(em)
+
+joint_tests(M1)
+```
+
+Also, investigate the occurrence of each species at restoration sites.
+
+-   There are only 2 sites with River mangroves and 2 sites with orange mangroves - therefore insufficient data to analyse the effect of time since restoration on either of these species - therefore only model the effect of YSR on grey mangroves. This affects the following traits:
+
+    -   number of stems
+
+    -   DBH
+
+    -   height
+
+    -   reproduction
+
+    -   leaf traits
+
+```{r Species}
+mantree_rest %>% group_by(Site) %>% count(Species)
+```
+
+## 2a. Number of trees
+
+First, prepare and explore the data (note, use total_trees for visualisation and Trees with the offset for quadrat area for modelling):
+
+-   Use a histogram to visualise the distribution of total_trees
+
+-   Plot relationships between total trees and each quantitative predictor variable to decide whether we need to include any polynomial terms in the model
+
+```{r Prep/explore}
+hist(mantree_comm_rest$total_trees) #  right skewed
+
+ggplot(mantree_comm_rest, aes(x = YSR, y = total_trees)) +
+  geom_smooth(method = "lm") +
+  geom_point() # not obviously non-linear
+
+plot(mantree_comm_rest$total_trees ~ mantree_comm_rest$Elevation) # not obviously non-linear
+```
+
+Next, create a model.
+
+-   It's count data, so first try a poisson distribution, and if this isn't good, can also try a negative binomial distribution.
+
+-   Include Elevation \* Estuary as additional fixed predictor variables and Site as a random effect
+
+-   Include an offset for Quadrat size
+
+-   **Need to find a model that meets assumptions!**
+
+-   Check assumptions using resid and scatter.smooth, plotQQunif and check_collinearity with a model without interactions
+
+```{r Model_building}
+M2 <- glmmTMB(Trees ~ Elevation * Estuary + YSR + (1|Site) + offset(log(Quadrat_size_m2)), family = "poisson", data = mantree_comm_rest)
+
+resid <- residuals(simulateResiduals(M2), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M2,re.form = NA), resid) 
+plotQQunif(M2)
+
+M <- glmmTMB(Trees ~ Elevation + Estuary + YSR + (1|Site) + offset(log(Quadrat_size_m2)), family = "poisson", data = mantree_comm_rest)
+check_collinearity(M)
+
+M2 <- glmmTMB(Trees ~ Elevation * Estuary + YSR + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm_rest)
+
+resid <- residuals(simulateResiduals(M2), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M2,re.form = NA), resid) 
+plotQQunif(M2)
+
+```
+
+Next, test the model:
+
+-   use anova to test the model against a null model without YSR to test the importance of YSR
+
+```{r Model_testing}
+M2 <- glmmTMB(Trees ~ Elevation * Estuary + YSR + (1|Site) + offset(log(Quadrat_size_m2)), family = "poisson", data = mantree_comm_rest)
+M0 <- glmmTMB(Trees ~ Elevation * Estuary + (1|Site) + offset(log(Quadrat_size_m2)), family = "poisson", data = mantree_comm_rest)
+
+anova(M0,M2)
+
+em <- emmeans(M2, ~ YSR, at = list(YSR = c(5,9,12,16,30,33)))
+
+em
+
+plot(em)
+
+joint_tests(M2)
+```
+
+Finally, plot the results.
+
+```{r Plot}
+emmip(M2, ~ YSR, at = list(YSR = c(5:33)), type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Number of trees per 10m2", offset = log(100))
+```
+
+## 2b. Number of saplings/seedlings
+
+First, prepare and explore the data.
+
+-   Use "Total" for plotting purposes and "Count" with offset of Quadrat_size_m2 for models
+
+```{r Prep/explore}
+ggplot(seedlings, aes(x = Count)) +
+  geom_histogram()
+
+ggplot(seedlings, aes(x = Count)) +
+  geom_histogram() +
+  facet_wrap(~SizeClass)
+
+ggplot(seedlings, aes(x = Total)) +
+  geom_histogram()
+
+ggplot(seedlings, aes(x = Total)) +
+  geom_histogram() +
+  facet_wrap(~SizeClass)
+
+# data are highly right skewed
+
+ggplot(seedlings, aes(x = YSR, y = Total)) +
+  geom_point() +
+  stat_smooth(method = "lm", formula = y ~ x + I(x^2)) +
+  geom_smooth(method = "lm") +
+  facet_wrap(~SizeClass, scales = "free")
+
+# saplings in particular looks like it's a polynomial relationship
+
+ggplot(seedlings, aes(x = Elevation, y = Total)) +
+  geom_point() +
+  stat_smooth(method = "lm", formula = y ~ x + I(x^2)) +
+  geom_smooth(method = "lm") +
+  facet_wrap(~SizeClass, scales = "free")
+
+# no evidence of a polynomial relationship, include as a linear term
+```
+
+Next, create a model.
+
+-   Count data so use a poisson or negative binomial model
+
+-   Include YSR as a polynomial term
+
+-   Include Estuary \* Elevation as additional fixed predictors
+
+-   Include Quadrat (Combo) within Site as a random factor
+
+-   Include an offset for Quadrat_size_m2
+
+-   Include a reduced rank covariance factor controlling for the fact that counts of each sizeclass within a quadrat may not be independent
+
+```{r Model_building}
+M3.1 <- glmmTMB(Count ~ SizeClass * (Estuary * Elevation + poly(YSR, 2)) + (1|Site/Combo) + rr(SizeClass+0|Combo, d = 2) + offset(log(Quadrat_size_m2)), family = "poisson",data = seedlings)
+
+resid <- residuals(simulateResiduals(M3.1), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M3.1, re.form = NA), resid) 
+plotQQunif(M3.1)
+
+# looks great
+
+M3.2 <- glmmTMB(Count ~ SizeClass * (Estuary * Elevation + poly(YSR, 2)) + (1|Site/Combo) + rr(SizeClass+0|Combo, d = 2) + offset(log(Quadrat_size_m2)), family = "nbinom2",data = seedlings)
+
+resid <- residuals(simulateResiduals(M3.2), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M3.2, re.form = NA), resid) 
+plotQQunif(M3.2)
+
+# looks almost identical
+
+anova(M3.1,M3.2) # no difference between the models, therefore use M3.1 with slightly lower AIC
+```
+
+Next, test the model.
+
+-   Use an anova to test it against two null models that lack the polynomial YSR and lack YSR altogether
+
+```{r Model_testing}
+M3.1 <- glmmTMB(Count ~ SizeClass * (Estuary * Elevation + poly(YSR, 2)) + (1|Site/Combo) + rr(SizeClass+0|Combo, d = 2) + offset(log(Quadrat_size_m2)), family = "poisson",data = seedlings)
+
+M <- glmmTMB(Count ~ SizeClass * (Estuary * Elevation + YSR) + (1|Site/Combo) + rr(SizeClass+0|Combo, d = 2) + offset(log(Quadrat_size_m2)), family = "poisson",data = seedlings)
+
+M0 <- glmmTMB(Count ~ SizeClass * (Estuary * Elevation) + (1|Site/Combo) + rr(SizeClass+0|Combo, d = 2) + offset(log(Quadrat_size_m2)), family = "poisson",data = seedlings)
+
+anova(M3.1,M,M0)
+
+joint_tests(M3.1)
+
+summary(M3.1)
+
+em <- emmeans(M3.1, ~ YSR | SizeClass, at = list(YSR = c(6,11,12,16,30,33)), type = "response")
+
+em
+
+plot(em)
+```
+
+Finally, plot the results.
+
+```{r Plot}
+
+emmip(M3.1, ~ YSR | SizeClass, at = list(YSR = c(6:33)), type = "response", CIs = TRUE)
+
+emmip(M3.1, ~ YSR | SizeClass, at = list(YSR = c(6:33)), type = "response", CIs = TRUE) + 
+  geom_boxplot(data = seedlings, aes(x = YSR, y = Total, group = YSR)) + ylim(0,4000)
+```
+
+## 2c. Number of hollows
+
+First, prepare and explore the data.
+
+-   histogram to plot distribution of data
+
+-   plot relationship with quantitative variables
+
+-   boxplot to visualise \# hollows at each YSR
+
+```{r Prep/explore}
+hist(mantree_comm_rest$total_hollows) # highly right skewed, zero-inflated
+
+plot(mantree_comm_rest$total_hollows ~ mantree_comm_rest$YSR) # not obviously non-linear
+plot(mantree_comm_rest$total_hollows ~ mantree_comm_rest$Elevation) # not obviously non-linear
+
+boxplot(mantree_comm_rest$total_hollows ~ mantree_comm_rest$YSR)
+```
+
+Next, create a model.
+
+-   count data so use poisson or negative binomial model
+
+    -   or use a zero-inflated model if these can't account for excessive zeroes
+
+    -   **Not super happy with any of these!! Check**
+
+-   Include additional fixed predictor Elevation \* Estuary and random factor Site
+
+-   Include offset for quadrat size
+
+-   Check assumptions using resid and scatter.smooth, plotQQunif and check_collinearity with a model without interactions
+
+```{r Model_building}
+M4.1 <- glmmTMB(Hollows ~ Elevation * Estuary + YSR + (1|Site) + offset(log(Quadrat_size_m2)), family = "poisson", data = mantree_comm_rest)
+
+resid <- residuals(simulateResiduals(M4.1), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M4.1,re.form = NA), resid) 
+plotQQunif(M4.1)
+
+
+M4.2 <- glmmTMB(Hollows ~ Elevation * Estuary + YSR + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm_rest)
+
+resid <- residuals(simulateResiduals(M4.2), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M4.2,re.form = NA), resid) 
+plotQQunif(M4.2)
+
+M <- glmmTMB(Hollows ~ Elevation + Estuary + YSR + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm_rest)
+check_collinearity(M)
+
+M4.3 <- glmmTMB(Hollows ~ Elevation * Estuary + YSR + (1|Site) + offset(log(Quadrat_size_m2)), family = "poisson", ziformula = ~1, data = mantree_comm_rest)
+
+resid <- residuals(simulateResiduals(M4.3), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M4.3,re.form = NA), resid) 
+plotQQunif(M4.3)
+
+
+M4.4 <- glmmTMB(Hollows ~ Elevation * Estuary + YSR + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", ziformula = ~1, data = mantree_comm_rest)
+
+resid <- residuals(simulateResiduals(M4.4), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M4.4,re.form = NA), resid) 
+plotQQunif(M4.4)
+
+
+anova(M4.1,M4.2,M4.3,M4.4)
+
+```
+
+Next, test the model.
+
+-   Compare model with a null model (without YSR) to test for the importance of YSR
+
+```{r Model_testing}
+M4.2 <- glmmTMB(Hollows ~ Elevation * Estuary + YSR + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm_rest)
+M0 <- glmmTMB(Hollows ~ Elevation * Estuary + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm_rest)
+
+anova(M4.2, M0)
+
+em <- emmeans(M4.2, ~ YSR, at = list(YSR = c(5:33)), type = "response")
+
+em
+
+plot(em) 
+
+joint_tests(M4.2)
+```
+
+Finally, plot the results.
+
+```{r Plot}
+emmip(M4.2, ~ YSR, at = list(YSR = c(5:33)), type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Number of hollows per 10m2", offset = log(100))
+```
+
+## 2d. Canopy cover
+
+First, prepare and explore the data.
+
+-   histogram to plot distribution
+
+-   plot distributions between dependent variable and quantitative predictors
+
+-   create a canopy cover proportion variable by scaling it back to 0-1
+
+```{r Prep/explore}
+hist(mantree_comm_rest$`Canopy_cover_%`) # slightly left skewed but ok / kind of close to uniform distribution
+
+plot(mantree_comm_rest$`Canopy_cover_%` ~ mantree_comm_rest$YSR) # could be non-linear
+plot(mantree_comm_rest$`Canopy_cover_%` ~ mantree_comm_rest$Elevation) # not obviously non-linear
+
+mantree_comm_rest <- mantree_comm_rest %>% 
+  mutate(Canopy_cover_prop = `Canopy_cover_%`/100)
+```
+
+Next, create a model.
+
+-   It's proportion data, so use a beta distribution
+
+-   Include other fixed predictors Estuary and Elevation and random factor Site
+
+-   Don't need an offset here because the variable is a percentage rather than a number
+
+-   Check assumptions using resid and scatter.smooth and plotQQunif, and check_collinearity on a model without interactions
+
+```{r Model_building}
+M5 <- glmmTMB(Canopy_cover_prop ~ Estuary * Elevation + poly(YSR, 2) + (1|Site), family = "beta_family", data = mantree_comm_rest)
+
+resid <- residuals(simulateResiduals(M5), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M5,re.form = NA), resid) 
+plotQQunif(M5) 
+
+M <- glmmTMB(Canopy_cover_prop ~ Estuary + Elevation + YSR + (1|Site), family = "beta_family", data = mantree_comm_rest)
+
+check_collinearity(M)
+```
+
+Next, test the model.
+
+-   compare the model against null models without the polynomial term and without YSR entirely to test the importance of YSR
+
+```{r Model_testing}
+M <- glmmTMB(Canopy_cover_prop ~ Estuary * Elevation + YSR + (1|Site), family = "beta_family", data = mantree_comm_rest)
+M0 <- glmmTMB(Canopy_cover_prop ~ Estuary * Elevation + (1|Site), family = "beta_family", data = mantree_comm_rest)
+
+anova(M5, M, M0)
+```
+
+Finally, plot the results.
+
+```{r Plot}
+emmip(M5, ~ YSR, at = list(YSR = c(5:33)), type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Canopy cover (%)")
+```
+
+## 2e. Number of stems
+
+First, prepare and explore the data.
+
+-   histogram for distribution of data
+
+-   plot relationship with quantitative predictors
+
+```{r Prep/explore}
+hist(mantree_grey_rest$Stems) # highly right-skewed
+
+ggplot(mantree_grey_rest, aes(x = YSR, y = Stems)) +
+  geom_jitter() # not obviously non-linear
+
+ggplot(mantree_grey_rest, aes(x = Elevation, y = Stems)) +
+  geom_jitter() # not obviously non-linear
+```
+
+Next, create a model.
+
+-   It's count data so use a poisson or negative binomial distribution
+
+-   Include additional fixed predictors Estuary and Elevation
+
+-   Include random effect for quadrat (Combo) nested in Site
+
+-   When comparing the models, there was no significant difference, but M6.1 has lower AIC, so use that
+
+```{r Model_building}
+M6.1 <- glmmTMB(Stems ~ Estuary + Elevation + YSR + (1|Site/Combo), family = "poisson", data = mantree_grey_rest)
+
+resid <- residuals(simulateResiduals(M6.1), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M6.1,re.form = NA), resid) 
+plotQQunif(M6.1)
+
+check_collinearity(M6)
+
+M6.2 <- glmmTMB(Stems ~ Estuary + Elevation + YSR + (1|Site/Combo), family = "nbinom2", data = mantree_grey_rest)
+
+resid <- residuals(simulateResiduals(M6.2), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M6.2,re.form = NA), resid) 
+plotQQunif(M6.2)
+
+anova(M6.1,M6.2)
+```
+
+Next, test the model.
+
+```{r Model_testing}
+M0 <- glmmTMB(Stems ~ Estuary + Elevation + (1|Site/Combo), family = "poisson", data = mantree_grey_rest)
+
+anova(M6.1, M0)
+
+joint_tests(M6.1)
+```
+
+Finally, plot the results.
+
+```{r Plot}
+emmip(M6, ~ YSR, at = list(YSR = c(5:33)), type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Number of stems")
+```
+
+## 2f. Tree DBH
+
+First, prepare and explore the data.
+
+-   histograms to plot distribution of raw and transformed data
+
+-   plot relationships with quantitative predictors
+
+```{r Prep/explore}
+hist(mantree_grey_rest$DBH_cm) # right skewed
+hist(log(mantree_grey_rest$DBH_cm)) # approx normal
+hist(sqrt(mantree_grey_rest$DBH_cm)) # still right skewed
+
+plot(mantree_grey_rest$DBH_cm ~ mantree_grey_rest$YSR) # could be non-linear
+plot(mantree_grey_rest$DBH_cm ~ mantree_grey_rest$Elevation) # not obviously non-linear
+```
+
+Next, create a model:
+
+-   gaussian model as it's continuous data
+
+-   try log transformed dependent variable if assumptions aren't ok without transformation
+
+    -   Looks better with log transformation
+
+-   fixed predictors Estuary \* Elevation
+
+-   random effect quadrat (Combo) nested within Site
+
+-   check assumptions using resid and scatter.smooth, plotQQunif and check_collinearity on a model without interactions
+
+```{r Model_building}
+M7 <- glmmTMB(DBH_cm ~ Estuary * Elevation + poly(YSR,2) + (1|Site/Combo), family = "gaussian", data = mantree_grey_rest)
+
+resid <- residuals(simulateResiduals(M7), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M7,re.form = NA), resid) 
+plotQQunif(M7)
+
+M7 <- glmmTMB(log(DBH_cm) ~ Estuary * Elevation + poly(YSR,2) + (1|Site/Combo), family = "gaussian", data = mantree_grey_rest)
+
+resid <- residuals(simulateResiduals(M7), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M7,re.form = NA), resid) 
+plotQQunif(M7)
+
+M <- glmmTMB(log(DBH_cm) ~ Estuary + Elevation + YSR + (1|Site/Combo), family = "gaussian", data = mantree_grey_rest)
+check_collinearity(M)
+```
+
+Next, test the model:
+
+-   Use anova to compare model with null models that lack the polynomial YSR term (M) and lack YSR altogether (M0)
+
+```{r Model_testing}
+M <- glmmTMB(log(DBH_cm) ~ Estuary * Elevation + YSR + (1|Site/Combo), family = "gaussian", data = mantree_grey_rest)
+M0 <- glmmTMB(log(DBH_cm) ~ Estuary * Elevation + (1|Site/Combo), family = "gaussian", data = mantree_grey_rest)
+
+anova(M7, M, M0)
+
+joint_tests(M7)
+```
+
+Finally, plot the results.
+
+```{r Plot}
+emmip(M7, ~ YSR, at = list(YSR = c(5:33)), type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "DBH")
+```
+
+## 2g. Tree height
+
+First, prepare and explore the data.
+
+-   histograms to plot raw and transformed data
+
+-   plot relationship with quantitative predictors
+
+```{r Prep/explore}
+hist(mantree_grey_rest$Height_m) # close to normal, slightly right skewed
+hist(sqrt(mantree_grey_rest$Height_m)) # not sure this is an improvement
+hist(log(mantree_grey_rest$Height_m)) # becomes left skewed
+
+plot(mantree_grey_rest$Height_m ~ mantree_grey_rest$YSR) # could be non-linear
+plot(mantree_grey_rest$Height_m ~ mantree_grey_rest$Elevation)  # could be non-linear
+```
+
+Next, create a model.
+
+-   gaussian model as it's continuous data
+
+-   include Elevation as a polynomial variable as it looked potentially non-linear
+
+-   include YSR as a polynomial variable as it looked potentially non-linear
+
+-   additional fixed predictors Estuary, can't do Estuary\*Elevation due to errors
+
+-   test assumptions using resid and scatter.smooth, plotQQunif and check_collinearity on a model without interactions
+
+    -   sqrt transformed model looks better
+
+```{r Model_building}
+M8 <- glmmTMB(Height_m ~ Estuary + poly(Elevation, 2) + poly(YSR,2) + (1|Site/Combo), family = "gaussian", data = mantree_grey_rest)
+
+resid <- residuals(simulateResiduals(M8), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M8,re.form = NA), resid) 
+plotQQunif(M8)
+
+M8 <- glmmTMB(sqrt(Height_m) ~ Estuary + poly(Elevation, 2) + poly(YSR,2) + (1|Site/Combo), family = "gaussian", data = mantree_grey_rest)
+
+resid <- residuals(simulateResiduals(M8), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M8,re.form = NA), resid) 
+scatter.smooth(predict(M8,re.form = NA), abs(resid)) 
+plotQQunif(M8)
+
+M <- glmmTMB(sqrt(Height_m) ~ Estuary + Estuary + YSR + (1|Site/Combo), family = "gaussian", data = mantree_grey_rest)
+check_collinearity(M)
+```
+
+Next, test the model.
+
+```{r Model_testing}
+M <- glmmTMB(Height_m ~ Estuary + poly(Elevation, 2) + YSR + (1|Site/Combo), family = "gaussian", data = mantree_grey_rest)
+M0 <- glmmTMB(Height_m ~ Estuary + poly(Elevation, 2) + (1|Site/Combo), family = "gaussian", data = mantree_grey_rest)
+
+anova(M8,M,M0)
+
+joint_tests(M8)
+
+summary(M8)
+
+em <- emtrends(M8, var = "YSR")
+
+
+em
+
+plot(em)
+
+emmeans(M8, ~ YSR, at = list(YSR = c(6,11,12,16,30,33)), type = "response")
+```
+
+Finally, plot the results.
+
+```{r Plot}
+
+emmip(M8, ~ YSR, at = list(YSR = c(5:33)), type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Tree height")
+```
+
+## 2h. Reproduction
+
+We can't analyse these data, as they are almost entirely segregated by estuary and there are no differences from which to explore the effect of YSR - all quadrats except one in the Hunter have buds but not fruits, and all quadrats except one in the Maroochy have fruits but not buds, and only one quadrat has dead flowers, and no quadrats have live flowers.
+
+```{r Explore}
+mantree_grey_comm_rest %>% group_by(Estuary) %>% count(Buds)
+mantree_grey_comm_rest %>% group_by(Estuary) %>% count(Flowers_live)
+mantree_grey_comm_rest %>% group_by(Estuary) %>% count(Flowers_dead)
+mantree_grey_comm_rest %>% group_by(Estuary) %>% count(Fruits)
+```
+
+## 2i. Number of pneumatophores
+
+First, prepare and explore the data.
+
+```{r Prep/explore}
+hist(manq_comm_rest$Pneu_0.5x0.5) # near normal, slight right skew
+hist(sqrt(manq_comm_rest$Pneu_0.5x0.5)) # maybe closer to normal
+
+plot(manq_comm_rest$Pneu_0.5x0.5 ~ manq_comm_rest$YSR) # potentially non-linear
+plot(manq_comm_rest$Pneu_0.5x0.5 ~ manq_comm_rest$Elevation) # not obviously non-linear
+
+ggplot(manq_comm_rest, aes(Pneu_0.5x0.5)) +
+  geom_histogram() +
+  facet_wrap(~Site)
+```
+
+Next, create a model.
+
+-   Need a random effect for quadrat (Combo) nested within site
+-   It's count data, so could use a poisson or negative binomial distribution, but it's also close to normally distributed, so could use a gaussian distribution
+    -   All three look good - choose best based on AIC - M9.3 is lowest
+
+```{r Model_building}
+M9.1 <- glmmTMB(Pneu_0.5x0.5 ~ Estuary + Elevation + poly(YSR, 2) + (1|Site/Combo), data = manq_comm_rest, family = "gaussian")
+
+resid <- residuals(simulateResiduals(M9.1), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M9.1,re.form = NA), resid) 
+plotQQunif(M9.1)
+
+M9.2 <- glmmTMB(Pneu_0.5x0.5 ~ Estuary + Elevation + poly(YSR, 2) + (1|Site/Combo), data = manq_comm_rest, family = "poisson")
+
+resid <- residuals(simulateResiduals(M9.2), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M9.2,re.form = NA), resid) 
+plotQQunif(M9.2)
+
+M9.3 <- glmmTMB(Pneu_0.5x0.5 ~ Estuary + Elevation + poly(YSR, 2) + (1|Site/Combo), data = manq_comm_rest, family = "nbinom2")
+
+resid <- residuals(simulateResiduals(M9.3), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M9.3,re.form = NA), resid) 
+plotQQunif(M9.3)
+
+anova(M9.1,M9.2,M9.3)
+```
+
+Next, test the model.
+
+-   Compare it against null models without the polynomial term and without YSR completely using anova
+
+-   Looks like there is evidence of a polynomial effect of YSR
+
+```{r Model_testing}
+M9.3 <- glmmTMB(Pneu_0.5x0.5 ~ Estuary + Elevation + poly(YSR, 2) + (1|Site/Combo), data = manq_comm_rest, family = "nbinom2")
+M <- glmmTMB(Pneu_0.5x0.5 ~ Estuary + Elevation + YSR + (1|Site/Combo), data = manq_comm_rest, family = "nbinom2")
+M0 <- glmmTMB(Pneu_0.5x0.5 ~ Estuary + Elevation + (1|Site/Combo), data = manq_comm_rest, family = "nbinom2")
+
+anova(M9.3,M,M0)
+
+joint_tests(M9.3)
+
+emmeans(M9.3, ~ YSR | Estuary, at = list(YSR = c(6,11,12,16,30,33)), type = "response")
+```
+
+Finally, plot the results.
+
+```{r Plot}
+emmip(M9.3, ~ YSR, at = list(YSR = c(5:33)), type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Number of pneumatophores per 0.5 x 0.5 m2") +
+  geom_boxplot(data = manq_comm_rest, aes(x = YSR, y = Pneu_0.5x0.5, group = YSR))
+```
+
+## 2j. Pneumatophore height
+
+First, prepare and explore the data.
+
+```{r Prep/explore}
+hist(manq_rest$Pneu_ht_mm) # right skewed
+hist(log(manq_rest$Pneu_ht_mm)) # left skewed
+hist(sqrt(manq_rest$Pneu_ht_mm)) # approx normal
+
+plot(manq_rest$Pneu_ht_mm ~ manq_rest$YSR) # looks non linear
+
+plot(manq_rest$Pneu_ht_mm ~ manq_rest$Elevation) # potentially non-linear, investigate
+ggplot(manq_rest, aes(x = Elevation, y = Pneu_ht_mm)) +
+  geom_point() +
+  geom_smooth() +
+  geom_smooth(method = "lm") # not far from linear so keep as a linear term
+```
+
+Next, create a model.
+
+-   continuous data so use gaussian distribution
+
+-   right skewed so try sqrt transformation
+
+    -   still looks kind of weird but maybe better than non-transformed data?
+
+-   random effect of subquadrat nested within quadrat (Combo) nested within Site
+
+```{r Model_building}
+M10.1 <- glmmTMB(Pneu_ht_mm ~ Estuary + Elevation + poly(YSR,2) + (1|Site/Combo/Subquadrat), data = manq_rest, family = "gaussian")
+
+resid <- residuals(simulateResiduals(M10.1), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M10.1,re.form = NA), resid) 
+plotQQunif(M10.1)
+
+M10.2 <- glmmTMB(sqrt(Pneu_ht_mm) ~ Estuary + Elevation + poly(YSR,2) + (1|Site/Combo/Subquadrat), data = manq_rest, family = "gaussian")
+
+resid <- residuals(simulateResiduals(M10.2), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M10.2,re.form = NA), resid) 
+plotQQunif(M10.2)
+
+anova(M10.1,M10.2)
+```
+
+Next, test the model.
+
+```{r Model_testing}
+M10.2 <- glmmTMB(sqrt(Pneu_ht_mm) ~ Estuary + Elevation + poly(YSR,2) + (1|Site/Combo/Subquadrat), data = manq_comm_rest, family = "gaussian")
+M <- glmmTMB(sqrt(Pneu_ht_mm) ~ Estuary + Elevation + YSR + (1|Site/Combo/Subquadrat), data = manq_comm_rest, family = "gaussian")
+M0 <- glmmTMB(sqrt(Pneu_ht_mm) ~ Estuary + Elevation + (1|Site/Combo/Subquadrat), data = manq_comm_rest, family = "gaussian")
+
+anova(M10.2,M,M0)
+
+joint_tests(M10.2)
+
+emmeans(M10.2, ~ YSR, at = list(YSR = c(6,11,12,16,30,33)), type = "response")
+```
+
+Finally, plot the results.
+
+```{r Plot}
+emmip(M10.2, ~ YSR, at = list(YSR = c(5:33)), type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Pneumatophore height") +
+  geom_boxplot(data = manq_rest, aes(x = YSR, y = Pneu_ht_mm, group = YSR))
+```
+
+## 2k. Pneumatophore diameter
+
+First, prepare and explore the data.
+
+```{r Prep/explore}
+hist(manq_rest$Pneu_dia_mm) # right skewed
+hist(log(manq_rest$Pneu_dia_mm)) # kind of normal but weird
+hist(sqrt(manq_rest$Pneu_dia_mm)) # approx normal
+
+plot(manq_rest$Pneu_dia_mm ~ manq_rest$YSR) # looks non linear
+
+plot(manq_rest$Pneu_dia_mm ~ manq_rest$Elevation) # looks non linear
+```
+
+Next, create a model.
+
+```{r Model_building}
+M11.1 <- glmmTMB(Pneu_dia_mm ~ Estuary + poly(Elevation,2) + poly(YSR, 2) + (1|Site/Combo/Subquadrat), data = manq_rest)
+
+resid <- residuals(simulateResiduals(M11.1), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M11.1,re.form = NA), resid) 
+plotQQunif(M11.1)
+
+M11.2 <- glmmTMB(sqrt(Pneu_dia_mm) ~ Estuary + poly(Elevation,2) + poly(YSR, 2) + (1|Site/Combo/Subquadrat), data = manq_rest)
+
+resid <- residuals(simulateResiduals(M11.2), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M11.2,re.form = NA), resid) 
+plotQQunif(M11.2)
+
+anova(M11.1,M11.2)
+```
+
+Next, test the model.
+
+```{r Model_testing}
+M11.2 <- glmmTMB(sqrt(Pneu_dia_mm) ~ Estuary + poly(Elevation,2) + poly(YSR, 2) + (1|Site/Combo/Subquadrat), data = manq_rest)
+M <- glmmTMB(sqrt(Pneu_dia_mm) ~ Estuary + poly(Elevation,2) + YSR + (1|Site/Combo/Subquadrat), data = manq_rest)
+M0 <- glmmTMB(sqrt(Pneu_dia_mm) ~ Estuary + poly(Elevation,2) + (1|Site/Combo/Subquadrat), data = manq_rest)
+
+anova(M11.2,M,M0)
+
+joint_tests(M11.2)
+
+emmeans(M11.2, ~ YSR, at = list(YSR = c(6,11,12,16,30,33)), type = "response")
+```
+
+Finally, plot the results.
+
+```{r Plot}
+emmip(M11.2, ~ YSR, at = list(YSR = c(5:33)), type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Pneumatophore diameter (mm)") +
+  geom_boxplot(data = manq_rest, aes(x = YSR, y = Pneu_dia_mm, group = YSR))
+```
+
+## 2l. Groundcover
+
+First, prepare and explore the data.
+
+-   prepare data for a distribution that doesn't take values of 0 or 1 by converting percentage data to proportions and slightly offsetting data to remove 0s and 1s from the dataset.
+
+```{r Prep/explore}
+manq_comm_rest <- manq_comm_rest %>% 
+  mutate(Bare_prop = case_when(
+    `Bare_%` == 100 ~ 0.99999,
+    `Bare_%` == 0 ~ 0.00001,
+    .default = `Bare_%`/100
+  ))
+
+hist(manq_comm_rest$Bare_prop) # highly right skewed
+
+ggplot(manq_comm_rest, aes(x = YSR, y = Bare_prop)) +
+  geom_point() +
+  geom_smooth() +
+  stat_smooth(method = "lm")
+
+# given humped distribution appears to be driven by one site, shouldn't overfit the model and should keep YSR as a linear factor
+
+ggplot(manq_comm_rest, aes(x = Elevation, y = Bare_prop)) +
+  geom_point() +
+  geom_smooth() +
+  stat_smooth(method = "lm")
+
+# no evidence that it's non-linear
+```
+
+Next, create a model.
+
+-   Use a beta model because it's proportion data
+
+-   **ASSUMPTIONS DO NOT LOOK GOOD**
+
+```{r Model_building}
+
+M12 <- glmmTMB(Bare_prop ~ Estuary * Elevation + YSR + (1|Site/Combo), family = beta_family(link = "logit"), data = manq_comm_rest)
+
+resid <- residuals(simulateResiduals(M12), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M12,re.form = NA), resid) # not good, has a pattern
+plotQQunif(M12) # good
+```
+
+Next, test the model.
+
+```{r Model_testing}
+```
+
+Finally, plot the results.
+
+```{r Plot}
+```
+
+## 2m. Leaf dry:fresh ratio
+
+First, prepare and explore the data.
+
+-   Important to note here is that we could only collect leaves from 4 restored sites, so it's going to be harder to see any effects. Therefore YSR should be included as a linear factor as a polynomial would be overfitting the model.
+
+```{r Prep/explore}
+hist(manleaf_wide_grey_rest$dfratio) # approx normal distribution
+
+plot(manleaf_wide_grey_rest$dfratio ~ manleaf_wide_grey_rest$YSR)
+
+plot(manleaf_wide_grey_rest$dfratio ~ manleaf_wide_grey_rest$Elevation)
+ggplot(manleaf_wide_grey_rest, aes(x = Elevation, y = dfratio)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  stat_smooth(method = "lm", formula = y ~ x + I(x^2))
+
+# polynomial looks like a slightly better fit, but this is only driven by the extreme elevation values, so probably keep with the simpler linear term
+```
+
+Next, create a model.
+
+-   gaussian as it's continuous data
+
+-   random effect of tree within quadrat (Combo) within Site
+
+```{r Model_building}
+
+M13 <- glmmTMB(dfratio ~ Estuary * Elevation + YSR + (1|Site/Combo/Tree), family = "gaussian", data = manleaf_wide_grey_rest)
+
+resid <- residuals(simulateResiduals(M13), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M13,re.form = NA), resid) # looks great
+plotQQunif(M13)
+```
+
+Next, test the model.
+
+```{r Model_testing}
+```
+
+Finally, plot the results.
+
+```{r Plot}
+```
+
+## 2n. LMA
+
+First, prepare and explore the data.
+
+```{r Prep/explore}
+```
+
+Next, create a model.
+
+```{r Model_building}
+```
+
+Next, test the model.
+
+```{r Model_testing}
+```
+
+Finally, plot the results.
+
+```{r Plot}
+```
+
+## 2o. Leaf area
+
+First, prepare and explore the data.
+
+```{r Prep/explore}
+```
+
+Next, create a model.
+
+```{r Model_building}
+```
+
+Next, test the model.
+
+```{r Model_testing}
+```
+
+Finally, plot the results.
+
+```{r Plot}
+```
+
+## 2p. Leaf herbivory
+
+First, prepare and explore the data.
+
+```{r Prep/explore}
+```
+
+Next, create a model.
+
+```{r Model_building}
+```
+
+Next, test the model.
+
+```{r Model_testing}
+```
+
+Finally, plot the results.
+
+```{r Plot}
+```
