@@ -394,6 +394,8 @@ Before we create any of these models, let's inspect the data space we're working
 
 ```{r Predictor_association}
 plot(salt_comm_rest_H$Elevation ~ salt_comm_rest_H$YSR)
+
+cor(salt_comm_rest_H$Elevation, salt_comm_rest_H$YSR)
 ```
 
 Given that elevations are lower with lower YSRs and higher with higher YSRs, we don't have a complete dataspace so can't model across a complete dataspace (i.e. missing data for low elevation and high YSR and low YSR and high elevation). Therefore, probably safest not to include an interaction between Elevation and YSR as the interaction would only be able to interpreted in small sections of the data.
@@ -1343,6 +1345,8 @@ Create a model:
 
 -   Reproduction types of each species might be correlated, so include a random effect for this
 
+    -   Would ideally include this random effect, but both of these factors don't have enough levels to be included as random factors, so the model doesn't run properly while they're included - therefore can't include this term
+
 -   Including quadrat (Combo) as a random factor
 
 -   **Justify contrasts = list(reprod_type = "contr.sum")**
@@ -1356,14 +1360,14 @@ Check model assumptions
 -   collinearity of predictors using check_collinearity on a model without interactions (M0) (having issues with model convergence, but terms are showing low correlation and the same terms have been low correlation in other models, so it should be fine)
 
 ```{r Model_building}
-M8 <- glmmTMB(Reproduction ~ DomSpeciesSuperSimp + Elevation + Species*(reprod_type * YSR) + (1+reprod_type|Species) + (1|Site/Combo), contrasts = list(reprod_type = "contr.sum"), family = "binomial", data = reprod.s_sf)
+M8 <- glmmTMB(Reproduction ~ DomSpeciesSuperSimp + Elevation + Species*(reprod_type * YSR) + (1|Site/Combo), contrasts = list(reprod_type = "contr.sum"), family = "binomial", data = reprod.s_sf)
 
 resid <- residuals(simulateResiduals(M8), quantileFunction = qnorm, outlierValues = c(-7,7))
 scatter.smooth(predict(M8,re.form = NA), resid) # looks great.
 
 plotQQunif(M8) # amazing
 
-M0 <- glmmTMB(Reproduction ~ DomSpeciesSuperSimp + Species + Elevation +   reprod_type + YSR  + (1+reprod_type|Species) + (1|Combo), contrasts = list(reprod_type = "contr.sum"), family = "binomial", data = reprod.s_sf)
+M0 <- glmmTMB(Reproduction ~ DomSpeciesSuperSimp + Species + Elevation +   reprod_type + YSR  + (1|Combo), contrasts = list(reprod_type = "contr.sum"), family = "binomial", data = reprod.s_sf)
 
 check_collinearity(M0) # all low
 ```
@@ -1377,11 +1381,11 @@ Generate model results:
 -   emtrends and emmeans for parameter estimates
 
 ```{r Model_testing}
-M1 <- glmmTMB(Reproduction ~ DomSpeciesSuperSimp + Elevation + Species*(reprod_type + YSR) + (1+reprod_type|Species) + (1|Combo), contrasts = list(reprod_type = "contr.sum"), family = "binomial", data = reprod.s_sf)
+M1 <- glmmTMB(Reproduction ~ DomSpeciesSuperSimp + Elevation + Species*(reprod_type + YSR) + (1|Combo), contrasts = list(reprod_type = "contr.sum"), family = "binomial", data = reprod.s_sf)
 
-M <- glmmTMB(Reproduction ~ DomSpeciesSuperSimp + Elevation + Species*reprod_type + YSR + (1+reprod_type|Species) + (1|Combo), contrasts = list(reprod_type = "contr.sum"), family = "binomial", data = reprod.s_sf)
+M <- glmmTMB(Reproduction ~ DomSpeciesSuperSimp + Elevation + Species*reprod_type + YSR + (1|Combo), contrasts = list(reprod_type = "contr.sum"), family = "binomial", data = reprod.s_sf)
 
-M0 <- glmmTMB(Reproduction ~ DomSpeciesSuperSimp + Elevation + Species*reprod_type  + (1+reprod_type|Species) + (1|Combo), contrasts = list(reprod_type = "contr.sum"), family = "binomial", data = reprod.s_sf)
+M0 <- glmmTMB(Reproduction ~ DomSpeciesSuperSimp + Elevation + Species*reprod_type  + (1|Combo), contrasts = list(reprod_type = "contr.sum"), family = "binomial", data = reprod.s_sf)
 
 anova(M8, M, M0, M1)
 
@@ -2178,24 +2182,19 @@ Next, create a model:
 
 -   as we expect each species to have different responses, include interactions between Species and Elevation, species proportion and restoration status
 
--   also include Dominant Species, Estuary and Species (without interactions) as additional predictors
+-   also include Dominant Species as an additional predictor
+
+    -   can't include Estuary as a fixed predictor as the model has errors with it included, likely because the Maroochy dataset is fairly limited for reproduction
 
 -   include quadrat (Combo) nested within site as a random factor
 
--   include a reduced rank correlation matrix to account for measurements in the same quadrat not being independent
-
 ```{r Model_create}
-M15 <- glmmTMB(Reproduction ~ DomSpeciesSuperSimp + Elevation + Estuary + Species*(reprod_type * rest_status) + (1+reprod_type|Species) + (1|Site/Combo), contrasts = list(reprod_type = "contr.sum"), family = "binomial", data = reprod_all_long)
-
-M16 <- glmmTMB(Reproduction ~ DomSpeciesSuperSimp + Elevation + Estuary + Species*(rest_status) + (1|Site/Combo), family = "binomial", data = reprod_all_long)
+M15 <- glmmTMB(Reproduction ~ DomSpeciesSuperSimp + Elevation + Species*(reprod_type * rest_status) + (1|Site/Combo), contrasts = list(reprod_type = "contr.sum"), family = "binomial", data = reprod_all_long)
 
 resid <- residuals(simulateResiduals(M15), quantilefunction = qnorm, outlierValues = c(-7,7))
-scatter.smooth(resid, predict(M15)) 
+scatter.smooth(resid, predict(M15)) # there are quite a few large values but they are evenly spread so should be ok
 plotQQunif(M15) 
 
-resid <- residuals(simulateResiduals(M16), quantilefunction = qnorm, outlierValues = c(-7,7))
-scatter.smooth(resid, predict(M16)) 
-plotQQunif(M16) 
 ```
 
 Next, test the model.
@@ -2203,25 +2202,19 @@ Next, test the model.
 -   use an anova to compare the model to null models without the Species\*rest_status\*reprod_type interaction, without the Species\*rest_status interaction and without rest_status entirely
 
 ```{r Model_test}
-M1 <- glmmTMB(Reproduction ~ DomSpeciesSuperSimp + sp_prop + Estuary + Species*(Elevation + rest_status + reprod_type) + (1+reprod_type|Species) + (1|Site/Combo), contrasts = list(reprod_type = "contr.sum"), family = "binomial", data = reprod_all_long)
+M1 <- glmmTMB(Reproduction ~ DomSpeciesSuperSimp + Elevation + Species*(reprod_type + rest_status) + (1|Site/Combo), contrasts = list(reprod_type = "contr.sum"), family = "binomial", data = reprod_all_long)
 
-M <- glmmTMB(Reproduction ~ DomSpeciesSuperSimp + sp_prop + Estuary + Species*(Elevation + rest_status) + reprod_type + (1+reprod_type|Species) + (1|Site/Combo), contrasts = list(reprod_type = "contr.sum"), family = "binomial", data = reprod_all_long)
+M <- glmmTMB(Reproduction ~ DomSpeciesSuperSimp + Elevation + Species*reprod_type + rest_status + (1|Site/Combo), contrasts = list(reprod_type = "contr.sum"), family = "binomial", data = reprod_all_long)
 
-M0 <- glmmTMB(Reproduction ~ DomSpeciesSuperSimp + sp_prop + Estuary + Species*(Elevation + reprod_type) + (1+reprod_type|Species) + (1|Site/Combo), contrasts = list(reprod_type = "contr.sum"), family = "binomial", data = reprod_all_long)
+M0 <- glmmTMB(Reproduction ~ DomSpeciesSuperSimp + Elevation + Species*reprod_type + (1|Site/Combo), contrasts = list(reprod_type = "contr.sum"), family = "binomial", data = reprod_all_long)
 
 anova(M15,M1,M,M0)
 
-#Mx <- glmmTMB(Reproduction ~ DomSpeciesSuperSimp + Elevation + Estuary + Species + rest_status + (1|Site/Combo), family = "binomial", data = reprod_all_long)
-# this model is not working
+joint_tests(M15)
 
-Mx0 <- glmmTMB(Reproduction ~ DomSpeciesSuperSimp + Elevation + Estuary + Species + (1|Site/Combo), family = "binomial", data = reprod_all_long)
+summary(M15)
 
-anova(M16,Mx0)
-
-joint_tests(M16)
-
-emmeans(M16, ~ rest_status, type = "response")
-emmeans(M16, ~ rest_status | Species, type = "response")
+emmeans(M15, ~ rest_status | Species | reprod_type, type = "response")
 ```
 
 Finally, plot the data.
