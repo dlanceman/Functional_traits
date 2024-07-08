@@ -40,6 +40,7 @@ First, **load packages**.
 #install.packages("MCMCglmm")
 #install.packages("ggbreak")
 #install.packages("multcomp")
+#install.packages("ggfortify")
 
 library(plyr)
 library(readxl)
@@ -68,6 +69,7 @@ library(ggbreak)
 require(tweedie)
 library(glmmTMB)
 library(multcomp)
+library(ggfortify)
 ```
 
 ### Load data
@@ -391,11 +393,61 @@ plot(log(salt_numeric$Burrows_0.5x0.5), log(salt_numeric$Stem_ht_mm))
 Before we create any of these models, let's inspect the data space we're working with:
 
 -   relationship between YSR and Elevation (numeric predictors)
+    -   model this relationship and test the model
 
 ```{r Predictor_association}
-plot(salt_comm_rest_H$Elevation ~ salt_comm_rest_H$YSR)
+plot(salt_comm_rest_H$Elevation ~ salt_comm_rest_H$YSR) # could be non-linear
 
 cor(salt_comm_rest_H$Elevation, salt_comm_rest_H$YSR)
+
+hist(salt_comm_rest_H$Elevation) # approx normal distribution
+
+M <- glmmTMB(Elevation ~ DomSpeciesSuperSimp + poly(YSR,2) + (1|Site), family = "gaussian", data = salt_comm_rest_H)
+
+# check assumptions
+resid <- residuals(simulateResiduals(M), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M,re.form = NA), resid) 
+plotQQunif(M)
+
+M0 <- glmmTMB(Elevation ~ DomSpeciesSuperSimp + YSR + (1|Site), family = "gaussian", data = salt_comm_rest_H)
+M00 <- glmmTMB(Elevation ~ DomSpeciesSuperSimp + (1|Site), family = "gaussian", data = salt_comm_rest_H)
+
+anova(M,M0,M00)
+
+# boxplots
+
+S_Elev_rest <- ggplot(salt_comm_rest, aes(x=YSR, y=Elevation, group = YSR, fill = Estuary)) +
+    geom_boxplot(width = 2) +
+  geom_jitter(height = 0)  +
+    scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A") +
+    theme_classic() +
+    theme(legend.position = "none",
+          axis.text = element_text(size = 18), # was 32
+          axis.title = element_text(size = 22)) + # was 36
+  xlab("Years since restoration") +
+  ylab("Elevation (m)") +
+  xlim(0,35)  +
+  ylim(-0.5,1)
+S_Elev_rest
+
+S_Elev_nat <- ggplot(salt_comm_nat, aes(x=Site, y=Elevation, fill=Estuary, group = Site)) +
+    geom_boxplot(width=0.4) +
+  geom_jitter(width = 0.1, height = 0)  +
+    scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A") +
+    theme_classic() +
+  guides(fill = guide_legend(position = "inside")) +
+    theme(legend.position.inside = c(0.4,0.2),
+          axis.text = element_text(size = 18), # was 32
+          axis.text.y = element_blank(), # remove y axis labels when combining plot with restored
+          axis.title = element_text(size = 22)) + # was 36
+  xlab("Site") +
+  ylab("")  +
+  ylim(-0.5,1)
+S_Elev_nat
+
+# plot natural and restored together
+ggarrange(S_Elev_rest,S_Elev_nat,ncol =2,nrow=1,widths = c(2,1))
+# print at 1500 x 800 for paper, 2400 x 800 for preso
 ```
 
 Given that elevations are lower with lower YSRs and higher with higher YSRs, we don't have a complete dataspace so can't model across a complete dataspace (i.e. missing data for low elevation and high YSR and low YSR and high elevation). Therefore, probably safest not to include an interaction between Elevation and YSR as the interaction would only be able to interpreted in small sections of the data.
@@ -539,31 +591,13 @@ em2
 plot(em2)
 ```
 
-Now, let's run some post-hoc tests (multiple comparisons) to see where differences lie - which species are changing with YSR?
-
--   Plot differences using ggplot
-
--   **Need to code for multiple comparisons** (currently not working and/or not testing what we want to test)
-
-```{r Post-hoc}
-ggplot(data = comm_comp_long, aes(x = YSR, y = cover_prop_no1, group = YSR)) +
-  geom_boxplot() +
-  facet_wrap(~Species, scales = "free")
-
-t <- mcp(Species="Tukey")
-v <- glht(M1, linfct = t)
-summary(v)
-
-emmip(M1, ~ YSR | Species, at = list(YSR = c(6,10,15,20,25,30,33)), CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Predicted proportion cover", type = "response") +
-  geom_jitter(aes(x = YSR, y = cover_prop), data = comm_comp_long) +
-  theme_bw()
-```
-
 Plot
 
 -   emmip for predicted values
 
 -   ggplot for raw data
+
+-   Create a PCA plot including all natural and restored data to visualise patterns
 
 ```{r Plot}
 p <- emmip(M1, ~ YSR | Species, at = list(YSR = c(6,10,15,20,25,30,33)), type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Predicted proportion cover") +
@@ -585,6 +619,21 @@ ggplot(data = salt_comm_comp_H_res_long, aes(x = as.factor(YSR), y = Percent_cov
   ylab("Species percent cover") +
   theme(strip.text = element_text(size = 24))
 # print at 1500 x 1200
+
+
+salt_comm_comp <- salt_comm_comp %>% 
+  mutate(rest_status = case_when(
+    rest_status == 1 ~ "Restored",
+    rest_status == 0 ~ "Natural"
+  ))
+spdata <- salt_comm_comp[,c(1,2,3,8,10,12)]
+pca_res <- prcomp(spdata, scale. = TRUE)
+autoplot(pca_res, data = salt_comm_comp, color = "YSR", size = 2,
+         loadings = TRUE, loadings.colour = 'black',
+         loadings.label = TRUE, loadings.label.size = 3, loadings.label.color = 'black') +
+  theme_classic() +
+  scale_color_viridis(begin = 0.1, end = 0.8, option = "D")
+
 ```
 
 ## 2b. Total cover
@@ -604,6 +653,8 @@ First, explore the data:
 -   type of relationship between each predictor and total cover
 
 -   data space between predictors - YSR & dominant species; YSR & Elevation
+
+-   explore the relationship with elevation within each site, compared to the overall relationship between sites
 
 Also prepare data for a distribution that doesn't take values of 1 by creating a new total_cover_prop_no1 variable that has a slight offset to remove 1s from the dataset.
 
@@ -631,7 +682,9 @@ Next, create a model.
 
 -   both YSR and elevation looked like they might have a non-linear relationship with total_cover when we plotted them earlier so include them as polynomial variables
 
--   there are insufficient data across the matrix to model interactions between any of the predictors
+-   include an interaction between DomSpeciesSuperSimp and YSR because it looks like trends differ between dominant species, but keep in mind there are limited data at high YSRs for Other and Sarcocornia when interpreting the results
+
+-   there are insufficient data across the matrix to model interactions between elevation and YSR
 
 -   check assumptions using resid and scatter.smooth
 
@@ -642,7 +695,9 @@ Next, create a model.
 -   calculate parameter estimates using summary and emmeans
 
 ```{r Model}
-M2 <- glmmTMB(total_cover_prop_no1 ~ poly(Elevation,2) + DomSpeciesSuperSimp + poly(YSR,2) + (1|Site), data = salt_comm_rest_H, family = "beta_family")
+M2 <- glmmTMB(total_cover_prop_no1 ~ poly(Elevation,2) + DomSpeciesSuperSimp * poly(YSR,2) + (1|Site), data = salt_comm_rest_H, family = "beta_family")
+
+M1 <- glmmTMB(total_cover_prop_no1 ~ poly(Elevation,2) + DomSpeciesSuperSimp + poly(YSR,2) + (1|Site), data = salt_comm_rest_H, family = "beta_family")
 
 M <- glmmTMB(total_cover_prop_no1 ~ poly(Elevation,2) + DomSpeciesSuperSimp + YSR + (1|Site), data = salt_comm_rest_H, family = "beta_family")
 
@@ -655,7 +710,7 @@ plotQQunif(M2) # great
 Mn <- glmmTMB(total_cover_prop_no1 ~ Elevation + DomSpeciesSuperSimp + YSR + (1|Site), data = salt_comm_rest_H, family = "beta_family")
 check_collinearity(Mn) # all low
 
-anova(M2, M0, M)
+anova(M2,M1, M0, M)
 summary(M2)
 emmeans(M2, pairwise~DomSpeciesSuperSimp)
 
@@ -666,6 +721,12 @@ em <- emmeans(M2, ~ YSR, at = list(YSR = c(6,11,12,16,30,33)), type = "response"
 em
 
 plot(em)
+
+em1 <- emmeans(M2, ~ YSR | DomSpeciesSuperSimp, at = list(YSR = c(6,11,12,16,30,33)), type = "response")
+
+em1
+
+plot(em1)
 
 em2 <- emmeans(M2, ~ Elevation, at = list(Elevation = c(-0.2,0,0.2,0.4,0.6,0.8)), type = "response")
 
@@ -683,6 +744,8 @@ Now, create some plots.
 -   combine these
 
 -   predicted results
+
+-   **not sure geom_smooth works for emmip - it's making the same line but not sure we can trust the confidence intervals. Want some way of making smoothed CIs though!**
 
 ```{r Plot}
 S_Cov_rest <- ggplot(salt_comm_rest_H, aes(x=YSR, y=total_cover_prop*100, group = YSR, fill = Estuary)) +
@@ -717,10 +780,7 @@ S_Cov_nat
 ggarrange(S_Cov_rest,S_Cov_nat,ncol =2,nrow=1,widths = c(3,1))
 # print at 1500 x 800 for paper, 2400 x 800 for preso
 
-em1 <- emmip(M2, ~ YSR | Elevation, at = list(YSR = c(6,10,15,20,25,30,33), Elevation = c(-0.2,0,0.2,0.4,0.6,0.8)), type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Predicted proportion cover") 
-em1
-
-+
+em1 <- emmip(M2, ~ YSR, at = list(YSR = c(6,10,15,20,25,30,33)), type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Predicted proportion cover") +
   geom_jitter(aes(x = YSR, y = total_cover_prop_no1), data = salt_comm_rest_H) +
   theme_bw()
 
@@ -734,6 +794,141 @@ em2
 
 ggarrange(em1, em2, ncol = 1, nrow = 2)
 
+emmip(M2, ~ YSR | Elevation, at = list(YSR = c(6,10,15,20,25,30,33), Elevation = c(-0.2,0,0.2,0.4,0.6,0.8)), type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Predicted proportion cover") 
+
+emmip(M2, ~ YSR | DomSpeciesSuperSimp, at = list(YSR = c(6,10,15,20,25,30,33)), type = "response", engine = "ggplot", xlab = "Years since restoration", ylab = "Predicted proportion cover") +
+  geom_point(aes(x = YSR, y = total_cover_prop_no1), data = salt_comm_rest_H) +
+  geom_smooth(color = 'black') +
+  theme_bw()
+
+# fit a model not including elevation - for plotting
+M2.1 <- glmmTMB(total_cover_prop_no1 ~ DomSpeciesSuperSimp + poly(YSR,2) + DomSpeciesSuperSimp:YSR + (1|Site), data = salt_comm_rest_H, family = "beta_family")
+
+emmip(M2.1, ~ YSR | DomSpeciesSuperSimp, at = list(YSR = c(6,10,15,20,25,30,33)), type = "response", engine = "ggplot", xlab = "Years since restoration", ylab = "Predicted proportion cover") +
+  geom_point(aes(x = YSR, y = total_cover_prop_no1), data = salt_comm_rest_H) +
+  geom_smooth(color = 'black') +
+  theme_bw()
+
+em <- emmeans(M2, ~ YSR|DomSpeciesSuperSimp* Elevation, at = list(YSR = c(6,11,12,16,30,33),Elevation = 0.32 ), type= "response")
+
+ggplot(data = salt_comm_rest_H, aes(x = YSR, y = total_cover_prop * 100, group = DomSpeciesSuperSimp, color = DomSpeciesSuperSimp)) +
+  geom_jitter() +
+  facet_wrap(~DomSpeciesSuperSimp)+
+  geom_point(data = data.frame(em), aes(y = response * 100), group = NA, colour = "black", shape = 7, size = 3)+
+  geom_line(data = data.frame(em), aes(y = response * 100), group = 1, colour = "black", linewidth = 1) +
+  scale_y_continuous(trans = "log1p", limits = c(5,102)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  xlab("Years since restoration") +
+  ylab("Saltmarsh cover (%)") + 
+  scale_color_viridis(discrete = TRUE, begin = 0.3, end = 0.8, option = "A")
+
+# natural data
+S_Cov_nat2 <- ggplot(salt_comm_nat, aes(x=Site, y=`Total_cover_%`, fill=DomSpeciesSuperSimp, group = Site)) +
+    geom_boxplot(width=0.4) +
+  geom_jitter(width = 0.1, height = 0)  +
+    scale_fill_viridis(discrete = TRUE, begin = 0.3, end = 0.8, option = "A") +
+    theme_bw() +
+    #guides(fill = guide_legend(position = "inside")) +
+    theme(#legend.position.inside = c(0.8,0.2),
+          legend.position = "none",
+          #axis.text = element_text(size = 32),
+          axis.text.y = element_blank(), # remove y axis labels when combining plot with restored
+          #axis.title = element_text(size = 36)
+          ) +
+  xlab("Natural site") +
+  ylab("")  +
+  #labs(fill = "Dominant Species") +
+  scale_y_continuous(trans = "log1p", limits = c(5,102)) +
+  facet_wrap(~DomSpeciesSuperSimp)
+S_Cov_nat2
+
+ggarrange(S_Cov_rest2, S_Cov_nat2, ncol =2,nrow=1,widths = c(2,1)) 
+```
+
+Accounting for elevation relationships:
+
+-   The current model shows decreasing trends with YSR when controlling for elevation, because it models that at any given elevation, total cover decreases with increasing elevation, and with time since restoration, elevation increases.
+
+-   However, there is an interaction between the random effect of Site and elevation that we need to account for, as relationships between elevation and total cover differ within and between sites
+
+-   Plot relationships between elevation and total cover at each site, and across sites.
+
+```{r Within_between_model}
+
+# Elevation relationships
+ggplot(salt_comm_rest_H , aes( Elevation,total_cover_prop))+geom_jitter()+facet_wrap(~Site)
+
+#Here we calculate the mean elevation per site, and also, the deviation within a site from the site mean.  
+salt_comm_rest_H  = salt_comm_rest_H  %>%
+  group_by(Site) %>%
+  summarise( site_mean_elev = mean(Elevation)) %>%
+  right_join(salt_comm_rest_H ) %>%
+  mutate( site_within_elev = Elevation - site_mean_elev)
+
+ggplot(salt_comm_rest_H , aes( site_mean_elev,total_cover_prop))+geom_jitter()
+
+#MODEL
+M_WB <- glmmTMB(total_cover_prop_no1 ~ site_mean_elev + site_within_elev + DomSpeciesSuperSimp*YSR + (1|Site), data = salt_comm_rest_H, family = beta_family(link = "logit"))
+
+# Also try with polynomial YSR term
+M_WB2 <- glmmTMB(total_cover_prop_no1 ~ site_mean_elev + site_within_elev + DomSpeciesSuperSimp * poly(YSR,2) + (1|Site), data = salt_comm_rest_H, family = "beta_family")
+
+anova(M_WB,M_WB2) # significant therefore use polynomial model 
+
+# test whether it's better than non within-between model
+anova(M2,M_WB2) # no difference, therefore stick with original model.
+
+# model assumptions
+resid <- residuals(simulateResiduals(M_WB2), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M_WB2,re.form = NA), resid) 
+plotQQunif(M_WB2)
+# all good
+
+#MODEL LINES
+em <- emmeans(M_WB2, ~ YSR|DomSpeciesSuperSimp* site_within_elev*site_mean_elev, at = list(YSR = c(6,11,12,16,30,33),site_within_elev = 0,site_mean_elev= 0.32 ), type= "response")
+
+# Test model
+M1 <- glmmTMB(total_cover_prop_no1 ~ site_mean_elev + site_within_elev + DomSpeciesSuperSimp + poly(YSR,2) + (1|Site), data = salt_comm_rest_H, family = "beta_family")
+M <- glmmTMB(total_cover_prop_no1 ~ site_mean_elev + site_within_elev + DomSpeciesSuperSimp + YSR + (1|Site), data = salt_comm_rest_H, family = "beta_family")
+M0 <- glmmTMB(total_cover_prop_no1 ~ site_mean_elev + site_within_elev + DomSpeciesSuperSimp + (1|Site), data = salt_comm_rest_H, family = "beta_family")
+anova(M_WB2, M1, M, M0)
+
+#PLOT
+S_Cov_rest2 <- ggplot(data = salt_comm_rest_H, aes(x = YSR, y = total_cover_prop * 100, group = DomSpeciesSuperSimp, color = DomSpeciesSuperSimp)) +
+  geom_jitter() +
+  facet_wrap(~DomSpeciesSuperSimp)+
+  geom_point(data = data.frame(em), aes(y = response * 100), group = NA, colour = "black", shape = 7, size = 3)+
+  geom_line(data = data.frame(em), aes(y = response * 100), group = 1, colour = "black", linewidth = 1) +
+  scale_y_continuous(trans = "log1p", limits = c(5,102)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  xlab("Years since restoration") +
+  ylab("Saltmarsh cover (%)") + 
+  scale_color_viridis(discrete = TRUE, begin = 0.3, end = 0.8, option = "A")
+S_Cov_rest2
+
+# natural data
+S_Cov_nat2 <- ggplot(salt_comm_nat, aes(x=Site, y=`Total_cover_%`, fill=DomSpeciesSuperSimp, group = Site)) +
+    geom_boxplot(width=0.4) +
+  geom_jitter(width = 0.1, height = 0)  +
+    scale_fill_viridis(discrete = TRUE, begin = 0.3, end = 0.8, option = "A") +
+    theme_bw() +
+    #guides(fill = guide_legend(position = "inside")) +
+    theme(#legend.position.inside = c(0.8,0.2),
+          legend.position = "none",
+          #axis.text = element_text(size = 32),
+          axis.text.y = element_blank(), # remove y axis labels when combining plot with restored
+          #axis.title = element_text(size = 36)
+          ) +
+  xlab("Natural site") +
+  ylab("")  +
+  #labs(fill = "Dominant Species") +
+  scale_y_continuous(trans = "log1p", limits = c(5,102)) +
+  facet_wrap(~DomSpeciesSuperSimp)
+S_Cov_nat2
+
+ggarrange(S_Cov_rest2, S_Cov_nat2, ncol =2,nrow=1,widths = c(2,1)) 
 ```
 
 ## 2c. Burrows
@@ -1701,6 +1896,21 @@ ggplot(salt_comm, aes(x=Estuary, y=total_cover_prop*100, fill = as.factor(rest_s
           legend.text = element_text(size = 20)) +
   xlab("Estuary") +
   ylab("Saltmarsh cover (%)") 
+
+ggplot(salt_comm, aes(x=rest_status, y=total_cover_prop*100, fill = as.factor(rest_status))) +
+    geom_boxplot() +
+  geom_jitter(size = 3)  +
+    scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A",
+                      name="",
+                      breaks=c("0", "1"),
+                      labels=c("Natural", "Restoring")) +
+    theme_classic() +
+    theme(axis.text = element_text(size = 24),
+          axis.title = element_text(size = 28),
+          legend.text = element_text(size = 20)) +
+  xlab("Restoration status") +
+  ylab("Saltmarsh cover (%)") +
+  facet_wrap(~DomSpeciesSuperSimp)
 ```
 
 ## 3c. Burrows
