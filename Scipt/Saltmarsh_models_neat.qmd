@@ -414,6 +414,8 @@ M00 <- glmmTMB(Elevation ~ DomSpeciesSuperSimp + (1|Site), family = "gaussian", 
 
 anova(M,M0,M00)
 
+emmip(M, ~ YSR, at = list(YSR = c(6:33)), type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Elevation (m)")
+
 # boxplots
 
 S_Elev_rest <- ggplot(salt_comm_rest, aes(x=YSR, y=Elevation, group = YSR, fill = Estuary)) +
@@ -446,8 +448,10 @@ S_Elev_nat <- ggplot(salt_comm_nat, aes(x=Site, y=Elevation, fill=Estuary, group
 S_Elev_nat
 
 # plot natural and restored together
-ggarrange(S_Elev_rest,S_Elev_nat,ncol =2,nrow=1,widths = c(2,1))
+ggarrange(S_Elev_rest,S_Elev_nat,ncol =2,nrow=1,widths = c(2,1.3))
 # print at 1500 x 800 for paper, 2400 x 800 for preso
+
+#ggsave("C:/Users/z5204897/OneDrive - UNSW/Desktop/PhD/Data_analysis/Project/Functional_traits/Output/Saltmarsh_elevation_preso.jpg", width = 6000, height = 2000, units = "px")
 ```
 
 Given that elevations are lower with lower YSRs and higher with higher YSRs, we don't have a complete dataspace so can't model across a complete dataspace (i.e. missing data for low elevation and high YSR and low YSR and high elevation). Therefore, probably safest not to include an interaction between Elevation and YSR as the interaction would only be able to interpreted in small sections of the data.
@@ -633,6 +637,8 @@ autoplot(pca_res, data = salt_comm_comp, color = "YSR", size = 2,
          loadings.label = TRUE, loadings.label.size = 3, loadings.label.color = 'black') +
   theme_classic() +
   scale_color_viridis(begin = 0.1, end = 0.8, option = "D")
+
+ggsave("C:/Users/z5204897/OneDrive - UNSW/Desktop/PhD/Data_analysis/Project/Functional_traits/Output/Saltmarsh_comm_comp.jpg", width = 2000, height = 1500, units = "px")
 
 ```
 
@@ -1676,6 +1682,23 @@ From this, we can conclude:
 -   restoring sites have elevations \~0-0.8, however most data is between \~0-0.6
 
 -   therefore we could potentially include interactions (but only interpret results in the overlapping region, 0.4-0.8m), however given there is not that much overlap in this region, it might be safer to leave out the interaction, especially as it's not our study question anyway
+
+Also, test for differences in the elevations of natural and restored sites using a model.
+
+```{r Elevation_model}
+M8.5 <- glmmTMB(Elevation ~ DomSpeciesSuperSimp + rest_status + (1|Site), family = "gaussian", data = salt_comm)
+
+# check assumptions
+resid <- residuals(simulateResiduals(M8.5), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M8.5,re.form = NA), resid) 
+plotQQunif(M8.5)
+
+M0 <- glmmTMB(Elevation ~ DomSpeciesSuperSimp + (1|Site), family = "gaussian", data = salt_comm)
+
+anova(M8.5,M0)
+
+emmip(M8.5, ~ rest_status, type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Elevation (m)")
+```
 
 ## 3a. Community composition
 

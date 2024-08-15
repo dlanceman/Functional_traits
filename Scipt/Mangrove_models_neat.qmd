@@ -674,6 +674,47 @@ plot(em)
 joint_tests(M1)
 ```
 
+Plot this elevation relationship.
+
+```{r Elevation_plot}
+# restoring sites YSR
+m_elev_rest <- ggplot(mantree_comm_rest, aes(x=YSR, y=Elevation, fill=Estuary, group = YSR)) +
+    geom_boxplot(width = 2) +
+  geom_jitter() +
+    scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A") +
+    theme_classic() +
+    theme(legend.position = "none",
+          axis.text = element_text(size = 24),
+          axis.title = element_text(size = 28)) +
+  xlab("Years since restoration") +
+  ylab("Elevation (m)") +
+  xlim(0,35) +
+  scale_y_continuous(limits = c(-0.45,0.9), breaks = scales::pretty_breaks(n = 6))
+m_elev_rest
+# print 1500 x 729
+
+# natural sites
+m_elev_nat <- ggplot(mantree_comm_nat, aes(x=Site, y=Elevation, fill=Estuary, group = Site)) +
+    geom_boxplot(width = 0.4) +
+  geom_jitter(width = 0.1) +
+    scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A") +
+    theme_classic() +
+    theme(legend.text = element_text(size = 20),
+          legend.title = element_text(size = 24),
+          axis.text = element_text(size = 24),
+          axis.text.y = element_blank(), # remove y axis labels when combining plot with restored
+          axis.title = element_text(size = 28)) +
+  xlab("Site") +
+  ylab("") +
+  scale_y_continuous(limits = c(-0.45,0.9), breaks = scales::pretty_breaks(n = 6))
+m_elev_nat
+# print at 700 x 789
+
+# plot natural and restored together
+ggarrange(m_elev_rest,m_elev_nat,ncol =2,nrow=1,widths = c(1.3,1))
+# print at 1500 x 1200 or 2400 x 800 for preso
+```
+
 Also, investigate the occurrence of each species at restoration sites.
 
 -   There are only 2 sites with River mangroves and 2 sites with orange mangroves - therefore insufficient data to analyse the effect of time since restoration on either of these species - therefore only model the effect of YSR on grey mangroves. This affects the following traits:
@@ -768,47 +809,60 @@ joint_tests(M2.2)
 Finally, plot the results.
 
 ```{r Plot}
-emmip(M2, ~ YSR, at = list(YSR = c(5:33)), type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Number of trees per 10m2", offset = log(100))
+emmip(M2.2, ~ YSR, at = list(YSR = c(5:33)), type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Number of trees per 10m2", offset = log(100))
+
+# restoring sites YSR
+m_tree_rest <- ggplot(mantree_comm_rest, aes(x=YSR, y=total_trees, fill=Estuary, group = YSR)) +
+    geom_boxplot(width = 2) +
+  geom_jitter() +
+    scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A") +
+    theme_classic() +
+    theme(legend.position = "none",
+          axis.text = element_text(size = 24),
+          axis.title = element_text(size = 28)) +
+  xlab("Years since restoration") +
+  ylab("Number of trees per 100m2") +
+  xlim(0,35) 
+m_tree_rest
+# print 1500 x 729
+
+# natural sites
+m_tree_nat <- ggplot(mantree_comm_nat, aes(x=Site, y=total_trees, fill=Estuary, group = Site)) +
+    geom_boxplot(width = 0.4) +
+  geom_jitter(width = 0.1) +
+    scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A") +
+    theme_classic() +
+    theme(legend.text = element_text(size = 20),
+          legend.title = element_text(size = 24),
+          axis.text = element_text(size = 24),
+          axis.text.y = element_blank(), # remove y axis labels when combining plot with restored
+          axis.title = element_text(size = 28)) +
+  xlab("Site") +
+  ylab("") 
+m_tree_nat
+# print at 700 x 789
+
+# plot natural and restored together
+ggarrange(m_tree_rest,m_tree_nat,ncol =2,nrow=1,widths = c(1.3,1))
+# print at 1500 x 1200 or 2400 x 800 for preso
 ```
 
-## 2b. Number of saplings/seedlings
+## 2b. Number of saplings
 
 First, prepare and explore the data.
 
 -   Use "Total" for plotting purposes and "Count" with offset of Quadrat_size_m2 for models
 
 ```{r Prep/explore}
-ggplot(seedlings_rest, aes(x = Count)) +
-  geom_histogram()
 
-ggplot(seedlings_rest, aes(x = Count)) +
-  geom_histogram() +
-  facet_wrap(~SizeClass)
+ggplot(mantree_comm_rest, aes(x = total_saplings)) +   
+  geom_histogram()  # somewhat right skewed (count data)
 
-ggplot(seedlings_rest, aes(x = Total)) +
-  geom_histogram()
-
-ggplot(seedlings_rest, aes(x = Total)) +
-  geom_histogram() +
-  facet_wrap(~SizeClass)
-
-# data are highly right skewed
-
-ggplot(seedlings_rest, aes(x = YSR, y = Total)) +
-  geom_point() +
-  stat_smooth(method = "lm", formula = y ~ x + I(x^2)) +
+ggplot(mantree_comm_rest, aes(x = YSR, y = total_saplings)) +
   geom_smooth(method = "lm") +
-  facet_wrap(~SizeClass, scales = "free")
+  geom_point() # looks non-linear
 
-# saplings in particular looks like it's a polynomial relationship
-
-ggplot(seedlings_rest, aes(x = Elevation, y = Total)) +
-  geom_point() +
-  stat_smooth(method = "lm", formula = y ~ x + I(x^2)) +
-  geom_smooth(method = "lm") +
-  facet_wrap(~SizeClass, scales = "free")
-
-# no evidence of a polynomial relationship, include as a linear term
+plot(mantree_comm_rest$total_saplings ~ mantree_comm_rest$Elevation) # not obviously non-linear
 ```
 
 Next, create a model.
@@ -823,26 +877,21 @@ Next, create a model.
 
 -   Include an offset for Quadrat_size_m2
 
--   Include a reduced rank covariance factor controlling for the fact that counts of each sizeclass within a quadrat may not be independent
-
 ```{r Model_building}
-M3.1 <- glmmTMB(Count ~ SizeClass * (Estuary * Elevation + poly(YSR, 2)) + (1|Site/Combo) + rr(SizeClass+0|Combo, d = 2) + offset(log(Quadrat_size_m2)), family = "poisson",data = seedlings_rest)
 
-resid <- residuals(simulateResiduals(M3.1), quantileFunction = qnorm, outlierValues = c(-7,7))
-scatter.smooth(predict(M3.1, re.form = NA), resid) 
-plotQQunif(M3.1)
+M3.1 <- glmmTMB(total_saplings ~ Estuary * Elevation + poly(YSR, 2) + (1|Site) + offset(log(Quadrat_size_m2)), family = "poisson",data = mantree_comm_rest)  
 
-# looks great
+resid <- residuals(simulateResiduals(M3.1), quantileFunction = qnorm, outlierValues = c(-7,7)) 
+scatter.smooth(predict(M3.1, re.form = NA), resid)  
+plotQQunif(M3.1)  # looks weird  
 
-M3.2 <- glmmTMB(Count ~ SizeClass * (Estuary * Elevation + poly(YSR, 2)) + (1|Site/Combo) + rr(SizeClass+0|Combo, d = 2) + offset(log(Quadrat_size_m2)), family = "nbinom2",data = seedlings_rest)
+M3.2 <- glmmTMB(total_saplings ~ Estuary * Elevation + poly(YSR, 2) + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2",data = mantree_comm_rest)  
 
-resid <- residuals(simulateResiduals(M3.2), quantileFunction = qnorm, outlierValues = c(-7,7))
-scatter.smooth(predict(M3.2, re.form = NA), resid) 
-plotQQunif(M3.2)
+resid <- residuals(simulateResiduals(M3.2), quantileFunction = qnorm, outlierValues = c(-7,7)) 
+scatter.smooth(predict(M3.2, re.form = NA), resid)  
+plotQQunif(M3.2)  # looks better  
 
-# looks almost identical
-
-anova(M3.1,M3.2) # no difference between the models, therefore use M3.1 with slightly lower AIC
+anova(M3.1,M3.2) # M3.2 looks better and has a singificantly lower AIC, therefore use M3.2 
 ```
 
 Next, test the model.
@@ -850,21 +899,22 @@ Next, test the model.
 -   Use an anova to test it against two null models that lack the polynomial YSR and lack YSR altogether
 
 ```{r Model_testing}
-M3.1 <- glmmTMB(Count ~ SizeClass * (Estuary * Elevation + poly(YSR, 2)) + (1|Site/Combo) + rr(SizeClass+0|Combo, d = 2) + offset(log(Quadrat_size_m2)), family = "poisson",data = seedlings_rest)
 
-M <- glmmTMB(Count ~ SizeClass * (Estuary * Elevation + YSR) + (1|Site/Combo) + rr(SizeClass+0|Combo, d = 2) + offset(log(Quadrat_size_m2)), family = "poisson",data = seedlings_rest)
+M3.2 <- glmmTMB(Saplings ~ Estuary * Elevation + poly(YSR, 2) + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2",data = mantree_comm_rest)
 
-M0 <- glmmTMB(Count ~ SizeClass * (Estuary * Elevation) + (1|Site/Combo) + rr(SizeClass+0|Combo, d = 2) + offset(log(Quadrat_size_m2)), family = "poisson",data = seedlings_rest)
+M <- glmmTMB(Saplings ~ Estuary * Elevation + YSR + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2",data = mantree_comm_rest)
 
-anova(M3.1,M,M0)
+M0 <- glmmTMB(Saplings ~ Estuary * Elevation + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2",data = mantree_comm_rest)
 
-joint_tests(M3.1)
+anova(M3.2,M,M0)  
 
-summary(M3.1)
+joint_tests(M3.2)  
 
-em <- emmeans(M3.1, ~ YSR | SizeClass, at = list(YSR = c(5,9,12,16,30,33)), type = "response", offset = log(100))
+summary(M3.2)  
 
-em
+em <- emmeans(M3.2, ~ YSR, at = list(YSR = c(5,9,12,16,30,33)), type = "response", offset = log(100))  
+
+em  
 
 plot(em)
 ```
@@ -872,12 +922,47 @@ plot(em)
 Finally, plot the results.
 
 ```{r Plot}
+emmip(M3.2, ~ YSR, at = list(YSR = c(5:33)), type = "response", CIs = TRUE, offset = log(100)) +    
+  geom_boxplot(data = mantree_comm_rest, aes(x = YSR, y = total_saplings, group = YSR)) 
 
-emmip(M3.1, ~ YSR | SizeClass, at = list(YSR = c(5:33)), type = "response", CIs = TRUE, offset = log(100))
+# restoring sites YSR
+m_sap_rest <- ggplot(mantree_comm_rest, aes(x=YSR, y=total_saplings, fill=Estuary, group = YSR)) +
+    geom_boxplot(width = 2) +
+  geom_jitter() +
+    scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A") +
+    theme_classic() +
+    theme(legend.position = "none",
+          axis.text = element_text(size = 24),
+          axis.title = element_text(size = 28)) +
+  xlab("Years since restoration") +
+  ylab("Number of saplings per 100m2") +
+  xlim(0,35) +
+  ylim(0,450)
+m_sap_rest
 
-emmip(M3.1, ~ YSR | SizeClass, at = list(YSR = c(5:33)), type = "response", CIs = TRUE, offset = log(100)) + 
-  geom_boxplot(data = seedlings_rest, aes(x = YSR, y = Total, group = YSR)) + ylim(0,4000)
+# natural sites
+m_sap_nat <- ggplot(mantree_comm_nat, aes(x=Site, y=total_saplings, fill=Estuary, group = Site)) +
+    geom_boxplot(width = 0.4) +
+  geom_jitter(width = 0.1) +
+    scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A") +
+    theme_classic() +
+    theme(legend.text = element_text(size = 20),
+          legend.title = element_text(size = 24),
+          axis.text = element_text(size = 24),
+          axis.text.y = element_blank(), # remove y axis labels when combining plot with restored
+          axis.title = element_text(size = 28)) +
+  xlab("Site") +
+  ylab("") +
+  ylim(0,450)
+m_sap_nat
+
+# plot natural and restored together
+ggarrange(m_sap_rest,m_sap_nat,ncol =2,nrow=1,widths = c(1.2,1))
+
+ggsave("C:/Users/z5204897/OneDrive - UNSW/Desktop/PhD/Data_analysis/Project/Functional_traits/Output/Mangrove_saplings.jpg", width = 4000, height = 3000, units = "px")
 ```
+
+## 
 
 ## 2c. Number of hollows
 
@@ -1817,6 +1902,29 @@ boxplot(mantree_comm$Elevation ~ mantree_comm$rest_status)
 boxplot(mantree_comm$Elevation ~ mantree_comm$Estuary)   
 ```
 
+Also test for differences between elevation of natural vs restored mangrove sites.
+
+```{r Elevation model}
+M17.5 <- glmmTMB(Elevation ~ Estuary + rest_status + (1|Site), data = mantree_comm)
+
+resid <- residuals(simulateResiduals(M17.5), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M17.5,re.form = NA), resid) 
+plotQQunif(M17.5)
+# all look good
+
+M0 <- glmmTMB(Elevation ~ Estuary + (1|Site), data = mantree_comm)
+
+anova(M17.5,M0)
+
+em <- emmeans(M17.5, ~ rest_status, at = list(rest_status = c(0,1)))
+
+em
+
+plot(em)
+
+joint_tests(M17.5)
+```
+
 Also, investigate the occurrence of each species at natural and restoration sites.
 
 -   Red mangroves only exist at natural sites in the Maroochy, so we can't include them - create a dataframe that only has the other three species. River and Orange mangroves are only in the Maroochy, but there are 2 restored and 2 natural sites of each, so we can analyse these data, with the limitation that they're based on a limited number of sites and only one estuary. This affects the following traits:
@@ -1910,7 +2018,7 @@ Finally, plot the results.
 emmip(M18, ~ rest_status | Estuary, type = "response", CIs = TRUE, engine = "ggplot", xlab = "Restoration status", ylab = "Number of trees per 10m2", offset = log(100))
 ```
 
-## 3b. Number of saplings/seedlings
+## 3bi. Number of saplings
 
 First, prepare and explore the data:
 
@@ -1919,14 +2027,13 @@ First, prepare and explore the data:
 -   Plot relationships between the response and each quantitative predictor variable to decide whether we need to include any polynomial terms in the model
 
 ```{r Prep/explore}
-hist(seedlings$Total)
+hist(mantree_comm$total_saplings)
 
-ggplot(seedlings, aes(x = Total)) +
-  geom_histogram() +
-  facet_wrap(~SizeClass)
+plot(mantree_comm$total_saplings ~ mantree_comm$rest_status)
+ggplot(mantree_comm, aes(y = total_saplings, group = as.factor(rest_status))) +
+  geom_boxplot()
 
-plot(seedlings$Total ~ seedlings$rest_status)
-plot(seedlings$Total ~ seedlings$Elevation) # not obviously non-linear
+plot(mantree_comm$total_saplings ~ mantree_comm$Elevation) # not obviously non-linear
 ```
 
 Next, create a model.
@@ -1941,24 +2048,22 @@ Next, create a model.
 
 -   Check assumptions using resid and scatter.smooth, plotQQunif and check_collinearity with a model without interactions
 
--   Include a reduced rank covariance factor controlling for the fact that counts of each sizeclass within a quadrat may not be independent
-
 ```{r Model_building}
-M19 <- glmmTMB(Total ~ Elevation + SizeClass * (Estuary + rest_status + Estuary:rest_status) + rr(SizeClass+0|Combo, d = 2) + (1|Site) + offset(log(Quadrat_size_m2)), family = "poisson", data = seedlings)
+M19 <- glmmTMB(Saplings ~ Elevation + Estuary + rest_status + Estuary:rest_status + (1|Site) + offset(log(Quadrat_size_m2)), family = "poisson", data = mantree_comm)
 
 resid <- residuals(simulateResiduals(M19), quantileFunction = qnorm, outlierValues = c(-7,7))
 scatter.smooth(predict(M19,re.form = NA), resid) 
 plotQQunif(M19)
 
-# looks terrible (has a trend), try negative binomial
+# doesn't look great (has a trend), try negative binomial
 
-M19 <- glmmTMB(Total ~ Elevation + SizeClass * (Estuary + rest_status + Estuary:rest_status) + rr(SizeClass+0|Combo, d = 2) + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = seedlings)
+M19 <- glmmTMB(Saplings ~ Elevation + Estuary + rest_status + Estuary:rest_status + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm)
 
 resid <- residuals(simulateResiduals(M19), quantileFunction = qnorm, outlierValues = c(-7,7))
 scatter.smooth(predict(M19,re.form = NA), resid) 
 plotQQunif(M19)
 
-# looks great! use this one
+# looks better! use this one
 ```
 
 Next, test the model:
@@ -1967,11 +2072,11 @@ Next, test the model:
 -   The CI for saplings at each restoration status are non-overlapping
 
 ```{r Model_testing}
-M19 <- glmmTMB(Total ~ Elevation + SizeClass * (Estuary + rest_status + Estuary:rest_status) + rr(SizeClass+0|Combo, d = 2) + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = seedlings)
+M19 <- glmmTMB(Saplings ~ Elevation + Estuary + rest_status + Estuary:rest_status + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm)
 
-M <- glmmTMB(Total ~ Elevation + SizeClass * (Estuary + rest_status) + rr(SizeClass+0|Combo, d = 2) + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = seedlings)
+M <- glmmTMB(Saplings ~ Elevation + Estuary + rest_status + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm)
 
-M0 <- glmmTMB(Total ~ Elevation + SizeClass * (Estuary + rest_status) + rr(SizeClass+0|Combo, d = 2) + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = seedlings)
+M0 <- glmmTMB(Saplings ~ Elevation + Estuary + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm)
 
 anova(M19,M,M0)    
 
@@ -1979,7 +2084,7 @@ joint_tests(M19)
 
 summary(M19)  
 
-emmeans(M19, ~ rest_status | SizeClass, type = "response", offset = log(100))  
+emmeans(M19, ~ rest_status, type = "response", offset = log(100))  
 ```
 
 Finally, plot the results.
