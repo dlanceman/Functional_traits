@@ -1046,7 +1046,7 @@ S_Bur_rest <- ggplot(salt_comm_rest, aes(x=YSR, y=(Burrows_0.5x0.5+0.01), group 
           axis.title = element_text(size = 28)) +
   xlab("Years since restoration") +
   ylab("Number of burrows") +
-  xlim(0,35)  + ylim(0,62)
+  xlim(0,35)  + ylim(0,80)
 S_Bur_rest
 
 S_Bur_nat <- ggplot(salt_comm_nat, aes(x=Site, y=Burrows_0.5x0.5, fill=Estuary, group = Site)) +
@@ -1061,10 +1061,12 @@ S_Bur_nat <- ggplot(salt_comm_nat, aes(x=Site, y=Burrows_0.5x0.5, fill=Estuary, 
   xlab("Site") +
   ylab("")  +
   #scale_y_log10() + 
-  ylim(0,62)
+  ylim(0,80)
 S_Bur_nat
 
 ggarrange(S_Bur_rest,S_Bur_nat,ncol =2,nrow=1,widths = c(3,1))
+
+ggsave("C:/Users/z5204897/OneDrive - UNSW/Desktop/PhD/Data_analysis/Project/Functional_traits/Output/Saltmarsh_burrows.jpg", width = 4000, height = 2500, units = "px")
 
 burrplot <- emmip(M3, ~ YSR, at = list(YSR = c(6:33)), type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Number of burrows") +
   geom_jitter(aes(x = YSR, y = Burrows_0.5x0.5), data = salt_comm_rest_H) +
@@ -1549,7 +1551,6 @@ Explore
 reprod_proportions <- reprod_long %>% 
   group_by(Site, Species, reprod_type) %>% 
   summarise(avg = mean(Reproduction), 
-            se = sd(Reproduction)/sqrt(n()), 
             YSR = mean(YSR)) %>% 
   ungroup()
 
@@ -1686,16 +1687,18 @@ From this, we can conclude:
 Also, test for differences in the elevations of natural and restored sites using a model.
 
 ```{r Elevation_model}
-M8.5 <- glmmTMB(Elevation ~ DomSpeciesSuperSimp + rest_status + (1|Site), family = "gaussian", data = salt_comm)
+M8.5 <- glmmTMB(Elevation ~ DomSpeciesSuperSimp + rest_status + Estuary + (1|Site), family = "gaussian", data = salt_comm)
 
 # check assumptions
 resid <- residuals(simulateResiduals(M8.5), quantileFunction = qnorm, outlierValues = c(-7,7))
 scatter.smooth(predict(M8.5,re.form = NA), resid) 
 plotQQunif(M8.5)
 
-M0 <- glmmTMB(Elevation ~ DomSpeciesSuperSimp + (1|Site), family = "gaussian", data = salt_comm)
+M0 <- glmmTMB(Elevation ~ DomSpeciesSuperSimp + Estuary + (1|Site), family = "gaussian", data = salt_comm)
 
 anova(M8.5,M0)
+
+emmeans(M8.5, ~ rest_status, type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Elevation (m)")
 
 emmip(M8.5, ~ rest_status, type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Elevation (m)")
 ```
@@ -2505,4 +2508,6 @@ rest_rep <- emmip(M8, ~ YSR , at = list(YSR = c(6:33), Species = "Sporobolus", r
 rest_rep
 
 ggarrange(rest_rep, nat_rep, nrow = 1, ncol = 2, widths = c(3,1))
+
+ggsave("C:/Users/z5204897/OneDrive - UNSW/Desktop/PhD/Data_analysis/Project/Functional_traits/Output/Saltmarsh_reproduction.jpg", width = 2000, height = 1250, units = "px")
 ```
