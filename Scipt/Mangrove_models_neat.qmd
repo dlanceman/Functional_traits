@@ -113,6 +113,15 @@ mantree <- read_excel("Data/Functional_traits_combined_data.xlsx", sheet = "Mang
            Site == "DLW" ~ as.numeric("9"),
            Site == "CCW" ~ as.numeric("16"),
            Site == "YCW" ~ as.numeric("5")))
+
+
+mantree <- mantree %>% mutate(ln_total_trees = log(total_trees),
+                              sq_total_trees = sqrt(total_trees),
+                              ln_total_sap = log(total_saplings + 0.01),
+                              sq_total_sap = sqrt(total_saplings))
+
+mantree_comm <- mantree %>% distinct(Combo, .keep_all = TRUE)
+mantree_comm <- mantree_comm[,-c(18:22,24)]
 ```
 
 Also load **mangrove subquadrat data** - these are data from two 1 x 1 m subquadrats that were sampled within each larger 10 x 10 m or 5 x 5 m quadrat.
@@ -439,11 +448,6 @@ manq$Elevation[31:50] <- 0.732
 
 mantree$Height_m[15] <- NA 
 
-mantree <- mantree %>% mutate(ln_total_trees = log(total_trees),
-                              sq_total_trees = sqrt(total_trees),
-                              ln_total_sap = log(total_saplings + 0.01),
-                              sq_total_sap = sqrt(total_saplings))
-
 manq <- manq %>% mutate(ln_seedling = log(`Seedlings_30-100cm_1x1` + 0.01),
                         sq_seedling = sqrt(`Seedlings_30-100cm_1x1`))
 ```
@@ -457,8 +461,7 @@ Also, subset data:
 -   Create trees-only dataframes for mangrove leaves
 
 ```{r Subset}
-mantree_comm <- mantree %>% distinct(Combo, .keep_all = TRUE)
-mantree_comm <- mantree_comm[,-c(18:22,24)]
+
 manq_comm <- manq %>% distinct(Combo,Pneu_0.5x0.5, .keep_all = TRUE)
 
 # Hunter only
@@ -1811,10 +1814,15 @@ hist(manleaf_wide_grey_rest$LMA) # approx normal distribution
 plot(manleaf_wide_grey_rest$LMA ~ manleaf_wide_grey_rest$YSR)
 
 plot(manleaf_wide_grey_rest$LMA ~ manleaf_wide_grey_rest$Elevation)
-ggplot(manleaf_wide_grey_rest, aes(x = Elevation, y = LMA)) +
+ggplot(manleaf_wide_grey_rest, aes(x = Elevation, y = LMA, color = Estuary)) +
   geom_point() +
   geom_smooth(method = "lm") +
   stat_smooth(method = "lm", formula = y ~ x + I(x^2))
+ggplot(manleaf_wide_grey_rest, aes(x = Elevation, y = LMA, color = YSR)) +
+  geom_point()
+
+boxplot(manleaf_wide_grey_rest$LMA ~ manleaf_wide_grey_rest$Estuary)
+boxplot(manleaf_wide_grey_rest$LMA ~ manleaf_wide_grey_rest$Tree_sapling)
 ```
 
 Next, create a model.
@@ -1857,7 +1865,21 @@ emmeans(M14, ~YSR, at = list(YSR = c(5,9,12,16,30,33)))
 Finally, plot the results.
 
 ```{r Plot}
-emmip(M14, ~YSR, at = list(YSR = c(5,9,12,16,30,33)))
+emmip(M14, ~YSR, at = list(YSR = c(5,9,12,16,30,33))) +
+  geom_boxplot(data = manleaf_wide_grey_rest, aes(x = YSR, y = LMA, group = YSR, color = Estuary))
+
+# the boxplots do not align with the trend. Try plotting without elevation to see if that could be influencing the results
+
+M14.1 <- glmmTMB(LMA ~ Estuary + Tree_sapling + YSR + (1|Site/Combo/Tree_ID), family = "gaussian", data = manleaf_wide_grey_rest)
+emmip(M14.1, ~YSR, at = list(YSR = c(5,9,12,16,30,33))) +
+  geom_boxplot(data = manleaf_wide_grey_rest, aes(x = YSR, y = LMA, group = YSR))
+
+# less steep slope but still a trend. try removing other variables to see their impact
+
+M14.2 <- glmmTMB(LMA ~ Tree_sapling + YSR + (1|Site/Combo/Tree_ID), family = "gaussian", data = manleaf_wide_grey_rest)
+emmip(M14.2, ~YSR, at = list(YSR = c(5,9,12,16,30,33))) +
+  geom_boxplot(data = manleaf_wide_grey_rest, aes(x = YSR, y = LMA, group = YSR))
+
 ```
 
 ## 2o. Leaf area
@@ -2779,6 +2801,11 @@ hist(log(mantree_nored$Height_m)) # slightly left skewed
 plot(mantree_nored$Height_m ~ mantree_nored$rest_status)
 plot(mantree_nored$Height_m ~ mantree_nored$Elevation) # not obviously non-linear
 
+ggplot(mantree_nored, aes(x = rest_status, y = Height_m, group = rest_status)) +
+  geom_boxplot() 
+
+ggplot(mantree_nored, aes(x = Site, y = Height_m, group = Site, fill = rest_status, color = Estuary)) +
+  geom_boxplot() 
 ```
 
 Next, create a model.
@@ -2972,6 +2999,12 @@ plot(manq$Pneu_ht_mm ~ manq$Elevation)
 ggplot(manq, aes(x = Elevation, y = Pneu_ht_mm)) +
   geom_point() +
   geom_smooth() # potentially non linear, include as polynomial variable
+
+ggplot(manq, aes(x = rest_status, y = Pneu_ht_mm, group = rest_status)) +
+  geom_boxplot() 
+
+ggplot(manq, aes(x = Site, y = Pneu_ht_mm, group = Site, fill = rest_status, color = Estuary)) +
+  geom_boxplot() 
 ```
 
 Next, create a model.
@@ -3249,7 +3282,7 @@ Next, create a model.
 
 -   Include Elevation and Estuary as additional fixed predictor variables and Tree nested within Quadrat (Combo) nested within Site as a random effect
 
-    -    can't include elevation \* estuary interaction as this model had a model convergence problem
+    -   can't include elevation \* estuary interaction as this model had a model convergence problem
 
 -   Check assumptions using resid and scatter.smooth, plotQQunif and check_collinearity with a model without interactions
 
