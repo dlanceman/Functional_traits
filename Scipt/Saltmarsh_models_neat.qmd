@@ -2590,18 +2590,6 @@ ggsave("C:/Users/z5204897/OneDrive - UNSW/Desktop/PhD/Data_analysis/Project/Func
 
 emmeans(M8, ~ YSR, at = list(YSR = c(6,11,12,16,30,33), Species = "Sporobolus", reprod_type = "Seeds"), type = "response")
 
-S_Reprod_rest2 <- ggplot(data = reprod_all_long, aes(x = YSR, y = Burrows_0.5x0.5)) +
-  geom_jitter(alpha = 0.5) +
-  geom_point(data = data.frame(em), aes(y = response), group = NA, colour = "black", shape = 7, size = 3)+
-  geom_line(data = data.frame(em), aes(y = response), group = 1, colour = "black", linewidth = 0.5) +
-  theme_classic() +
-  theme(legend.position = "none",
-        axis.text = element_text(size = 12),
-        axis.title = element_text(size = 16)) +
-  xlab("Years since restoration") +
-  ylab("Reproduction likelihood") + 
-  scale_color_viridis(discrete = TRUE, begin = 0.3, end = 0.8, option = "A")
-S_Reprod_rest2
 ```
 
 # 4. Species-specific models
@@ -2638,7 +2626,7 @@ plot(stem_dens_rest_spor$total_stems ~ stem_dens_rest_spor$Elevation) # no evide
 Next, create a model.
 
 ```{r Model_building}
-M16 <- glmmTMB(Stems ~ DomSpeciesSuperSimp + sp_prop + Elevation + YSR + offset(log(Quadrat_area)) + (1|Site), family = "nbinom2", data = stem_dens_rest_spor)
+M16 <- glmmTMB(Stems ~ DomSpeciesSuperSimp + Elevation + YSR + offset(log(Quadrat_area)) + (1|Site), family = "nbinom2", data = stem_dens_rest_spor)
 
 resid <- residuals(simulateResiduals(M16), quantileFunction = qnorm, outlierValues = c(-7,7))
 scatter.smooth(predict(M16, re.form = NA), resid) # has a trend
@@ -2646,10 +2634,10 @@ scatter.smooth(predict(M16, re.form = NA), abs(resid))
 plotQQunif(M16) 
 
 # test if polynomial is better
-M16.0 <- glmmTMB(Stems ~ DomSpeciesSuperSimp + sp_prop + Elevation + poly(YSR,2) + offset(log(Quadrat_area)) + (1|Site), family = "nbinom2", data = stem_dens_rest_spor)
+M16.0 <- glmmTMB(Stems ~ DomSpeciesSuperSimp + Elevation + poly(YSR,2) + offset(log(Quadrat_area)) + (1|Site), family = "nbinom2", data = stem_dens_rest_spor)
 anova(M16,M16.0) # no better, stick with linear
 
-M16.1 <- glmmTMB(Stems ~ DomSpeciesSuperSimp + sp_prop +  Elevation + YSR + offset(log(Quadrat_area)) + (1|Site), family = "poisson", data = stem_dens_rest_spor)
+M16.1 <- glmmTMB(Stems ~ DomSpeciesSuperSimp + Elevation + YSR + offset(log(Quadrat_area)) + (1|Site), family = "poisson", data = stem_dens_rest_spor)
 
 resid <- residuals(simulateResiduals(M16.1), quantileFunction = qnorm, outlierValues = c(-7,7))
 scatter.smooth(predict(M16.1, re.form = NA), resid) # worse than above

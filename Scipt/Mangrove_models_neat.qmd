@@ -568,7 +568,7 @@ Exclude variables if their correlation coefficient is very large (e.g. \>0.7).
 
 -   All manq variables have low to moderate correlations except Litter and Bare which are almost completely negatively correlated - only use one of these
 
--   All manleaf variables have low to moderate correlations except LMA and dfratio which have a correlation of 0.71.. this is not ideal. **Decide what to do**
+-   All manleaf variables have low to moderate correlations except LMA and dfratio which have a correlation of 0.71. This is somewhat high but ok to retain both.
 
 ```{r Correlations}
 t <- cor(mantree[,c(13,19,20,22,27,28,29)], use = "pairwise.complete.obs") 
@@ -583,10 +583,10 @@ u
 manq_numeric <- manq[,c(8,9,11,12,13,16,17)]
 plot(manq_numeric)
 
-v <- cor(manleafandherb[,c(11,12,13,14,15,17)], use = "pairwise.complete.obs")
+v <- cor(manleafandherb[,c(11,14,15,17)], use = "pairwise.complete.obs")
 v
 
-manleaf_numeric <- manleafandherb[,c(11,12,13,14,15,17)]
+manleaf_numeric <- manleafandherb[,c(11,14,15,17)]
 plot(manleaf_numeric)
 ```
 
@@ -599,7 +599,7 @@ Before we create any of these models, let's inspect the data space we're working
     -   Therefore we can't model their interaction
     -   However, given there is variability in their relationship, we can still include both terms in models.
 -   relationship between YSR and Estuary
-    -   These are not that overlapping, therefore don't model interaction
+    -   don't include, as there are only 3 data points for each estuary? and the range for each estuary does not overlap much
 -   relationship between Elevation and Estuary
     -   These are quite overlapping, so can include an interaction if we think it's relevant. The effect of elevation could depend on estuary so I think leave interaction in where the model runs.
 
@@ -607,13 +607,14 @@ Before we create any of these models, let's inspect the data space we're working
 plot(mantree_comm_rest$Elevation ~ mantree_comm_rest$YSR)
 boxplot(mantree_comm_rest$Elevation ~ mantree_comm_rest$YSR)
 
+cor(mantree_comm_rest$YSR, mantree_comm_rest$Elevation)
+
 boxplot(mantree_comm_rest$YSR ~ mantree_comm_rest$Estuary) 
 
 boxplot(mantree_comm_rest$Elevation ~ mantree_comm_rest$Estuary) 
 
-ggplot(mantree_comm_rest, aes(y = Elevation, x = YSR)) +
-  geom_point() +
-  facet_wrap(~Estuary)
+ggplot(mantree_comm_rest, aes(y = Elevation, x = YSR, color = Estuary)) +
+  geom_point() 
 ```
 
 The plotted association between YSR and Elevation is interesting, let's model this. We would expect that with restoration age, mangroves would accumulate sediments and therefore increase in elevation.
@@ -659,8 +660,8 @@ m_elev_rest <- ggplot(mantree_comm_rest, aes(x=YSR, y=Elevation, fill=Estuary, g
     scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A") +
     theme_classic() +
     theme(legend.position = "none",
-          axis.text = element_text(size = 24),
-          axis.title = element_text(size = 28)) +
+          axis.text = element_text(size = 16),
+          axis.title = element_text(size = 18)) +
   xlab("Years since restoration") +
   ylab("Elevation (m)") +
   xlim(0,35) +
@@ -674,11 +675,12 @@ m_elev_nat <- ggplot(mantree_comm_nat, aes(x=Site, y=Elevation, fill=Estuary, gr
   geom_jitter(width = 0.1) +
     scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A") +
     theme_classic() +
-    theme(legend.text = element_text(size = 20),
-          legend.title = element_text(size = 24),
-          axis.text = element_text(size = 24),
+    theme(legend.position = c(.5, .15),
+          legend.text = element_text(size = 16),
+          legend.title = element_text(size = 16),
+          axis.text = element_text(size = 16),
           axis.text.y = element_blank(), # remove y axis labels when combining plot with restored
-          axis.title = element_text(size = 28)) +
+          axis.title = element_text(size = 18)) +
   xlab("Site") +
   ylab("") +
   scale_y_continuous(limits = c(-0.45,0.9), breaks = scales::pretty_breaks(n = 6))
@@ -688,6 +690,8 @@ m_elev_nat
 # plot natural and restored together
 ggarrange(m_elev_rest,m_elev_nat,ncol =2,nrow=1,widths = c(1.3,1))
 # print at 1500 x 1200 or 2400 x 800 for preso
+
+#ggsave("C:/Users/z5204897/OneDrive - UNSW/Desktop/PhD/Data_analysis/Project/Functional_traits/Output/Mangrove_elev_doc.jpg", width = 2400, height = 1500, units = "px")
 ```
 
 Also, investigate the occurrence of each species at restoration sites.
@@ -719,7 +723,7 @@ First, prepare and explore the data (note, use total_trees for visualisation and
 ```{r Prep/explore}
 hist(mantree_comm_rest$total_trees) #  right skewed
 
-ggplot(mantree_comm_rest, aes(x = YSR, y = total_trees)) +
+ggplot(mantree_comm_rest, aes(x = YSR, y = total_trees, color = Estuary)) +
   geom_smooth(method = "lm") +
   geom_point() # not obviously non-linear
 
@@ -829,7 +833,6 @@ First, prepare and explore the data.
 -   Use "total_saplings" for plotting purposes and "Saplings" with offset of Quadrat_size_m2 for models
 
 ```{r Prep/explore}
-
 ggplot(mantree_comm_rest, aes(x = total_saplings)) +   
   geom_histogram()  # somewhat right skewed (count data)
 
@@ -867,6 +870,10 @@ scatter.smooth(predict(M3.2, re.form = NA), resid)
 plotQQunif(M3.2)  # looks better  
 
 anova(M3.1,M3.2) # M3.2 looks better and has a singificantly lower AIC, therefore use M3.2 
+
+# check collinearity on model without interactions
+M0 <- glmmTMB(total_saplings ~ Estuary + Elevation + YSR + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2",data = mantree_comm_rest)
+check_collinearity(M0)
 ```
 
 Next, test the model.
@@ -921,7 +928,8 @@ m_sap_nat <- ggplot(mantree_comm_nat, aes(x=Site, y=total_saplings, fill=Estuary
   geom_jitter(width = 0.1) +
     scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A") +
     theme_classic() +
-    theme(legend.text = element_text(size = 20),
+    theme(legend.position = c(0.7,0.9),
+          legend.text = element_text(size = 20),
           legend.title = element_text(size = 24),
           axis.text = element_text(size = 24),
           axis.text.y = element_blank(), # remove y axis labels when combining plot with restored
@@ -934,7 +942,7 @@ m_sap_nat
 # plot natural and restored together
 ggarrange(m_sap_rest,m_sap_nat,ncol =2,nrow=1,widths = c(1.2,1))
 
-ggsave("C:/Users/z5204897/OneDrive - UNSW/Desktop/PhD/Data_analysis/Project/Functional_traits/Output/Mangrove_saplings.jpg", width = 4000, height = 3000, units = "px")
+ggsave("C:/Users/z5204897/OneDrive - UNSW/Desktop/PhD/Data_analysis/Project/Functional_traits/Output/Mangrove_saplings.jpg", width = 4000, height = 2500, units = "px")
 
 ggarrange(m_sap_rest,m_sap_nat,ncol =2,nrow=1,widths = c(3,2.2))
 
@@ -980,6 +988,10 @@ scatter.smooth(predict(M3.4, re.form = NA), resid)
 plotQQunif(M3.4)  # looks similar  
 
 anova(M3.3,M3.4) # M3.4 has significantly lower AIC so use it
+
+# check collinearity on model without interactions
+M0 <- glmmTMB(`Seedlings_<30cm_1x1` ~ Estuary + Elevation + YSR + (1|Site/Combo), data = manq_comm_rest, family = "nbinom2")
+check_collinearity(M0)
 ```
 
 Next, test the model.
@@ -1085,6 +1097,10 @@ scatter.smooth(predict(M3.6, re.form = NA), resid)
 plotQQunif(M3.6)  # residuals plot looks a bit weird, qq plot looks good
 
 anova(M3.5,M3.6) # M3.6 is better so use that. I think the residuls plot is acceptable.
+
+# check collinearity on model without interactions
+M0 <- glmmTMB(`Seedlings_30-100cm_1x1` ~ Estuary + Elevation + YSR + (1|Site/Combo), data = manq_comm_rest, family = "nbinom2")
+check_collinearity(M0)
 ```
 
 Next, test the model.
@@ -1175,6 +1191,13 @@ anova(M4.1,M4.3,M4.2,M4.4)
 # this does show the negative binomial models are better than the poisson models
 # given there's no difference between the two negative binomial models, use the simpler (non-zero-inflated) model - M4.2
 
+# try without elevation
+M4.21 <- glmmTMB(Hollows ~ Estuary + YSR + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm_rest)
+
+resid <- residuals(simulateResiduals(M4.21), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M4.21,re.form = NA), resid) 
+plotQQunif(M4.21)
+# plots look good
 ```
 
 Next, test the model.
@@ -1194,6 +1217,20 @@ em
 plot(em) 
 
 joint_tests(M4.2)
+
+# without elevation
+M4.21 <- glmmTMB(Hollows ~ Estuary + YSR + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm_rest)
+M0 <- glmmTMB(Hollows ~ Estuary + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm_rest)
+
+anova(M4.21, M0)
+
+em <- emmeans(M4.21, ~ YSR, at = list(YSR = c(5:33)), type = "response")
+
+em
+
+plot(em) 
+
+joint_tests(M4.21)
 ```
 
 Finally, plot the results.
@@ -1317,6 +1354,10 @@ scatter.smooth(predict(M6.2,re.form = NA), resid)
 plotQQunif(M6.2)
 
 anova(M6.1,M6.2)
+
+# check collinearity on model without interactions
+M0 <- glmmTMB(Stems ~ Estuary + Elevation + YSR + (1|Site/Combo), family = "poisson", data = mantree_grey_rest)
+check_collinearity(M0)
 ```
 
 Next, test the model.
@@ -1460,6 +1501,15 @@ anova(M8.1,M8.2,M8.3)
 
 M <- glmmTMB(sqrt(Height_m) ~ Estuary + Estuary + YSR + (1|Site/Combo), family = "gaussian", data = mantree_grey_rest)
 check_collinearity(M)
+
+# try without elevation
+M8.31 <- glmmTMB(log(Height_m) ~ Estuary + poly(YSR,2) + (1|Site/Combo), family = "gaussian", data = mantree_grey_rest)
+
+resid <- residuals(simulateResiduals(M8.31), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M8.31,re.form = NA), resid) 
+scatter.smooth(predict(M8.31,re.form = NA), abs(resid)) 
+plotQQunif(M8.31)
+# residuals plot fine but not great
 ```
 
 Next, test the model.
@@ -1483,13 +1533,36 @@ em
 plot(em)
 
 emmeans(M8.3, ~ YSR | Estuary, at = list(YSR = c(5,9,12,16,30,33)), type = "response")
+
+# try without elevation
+
+M8.31 <- glmmTMB(log(Height_m) ~ Estuary + poly(YSR,2) + (1|Site/Combo), family = "gaussian", data = mantree_grey_rest)
+M <- glmmTMB(log(Height_m) ~ Estuary + YSR + (1|Site/Combo), family = "gaussian", data = mantree_grey_rest)
+M0 <- glmmTMB(log(Height_m) ~ Estuary + (1|Site/Combo), family = "gaussian", data = mantree_grey_rest)
+
+anova(M8.31,M,M0)
+
+joint_tests(M8.31)
+
+summary(M8.31)
+
+em <- emtrends(M8.31, var = "YSR")
+
+
+em
+
+plot(em)
+
+emmeans(M8.31, ~ YSR | Estuary, at = list(YSR = c(5,9,12,16,30,33)), type = "response")
 ```
 
 Finally, plot the results.
 
 ```{r Plot}
-
 emmip(M8.3, ~ YSR, at = list(YSR = c(5:33)), type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Tree height") +
+  geom_boxplot(data = mantree_grey_rest, aes(x = YSR, y = Height_m, group = YSR))
+
+emmip(M8.31, ~ YSR, at = list(YSR = c(5:33)), type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Tree height") +
   geom_boxplot(data = mantree_grey_rest, aes(x = YSR, y = Height_m, group = YSR))
 ```
 
@@ -1536,6 +1609,17 @@ scatter.smooth(predict(M9.3,re.form = NA), resid)
 plotQQunif(M9.3)
 
 anova(M9.1,M9.2,M9.3)
+
+# check collinearity on model without interactions
+M0 <- glmmTMB(Pneu_0.5x0.5 ~ Estuary + Elevation + YSR + (1|Site/Combo), data = manq_comm_rest, family = "gaussian")
+check_collinearity(M0)
+
+# try without elevation
+M9.11 <- glmmTMB(Pneu_0.5x0.5 ~ Estuary + YSR + (1|Site/Combo), data = manq_comm_rest, family = "gaussian")
+
+resid <- residuals(simulateResiduals(M9.11), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M9.11,re.form = NA), resid) 
+plotQQunif(M9.11) # residuals plots don't look great
 ```
 
 Next, test the model.
@@ -1553,6 +1637,17 @@ anova(M9.1,M0)
 joint_tests(M9.1)
 
 emmeans(M9.1, ~ YSR | Estuary, at = list(YSR = c(5,9,12,16,30,33)), type = "response")
+
+# without elevation
+
+M9.11 <- glmmTMB(Pneu_0.5x0.5 ~ Estuary + YSR + (1|Site/Combo), data = manq_comm_rest, family = "gaussian")
+M0 <- glmmTMB(Pneu_0.5x0.5 ~ Estuary + (1|Site/Combo), data = manq_comm_rest, family = "gaussian")
+
+anova(M9.11,M0)
+
+joint_tests(M9.11)
+
+emmeans(M9.11, ~ YSR | Estuary, at = list(YSR = c(5,9,12,16,30,33)), type = "response")
 ```
 
 Finally, plot the results.
@@ -1608,6 +1703,10 @@ scatter.smooth(predict(M10.2,re.form = NA), resid)
 plotQQunif(M10.2)
 
 anova(M10.1,M10.2)
+
+# check collinearity on model without interactions
+M0 <- glmmTMB(sqrt(Pneu_ht_mm) ~ Estuary + Elevation + YSR + (1|Site/Combo/Subquadrat), data = manq_rest, family = "gaussian")
+check_collinearity(M0)
 ```
 
 Next, test the model.
@@ -1706,6 +1805,10 @@ scatter.smooth(predict(M11.3,re.form = NA), resid)
 plotQQunif(M11.3)
 
 anova(M11.1,M11.2,M11.3)
+
+# check collinearity on model without interactions
+M0 <- glmmTMB(sqrt(Pneu_dia_mm) ~ Estuary + Elevation + YSR + (1|Site/Combo/Subquadrat), family = "gaussian", data = manq_rest)
+check_collinearity(M0)
 ```
 
 Next, test the model.
@@ -1772,6 +1875,10 @@ scatter.smooth(predict(M13.2,re.form = NA), resid) # looks great
 plotQQunif(M13.2)
 
 anova(M13,M13.2)
+
+# check collinearity on model without interactions
+M0 <- glmmTMB(dfratio ~ Estuary + Elevation + Tree_sapling + YSR + (1|Site/Combo/Tree), family = "gaussian", data = manleaf_wide_grey_rest)
+check_collinearity(M0)
 ```
 
 Next, test the model.
@@ -1830,11 +1937,11 @@ Next, create a model.
 -   try with estuary/elevation interaction - it improves the model, so keep it
 
 ```{r Model_building}
-M14 <- glmmTMB(LMA ~ Estuary + poly(Elevation,2) + Tree_sapling + YSR + (1|Site/Combo/Tree_ID), family = "gaussian", data = manleaf_wide_grey_rest)
+M14 <- glmmTMB(LMA ~ Estuary + poly(Elevation,2) + Tree_sapling + YSR + (1|Site/Combo/Tree_ID), family = "gaussian", data = manleaf_wide_grey_rest) # error
 
 resid <- residuals(simulateResiduals(M14), quantileFunction = qnorm, outlierValues = c(-7,7))
 scatter.smooth(predict(M14,re.form = NA), resid) 
-plotQQunif(M14)
+plotQQunif(M14) 
 
 M14.2 <- glmmTMB(LMA ~ Estuary * poly(Elevation,2) + Tree_sapling + YSR + (1|Site/Combo/Tree_ID), family = "gaussian", data = manleaf_wide_grey_rest)
 
@@ -1844,7 +1951,11 @@ plotQQunif(M14.2)
 
 anova(M14,M14.2)
 
-# assumptions plots look good, warning message is ok
+# assumptions plots for 14.2 look good, warning message is ok
+
+# check collinearity on model without interactions
+M0 <- glmmTMB(LMA ~ Estuary + Elevation + Tree_sapling + YSR, family = "gaussian", data = manleaf_wide_grey_rest)
+check_collinearity(M0)
 ```
 
 Next, test the model.
@@ -1924,6 +2035,10 @@ plotQQunif(M15)
 anova(M,M15)
 
 # it can't compare models because the top one has a model convergence problem. Given the bottom one looks better and doesn't have this issue, use it.
+
+# check collinearity on model without interactions
+M0 <- glmmTMB(log(Area) ~ Estuary + Elevation + Tree_sapling + YSR + (1|Site/Combo/Tree), family = "gaussian", data = manleaf_wide_grey_rest)
+check_collinearity(M0)
 ```
 
 Next, test the model.
@@ -1966,6 +2081,12 @@ manleaf_wide_grey_rest <- manleaf_wide_grey_rest %>%
     .default = `Herb_%`/100
   ))
 
+manleaf_wide_grey_rest_t <- manleaf_wide_grey_rest_t %>% 
+  mutate(Herb_prop = case_when(
+    `Herb_%` == 0 ~ 0.00001,
+    .default = `Herb_%`/100
+  ))
+
 hist(manleaf_wide_grey_rest$Herb_prop) # highly right skewed
 
 plot(manleaf_wide_grey_rest$Herb_prop ~ manleaf_wide_grey_rest$YSR) # not obviously non-linear
@@ -1998,6 +2119,10 @@ plotQQunif(M16.2)
 anova(M16,M16.2)
 
 # tweedie distribution is better than beta - qq plot still looks weird but it's less weird than the beta model and the residuals plot is good at least
+
+# check collinearity on model without interactions
+M0 <- glmmTMB(Herb_prop ~ Estuary + Elevation + YSR + (1|Site/Combo/Tree), family = "tweedie", data = manleaf_wide_grey_rest_t)
+check_collinearity(M0)
 ```
 
 Next, test the model.
@@ -2160,6 +2285,10 @@ scatter.smooth(predict(M18,re.form = NA), resid)
 plotQQunif(M18)
 
 # these residuals look fine, use this model
+
+# check collinearity on a model without interactions
+M0 <- glmmTMB(Trees ~ Estuary + Elevation + rest_status + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm)
+check_collinearity(M0)
 ```
 
 Next, test the model:
@@ -2235,6 +2364,10 @@ scatter.smooth(predict(M19,re.form = NA), resid)
 plotQQunif(M19)
 
 # still not amazing but looks better! use this one
+
+# check collinearity on a model without interactions
+M0 <- glmmTMB(Saplings ~ Elevation + Estuary + rest_status + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm)
+check_collinearity(M0)
 ```
 
 Next, test the model:
@@ -2311,6 +2444,10 @@ scatter.smooth(predict(M19.3,re.form = NA), resid)
 plotQQunif(M19.3)
 
 # looks better! use this one
+
+# check collinearity on a model without interactions
+M0 <- glmmTMB(`Seedlings_<30cm_1x1` ~ Elevation + Estuary + rest_status + (1|Site), family = "nbinom2", data = manq_comm)
+check_collinearity(M0)
 ```
 
 Next, test the model:
@@ -2386,6 +2523,10 @@ scatter.smooth(predict(M19.5,re.form = NA), resid)
 plotQQunif(M19.5)
 
 # looks better! use this one
+
+# check collinearity on a model without interactions
+M0 <- glmmTMB(`Seedlings_30-100cm_1x1` ~ Elevation + Estuary + rest_status + (1|Site), family = "nbinom2", data = manq_comm)
+check_collinearity(M0)
 ```
 
 Next, test the model:
@@ -2463,6 +2604,10 @@ plotQQunif(M20.2)
 # these both look fine so don't need to investigate zero-inflated models. 
 
 anova(M20.1,M20.2) # use the negative binomial model
+
+# check collinearity on a model without interactions
+M0 <- glmmTMB(Hollows ~ Estuary + Elevation + rest_status + offset(log(Quadrat_size_m2)) + (1|Site), family = "nbinom2", data = mantree_comm)
+check_collinearity(M0)
 ```
 
 Next, test the model:
@@ -2544,6 +2689,10 @@ plotQQunif(M21.2)
 anova(M21,M21.2)
 
 # no difference between these so stick with simpler model without interaction
+
+# check collinearity on a model without interactions
+M0 <- glmmTMB(Cover_prop ~ Estuary + Elevation + rest_status + (1|Site), family = "beta_family", data = mantree_comm)
+check_collinearity(M0)
 ```
 
 Next, test the model:
@@ -2588,6 +2737,10 @@ hist(mantree_nored$Stems) # highly right skewed (count data)
 
 plot(mantree_nored$Stems ~ mantree_nored$rest_status)
 plot(mantree_nored$Stems ~ mantree_nored$Elevation) # not obviously non-linear
+
+ggplot(mantree_nored, aes(x = Site, y = Stems, color = Estuary, fill = rest_status)) +
+  geom_boxplot() +
+  facet_wrap(~Species)
 ```
 
 Next, create a model.
@@ -2634,6 +2787,10 @@ scatter.smooth(predict(M21.8,re.form = NA), resid)
 plotQQunif(M21.8)
 
 anova(M21.7,M21.8,M21.6) # neither improves the model, stick with 21.6
+
+# check collinearity on a model without interactions
+M0 <- glmmTMB(Stems ~ Estuary + Elevation + Species + rest_status + (1|Site/Combo), family = "nbinom2", data = mantree_nored)
+check_collinearity(M0)
 ```
 
 Next, test the model:
@@ -2688,6 +2845,10 @@ hist(log(mantree_nored$DBH_cm)) # approx normal
 
 plot(mantree_nored$DBH_cm ~ mantree_nored$rest_status)
 plot(mantree_nored$DBH_cm ~ mantree_nored$Elevation) # not obviously non-linear
+
+ggplot(mantree_nored, aes(x = Site, y = DBH_cm, color = Estuary, fill = rest_status)) +
+  geom_boxplot() +
+  facet_wrap(~Species)
 ```
 
 Next, create a model.
@@ -2736,6 +2897,10 @@ scatter.smooth(predict(M22.3,re.form = NA), resid)
 plotQQunif(M22.3)
 
 anova(M22,M22.3) # no difference, so use simpler model
+
+# check collinearity on a model without interactions
+M0 <- glmmTMB(log(DBH_cm) ~ Estuary + Elevation + Species + rest_status + (1|Site/Combo), family = "gaussian", data = mantree_nored)
+check_collinearity(M0)
 ```
 
 Next, test the model:
@@ -2805,7 +2970,8 @@ ggplot(mantree_nored, aes(x = rest_status, y = Height_m, group = rest_status)) +
   geom_boxplot() 
 
 ggplot(mantree_nored, aes(x = Site, y = Height_m, group = Site, fill = rest_status, color = Estuary)) +
-  geom_boxplot() 
+  geom_boxplot() +
+  facet_wrap(~Species)
 ```
 
 Next, create a model.
@@ -2855,6 +3021,10 @@ plotQQunif(M23.4)
 
 anova(M23.4,M23.2)
 # improves the model, therefore use it
+
+# check collinearity on a model without interactions
+M0 <- glmmTMB(sqrt(Height_m) ~ Estuary + Elevation + Species + rest_status + (1|Site/Combo), family = "gaussian", data = mantree_nored)
+check_collinearity(M0)
 ```
 
 Next, test the model:
@@ -2904,6 +3074,9 @@ hist(manq_comm$Pneu_0.5x0.5) # approx normal
 
 plot(manq_comm$Pneu_0.5x0.5 ~ manq_comm$rest_status)
 plot(manq_comm$Pneu_0.5x0.5 ~ manq_comm$Elevation) # not obviously non-linear
+
+ggplot() +
+  geom_boxplot(data = manq_comm, aes(x = as.factor(Site), y = Pneu_0.5x0.5, group = Site, color = rest_status))
 ```
 
 Next, create a model.
@@ -2950,6 +3123,10 @@ plotQQunif(M24.4)
 
 anova(M24.4,M24.3)
 # marginal difference, but residuals of the interaction plot look slightly better so use it
+
+# check collinearity on a model without interactions
+M0 <- glmmTMB(Pneu_0.5x0.5 ~ Estuary + Elevation + rest_status + (1|Site/Combo), family = "gaussian", data = manq_comm)
+check_collinearity(M0)
 ```
 
 Next, test the model:
@@ -3046,6 +3223,10 @@ plotQQunif(M25.3)
 
 anova(M25.3,M25.2)
 # no difference, stick with simpler model
+
+# check collinearity on a model without interactions
+M0 <- glmmTMB(sqrt(Pneu_ht_mm) ~ Estuary + Elevation + rest_status + (1|Site/Combo/Subquadrat), family = "gaussian", data = manq)
+check_collinearity(M0)
 ```
 
 Next, test the model:
@@ -3099,6 +3280,9 @@ ggplot(manq, aes(x = Elevation, y = Pneu_dia_mm)) +
   geom_point() +
   stat_smooth(method = "lm", formula = y ~ x + I(x^2)) +
   geom_smooth(method = "lm") # not obviously non-linear
+
+ggplot(manq, aes(x = Site, y = Pneu_dia_mm, color = Estuary, fill = rest_status)) +
+  geom_boxplot()
 ```
 
 Next, create a model.
@@ -3133,6 +3317,10 @@ plotQQunif(M26.3)
 anova(M26.1,M26.2,M26.3)
 
 # log transformed model is best, use that
+
+# check collinearity on a model without interactions
+M0 <- glmmTMB(log(Pneu_dia_mm) ~ Estuary + Elevation + rest_status + (1|Site/Combo/Subquadrat), family = "gaussian", data = manq)
+check_collinearity(M0)
 ```
 
 Next, test the model:
@@ -3197,6 +3385,9 @@ ggplot(manleaf_wide_grey, aes(x = Elevation, y = dfratio)) +
   geom_point() +
   stat_smooth(method = "lm", formula = y ~ x + I(x^2)) +
   geom_smooth(method = "lm") # quadratic model looks like a better fit
+
+ggplot(manleaf_wide_grey, aes(x = Site, y = dfratio, color = Estuary, fill = rest_status)) +
+  geom_boxplot()
 ```
 
 Next, create a model.
@@ -3227,6 +3418,10 @@ plotQQunif(M28.1)
 
 anova(M28,M28.1)
 # no difference so stick with original
+
+# check collinearity on a model without interactions
+M0 <- glmmTMB(dfratio ~ Estuary + Elevation + Tree_sapling + rest_status + (1|Site/Combo/Tree), family = "gaussian", data = manleaf_wide_grey)
+check_collinearity(M0)
 ```
 
 Next, test the model:
@@ -3274,6 +3469,9 @@ ggplot(manleaf_wide_grey, aes(x = Elevation, y = LMA, color = Estuary)) +
   geom_point() +
   geom_smooth(method = "lm") +
   stat_smooth(method = "lm", formula = y ~ x + I(x^2)) # include as a polynomial
+
+ggplot(manleaf_wide_grey, aes(x = Site, y = LMA, color = Estuary, fill = rest_status)) +
+  geom_boxplot()
 ```
 
 Next, create a model.
@@ -3294,6 +3492,10 @@ M29 <- glmmTMB(LMA ~ Estuary + poly(Elevation,2) + Tree_sapling + rest_status + 
 resid <- residuals(simulateResiduals(M29), quantileFunction = qnorm, outlierValues = c(-7,7))
 scatter.smooth(predict(M29,re.form = NA), resid) 
 plotQQunif(M29)
+
+# check collinearity on a model without interactions
+M0 <- glmmTMB(LMA ~ Estuary + Elevation + Tree_sapling + rest_status, family = "gaussian", data = manleaf_wide_grey)
+check_collinearity(M0)
 ```
 
 Next, test the model:
@@ -3355,6 +3557,10 @@ ggplot(manleafandherb_nored, aes(x = Elevation, y = Area)) +
   geom_point() +
   geom_smooth(method = "lm") +
   facet_wrap(~Species) # look like different trends, so include a species interaction, but just keep as a linear (not polynomial) term
+
+ggplot(manleafandherb_nored, aes(x = Site, y = Area, color = Estuary, fill = rest_status)) +
+  geom_boxplot() +
+  facet_wrap(~Species)
 ```
 
 Next, create a model.
@@ -3403,6 +3609,10 @@ plotQQunif(M30.4)
 
 anova(M30.4,M30.2)
 # it does improve the model so keep it
+
+# check collinearity on a model without interactions
+M0 <- glmmTMB(log(Area) ~ Estuary + Species+Elevation + Tree_sapling + rest_status + (1|Site/Combo/Tree), family = "gaussian", data = manleafandherb_nored)
+check_collinearity(M0)
 ```
 
 Next, test the model:
@@ -3468,6 +3678,11 @@ ggplot(manleafandherb_nored, aes(x = Elevation, y = `Herb_%`)) +
   geom_point() +
   geom_smooth(method = "lm") +
   facet_wrap(~Species) # look like different trends, so include a species interaction, but just keep as a linear (not polynomial) term
+
+ggplot(manleafandherb_nored, aes(x = Site, y = `Herb_%`, color = Estuary, fill = rest_status)) +
+  geom_boxplot() +
+  facet_wrap(~Species) +
+  ylim(0,20)
 ```
 
 Next, create a model.
@@ -3517,6 +3732,10 @@ plotQQunif(M31.5)
 
 anova(M31.1,M31.3,M31.4,M31.5)
 # M31.4 is best
+
+# check collinearity on a model without interactions
+M0 <- glmmTMB(Herb_prop ~ Estuary + Species+Elevation + Tree_sapling + rest_status + (1|Site/Combo/Tree), family = "beta_family", data = manleafandherb_nored)
+check_collinearity(M0)
 ```
 
 Next, test the model:
