@@ -573,16 +573,6 @@ check_collinearity(M0) # all low
 
 # null model without the term of interest (Species:YSR) to test whether that term explains variation in the model
 M0 <- glmmTMB(cover_prop_no1 ~ Species:Elevation + (1|Site/Combo) + rr(Species+0|Combo, d = 1), data = comm_comp_long, family = beta_family(link = "logit"), ziformula = ~1)
-
-
-# model without elevation
-M1.1 <- glmmTMB(cover_prop_no1 ~ Species:YSR + (1|Site/Combo) + rr(Species+0|Combo, d = 1), data = comm_comp_long, family = beta_family(link = "logit"), ziformula = ~1)
-
-# check assumptions
-resid <- residuals(simulateResiduals(M1.1), quantileFunction = qnorm, outlierValues = c(-7,7))
-scatter.smooth(predict(M1.1,re.form = NA), resid)   # great
-plotQQunif(M1.1) 
-# residuals looked better with elevation but still fine without
 ```
 
 Generate model results:
@@ -610,12 +600,6 @@ em2 <- emtrends(M1, var = "YSR", specs = ~Species)
 em2
 
 plot(em2)
-
-# no elevation model
-
-M0.1 <- glmmTMB(cover_prop_no1 ~ (1|Site/Combo) + rr(Species+0|Combo, d = 1), data = comm_comp_long, family = beta_family(link = "logit"), ziformula = ~1)
-
-anova(M1.1, M0.1)
 ```
 
 Plot
@@ -773,38 +757,6 @@ em2 <- emmeans(M2, ~ Elevation, at = list(Elevation = c(-0.2,0,0.2,0.4,0.6,0.8))
 em2
 
 plot(em2)
-```
-
-Try a model without elevation.
-
-```{r Model_no_elevation}
-M2.1 <- glmmTMB(total_cover_prop_no1 ~ DomSpeciesSuperSimp * poly(YSR,2) + (1|Site), data = salt_comm_rest_H, family = "beta_family")
-
-resid <- residuals(simulateResiduals(M2.1), quantileFunction = qnorm, outlierValues = c(-7,7))
-scatter.smooth(predict(M2.1,re.form = NA), resid) # looks great
-plotQQunif(M2.1)
-
-# residuals look identical to model with elevation, good
-
-M1 <- glmmTMB(total_cover_prop_no1 ~ DomSpeciesSuperSimp + poly(YSR,2) + (1|Site), data = salt_comm_rest_H, family = "beta_family")
-
-M <- glmmTMB(total_cover_prop_no1 ~ DomSpeciesSuperSimp + YSR + (1|Site), data = salt_comm_rest_H, family = "beta_family")
-
-M0 <- glmmTMB(total_cover_prop_no1 ~ DomSpeciesSuperSimp + (1|Site), data = salt_comm_rest_H, family = "beta_family")
-
-anova(M2.1,M1, M0, M)
-
-em <- emmeans(M2.1, ~ YSR, at = list(YSR = c(6,11,12,16,30,33)), type = "response")
-
-em
-
-plot(em)
-
-em1 <- emmeans(M2.1, ~ YSR | DomSpeciesSuperSimp, at = list(YSR = c(6,11,12,16,30,33)), type = "response")
-
-em1
-
-plot(em1)
 ```
 
 Now, create some plots.
@@ -1017,29 +969,6 @@ plot(em)
 
 summary(M3)
 
-```
-
-Try a model without elevation.
-
-```{r Model_no_elevation}
-M3.1 <- glmmTMB(Burrows_0.5x0.5 ~ DomSpeciesSuperSimp + poly(YSR,2) +  (1|Site), data = salt_comm_rest_H_burrows, family = "nbinom2")
-resid <- residuals(simulateResiduals(M3.1), quantileFunction = qnorm, outlierValues = c(-7,7))
-scatter.smooth(predict(M3.1,re.form = NA), resid)
-# residuals look fine
-
-M <- glmmTMB(Burrows_0.5x0.5 ~ DomSpeciesSuperSimp + YSR +  (1|Site), data = salt_comm_rest_H_burrows, family = "nbinom2")
-M0 <- glmmTMB(Burrows_0.5x0.5 ~ DomSpeciesSuperSimp +  (1|Site), data = salt_comm_rest_H_burrows, family = "nbinom2")
-
-anova(M3.1, M, M0)
-anova(M3.1, M0)
-
-joint_tests(M3.1)
-
-em <- emmeans(M3.1, ~ YSR, at = list(YSR = c(6,11,12,16,30,33)), type = "response")
-
-em
-
-plot(em)
 ```
 
 Next, plot the data.
