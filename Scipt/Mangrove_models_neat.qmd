@@ -764,6 +764,22 @@ check_collinearity(M) # all low
 
 anova(M2.1,M2.2) # negative binomial is a much better fit
 
+# without elevation
+M2.3 <- glmmTMB(Trees ~ Estuary + YSR + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm_rest)
+
+resid <- residuals(simulateResiduals(M2.3), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M2.3,re.form = NA), resid) 
+scatter.smooth(predict(M2.3,re.form = NA), abs(resid)) 
+plotQQunif(M2.3)
+# I think the residuals are fine despite the weird looking curve..
+
+M2.4 <- glmmTMB(Trees ~ Estuary + YSR + (1|Site) + offset(log(Quadrat_size_m2)), family = "poisson", data = mantree_comm_rest)
+
+resid <- residuals(simulateResiduals(M2.4), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M2.4,re.form = NA), resid) 
+scatter.smooth(predict(M2.4,re.form = NA), abs(resid)) 
+plotQQunif(M2.4)
+# worse
 ```
 
 Next, test the model:
@@ -775,6 +791,11 @@ M2.2 <- glmmTMB(Trees ~ Elevation * Estuary + YSR + (1|Site) + offset(log(Quadra
 M0 <- glmmTMB(Trees ~ Elevation * Estuary + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm_rest)
 
 anova(M0,M2.2)
+
+M2.3 <- glmmTMB(Trees ~ Estuary + YSR + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm_rest)
+M0 <- glmmTMB(Trees ~ Estuary + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm_rest)
+
+anova(M0,M2.3)
 
 em <- emmeans(M2.2, ~ YSR, at = list(YSR = c(5,9,12,16,30,33)), type = "response")
 
@@ -789,6 +810,8 @@ Finally, plot the results.
 
 ```{r Plot}
 emmip(M2.2, ~ YSR, at = list(YSR = c(5:33)), type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Number of trees per 10m2", offset = log(100))
+
+emmip(M2.3, ~ YSR, at = list(YSR = c(5:33)), type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Number of trees per 10m2", offset = log(100))
 
 # restoring sites YSR
 m_tree_rest <- ggplot(mantree_comm_rest, aes(x=YSR, y=total_trees, fill=Estuary, group = YSR)) +
@@ -874,6 +897,13 @@ anova(M3.1,M3.2) # M3.2 looks better and has a singificantly lower AIC, therefor
 # check collinearity on model without interactions
 M0 <- glmmTMB(total_saplings ~ Estuary + Elevation + YSR + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2",data = mantree_comm_rest)
 check_collinearity(M0)
+
+# try with no elevation
+M3.3 <- glmmTMB(total_saplings ~ Estuary + poly(YSR, 2) + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2",data = mantree_comm_rest)  
+
+resid <- residuals(simulateResiduals(M3.3), quantileFunction = qnorm, outlierValues = c(-7,7)) 
+scatter.smooth(predict(M3.3, re.form = NA), resid)  
+plotQQunif(M3.3)
 ```
 
 Next, test the model.
@@ -881,7 +911,6 @@ Next, test the model.
 -   Use an anova to test it against two null models that lack the polynomial YSR and lack YSR altogether
 
 ```{r Model_testing}
-
 M3.2 <- glmmTMB(Saplings ~ Estuary * Elevation + poly(YSR, 2) + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2",data = mantree_comm_rest)
 
 M <- glmmTMB(Saplings ~ Estuary * Elevation + YSR + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2",data = mantree_comm_rest)
@@ -889,6 +918,14 @@ M <- glmmTMB(Saplings ~ Estuary * Elevation + YSR + (1|Site) + offset(log(Quadra
 M0 <- glmmTMB(Saplings ~ Estuary * Elevation + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2",data = mantree_comm_rest)
 
 anova(M3.2,M,M0)  
+
+M3.3 <- glmmTMB(total_saplings ~ Estuary + poly(YSR, 2) + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2",data = mantree_comm_rest) 
+
+M1 <- glmmTMB(total_saplings ~ Estuary + YSR + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2",data = mantree_comm_rest) 
+
+M00 <- glmmTMB(total_saplings ~ Estuary + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2",data = mantree_comm_rest) 
+
+anova(M3.3,M1,M00)
 
 joint_tests(M3.2)  
 
@@ -992,6 +1029,13 @@ anova(M3.3,M3.4) # M3.4 has significantly lower AIC so use it
 # check collinearity on model without interactions
 M0 <- glmmTMB(`Seedlings_<30cm_1x1` ~ Estuary + Elevation + YSR + (1|Site/Combo), data = manq_comm_rest, family = "nbinom2")
 check_collinearity(M0)
+
+# without elevation
+M3.5 <- glmmTMB(`Seedlings_<30cm_1x1` ~ Estuary + YSR + (1|Site/Combo), data = manq_comm_rest, family = "nbinom2") 
+
+resid <- residuals(simulateResiduals(M3.5), quantileFunction = qnorm, outlierValues = c(-7,7)) 
+scatter.smooth(predict(M3.5, re.form = NA), resid)  
+plotQQunif(M3.5) 
 ```
 
 Next, test the model.
@@ -1004,6 +1048,12 @@ M3.4 <- glmmTMB(`Seedlings_<30cm_1x1` ~ Estuary * Elevation + YSR + (1|Site/Comb
 M0 <- glmmTMB(`Seedlings_<30cm_1x1` ~ Estuary * Elevation + (1|Site/Combo), data = manq_comm_rest, family = "nbinom2") 
 
 anova(M3.4,M0)  
+
+M3.5 <- glmmTMB(`Seedlings_<30cm_1x1` ~ Estuary + YSR + (1|Site/Combo), data = manq_comm_rest, family = "nbinom2") 
+
+M00 <- glmmTMB(`Seedlings_<30cm_1x1` ~ Estuary + (1|Site/Combo), data = manq_comm_rest, family = "nbinom2") 
+
+anova(M3.5,M00)  
 
 joint_tests(M3.4)  
 
@@ -1101,6 +1151,14 @@ anova(M3.5,M3.6) # M3.6 is better so use that. I think the residuls plot is acce
 # check collinearity on model without interactions
 M0 <- glmmTMB(`Seedlings_30-100cm_1x1` ~ Estuary + Elevation + YSR + (1|Site/Combo), data = manq_comm_rest, family = "nbinom2")
 check_collinearity(M0)
+
+# without elevation
+
+M3.7 <- glmmTMB(`Seedlings_30-100cm_1x1` ~ Estuary + YSR + (1|Site/Combo), data = manq_comm_rest, family = "nbinom2") 
+
+resid <- residuals(simulateResiduals(M3.7), quantileFunction = qnorm, outlierValues = c(-7,7)) 
+scatter.smooth(predict(M3.7, re.form = NA), resid)  
+plotQQunif(M3.7)
 ```
 
 Next, test the model.
@@ -1110,7 +1168,13 @@ M3.6 <- glmmTMB(`Seedlings_30-100cm_1x1` ~ Estuary * Elevation + YSR + (1|Site/C
 
 M0 <- glmmTMB(`Seedlings_30-100cm_1x1` ~ Estuary * Elevation + (1|Site/Combo), data = manq_comm_rest, family = "nbinom2") 
 
-anova(M3.6,M0)  
+anova(M3.6,M0) 
+
+M3.7 <- glmmTMB(`Seedlings_30-100cm_1x1` ~ Estuary + YSR + (1|Site/Combo), data = manq_comm_rest, family = "nbinom2") 
+
+M00 <- glmmTMB(`Seedlings_30-100cm_1x1` ~ Estuary + (1|Site/Combo), data = manq_comm_rest, family = "nbinom2") 
+
+anova(M3.7,M00) 
 
 joint_tests(M3.6)  
 
@@ -1282,6 +1346,13 @@ plotQQunif(M5)
 M <- glmmTMB(Canopy_cover_prop ~ Estuary + Elevation + YSR + (1|Site), family = "beta_family", data = mantree_comm_rest)
 
 check_collinearity(M)
+
+# without elevation
+M5.2 <- glmmTMB(Canopy_cover_prop ~ Estuary + poly(YSR, 2) + (1|Site), family = "beta_family", data = mantree_comm_rest)
+
+resid <- residuals(simulateResiduals(M5.2), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M5.2,re.form = NA), resid) 
+plotQQunif(M5.2) 
 ```
 
 Next, test the model.
@@ -1293,6 +1364,12 @@ M <- glmmTMB(Canopy_cover_prop ~ Estuary * Elevation + YSR + (1|Site), family = 
 M0 <- glmmTMB(Canopy_cover_prop ~ Estuary * Elevation + (1|Site), family = "beta_family", data = mantree_comm_rest)
 
 anova(M5, M, M0)
+
+M5.2 <- glmmTMB(Canopy_cover_prop ~ Estuary + poly(YSR, 2) + (1|Site), family = "beta_family", data = mantree_comm_rest)
+M <- glmmTMB(Canopy_cover_prop ~ Estuary + YSR + (1|Site), family = "beta_family", data = mantree_comm_rest)
+M0 <- glmmTMB(Canopy_cover_prop ~ Estuary + (1|Site), family = "beta_family", data = mantree_comm_rest)
+
+anova(M5.2,M,M0)
 
 joint_tests(M5)
 
@@ -1358,6 +1435,13 @@ anova(M6.1,M6.2)
 # check collinearity on model without interactions
 M0 <- glmmTMB(Stems ~ Estuary + Elevation + YSR + (1|Site/Combo), family = "poisson", data = mantree_grey_rest)
 check_collinearity(M0)
+
+# without elevation
+M6.3 <- glmmTMB(Stems ~ Estuary + YSR + (1|Site/Combo), family = "poisson", data = mantree_grey_rest)
+
+resid <- residuals(simulateResiduals(M6.3), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M6.3,re.form = NA), resid) 
+plotQQunif(M6.3)
 ```
 
 Next, test the model.
@@ -1368,6 +1452,11 @@ M0 <- glmmTMB(Stems ~ Estuary + Elevation + (1|Site/Combo), family = "poisson", 
 anova(M6.1, M0)
 
 joint_tests(M6.1)
+
+M6.3 <- glmmTMB(Stems ~ Estuary + YSR + (1|Site/Combo), family = "poisson", data = mantree_grey_rest)
+M0 <- glmmTMB(Stems ~ Estuary + (1|Site/Combo), family = "poisson", data = mantree_grey_rest)
+
+anova(M6.3, M0)
 ```
 
 Finally, plot the results.
@@ -1424,6 +1513,13 @@ plotQQunif(M7)
 
 M <- glmmTMB(log(DBH_cm) ~ Estuary + Elevation + YSR + (1|Site/Combo), family = "gaussian", data = mantree_grey_rest)
 check_collinearity(M)
+
+# without elevation
+M7.1 <- glmmTMB(log(DBH_cm) ~ Estuary + poly(YSR,2) + (1|Site/Combo), family = "gaussian", data = mantree_grey_rest)
+
+resid <- residuals(simulateResiduals(M7.1), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M7.1,re.form = NA), resid) 
+plotQQunif(M7.1)
 ```
 
 Next, test the model:
@@ -1436,6 +1532,11 @@ M0 <- glmmTMB(log(DBH_cm) ~ Estuary * Elevation + (1|Site/Combo), family = "gaus
 
 anova(M7, M, M0)
 
+M <- glmmTMB(log(DBH_cm) ~ Estuary + YSR + (1|Site/Combo), family = "gaussian", data = mantree_grey_rest)
+M0 <- glmmTMB(log(DBH_cm) ~ Estuary + (1|Site/Combo), family = "gaussian", data = mantree_grey_rest)
+
+anova(M7.1,M,M0)
+
 joint_tests(M7)
 ```
 
@@ -1443,6 +1544,8 @@ Finally, plot the results.
 
 ```{r Plot}
 emmip(M7, ~ YSR, at = list(YSR = c(5:33)), type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "DBH")
+
+emmip(M7.1, ~ YSR, at = list(YSR = c(5:33)), type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "DBH")
 ```
 
 ## 2g. Tree height
@@ -1707,6 +1810,13 @@ anova(M10.1,M10.2)
 # check collinearity on model without interactions
 M0 <- glmmTMB(sqrt(Pneu_ht_mm) ~ Estuary + Elevation + YSR + (1|Site/Combo/Subquadrat), data = manq_rest, family = "gaussian")
 check_collinearity(M0)
+
+# without elevation
+M10.3 <- glmmTMB(sqrt(Pneu_ht_mm) ~ Estuary + poly(YSR,2) + (1|Site/Combo/Subquadrat), data = manq_rest, family = "gaussian")
+
+resid <- residuals(simulateResiduals(M10.3), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M10.3,re.form = NA), resid) 
+plotQQunif(M10.3)
 ```
 
 Next, test the model.
@@ -1718,6 +1828,12 @@ M0 <- glmmTMB(sqrt(Pneu_ht_mm) ~ Estuary * Elevation + (1|Site/Combo/Subquadrat)
 
 anova(M10.2,M,M0)
 
+M10.3 <- glmmTMB(sqrt(Pneu_ht_mm) ~ Estuary + poly(YSR,2) + (1|Site/Combo/Subquadrat), data = manq_rest, family = "gaussian")
+M <- glmmTMB(sqrt(Pneu_ht_mm) ~ Estuary + YSR + (1|Site/Combo/Subquadrat), data = manq_rest, family = "gaussian")
+M0 <- glmmTMB(sqrt(Pneu_ht_mm) ~ Estuary + (1|Site/Combo/Subquadrat), data = manq_rest, family = "gaussian")
+
+anova(M10.3,M,M0)
+
 joint_tests(M10.2)
 
 emmeans(M10.2, ~ YSR, at = list(YSR = c(5,9,12,16,30,33)), type = "response")
@@ -1727,6 +1843,9 @@ Finally, plot the results.
 
 ```{r Plot}
 emmip(M10.2, ~ YSR, at = list(YSR = c(5:33)), type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Pneumatophore height") +
+  geom_boxplot(data = manq_rest, aes(x = YSR, y = Pneu_ht_mm, group = YSR))
+
+emmip(M10.3, ~ YSR, at = list(YSR = c(5:33)), type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Pneumatophore height") +
   geom_boxplot(data = manq_rest, aes(x = YSR, y = Pneu_ht_mm, group = YSR))
 
 # restoring sites YSR
@@ -1783,7 +1902,7 @@ plot(manq_rest$Pneu_dia_mm ~ manq_rest$Elevation) # looks potentially non linear
 
 Next, create a model.
 
--   try including an interaction between estuary and elevation. This doesn't work for the nontransformed model, and the sqrt transformed model performs better without it, so use the sqrt model without the interaction
+-   residuals look better with sqrt transformed data, so use those
 
 ```{r Model_building}
 M11.1 <- glmmTMB(Pneu_dia_mm ~ Estuary + poly(Elevation,2) + poly(YSR, 2) + (1|Site/Combo/Subquadrat), family = "gaussian", data = manq_rest)
@@ -1798,17 +1917,19 @@ resid <- residuals(simulateResiduals(M11.2), quantileFunction = qnorm, outlierVa
 scatter.smooth(predict(M11.2,re.form = NA), resid) 
 plotQQunif(M11.2)
 
-M11.3 <- glmmTMB(sqrt(Pneu_dia_mm) ~ Estuary * poly(Elevation,2) + poly(YSR, 2) + (1|Site/Combo/Subquadrat), family = "gaussian", data = manq_rest)
-
-resid <- residuals(simulateResiduals(M11.3), quantileFunction = qnorm, outlierValues = c(-7,7))
-scatter.smooth(predict(M11.3,re.form = NA), resid) 
-plotQQunif(M11.3)
-
-anova(M11.1,M11.2,M11.3)
+anova(M11.1,M11.2)
 
 # check collinearity on model without interactions
 M0 <- glmmTMB(sqrt(Pneu_dia_mm) ~ Estuary + Elevation + YSR + (1|Site/Combo/Subquadrat), family = "gaussian", data = manq_rest)
 check_collinearity(M0)
+
+# without elevation
+
+M11.3 <- glmmTMB(sqrt(Pneu_dia_mm) ~ Estuary + poly(YSR, 2) + (1|Site/Combo/Subquadrat), family = "gaussian", data = manq_rest)
+
+resid <- residuals(simulateResiduals(M11.3), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M11.3,re.form = NA), resid) 
+plotQQunif(M11.3)
 ```
 
 Next, test the model.
@@ -1820,6 +1941,12 @@ M0 <- glmmTMB(sqrt(Pneu_dia_mm) ~ Estuary + poly(Elevation,2) + (1|Site/Combo/Su
 
 anova(M11.2,M,M0)
 
+M11.3 <- glmmTMB(sqrt(Pneu_dia_mm) ~ Estuary + poly(YSR, 2) + (1|Site/Combo/Subquadrat), family = "gaussian", data = manq_rest)
+M <- glmmTMB(sqrt(Pneu_dia_mm) ~ Estuary + YSR + (1|Site/Combo/Subquadrat), family = "gaussian", data = manq_rest)
+M0 <- glmmTMB(sqrt(Pneu_dia_mm) ~ Estuary + (1|Site/Combo/Subquadrat), family = "gaussian", data = manq_rest)
+
+anova(M11.3,M,M0)
+
 joint_tests(M11.2)
 
 emmeans(M11.2, ~ YSR, at = list(YSR = c(5,9,12,16,30,33)), type = "response")
@@ -1829,6 +1956,9 @@ Finally, plot the results.
 
 ```{r Plot}
 emmip(M11.2, ~ YSR, at = list(YSR = c(5:33)), type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Pneumatophore diameter (mm)") +
+  geom_boxplot(data = manq_rest, aes(x = YSR, y = Pneu_dia_mm, group = YSR))
+
+emmip(M11.3, ~ YSR, at = list(YSR = c(5:33)), type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Pneumatophore diameter (mm)") +
   geom_boxplot(data = manq_rest, aes(x = YSR, y = Pneu_dia_mm, group = YSR))
 ```
 
@@ -1856,8 +1986,6 @@ Next, create a model.
 
 -   gaussian as it's continuous data
 
--   try an interaction between elevation and estuary, however there is only one site in the Maroochy so this likely does not mean much. The interaction did not improve the model, so don't use it.
-
 -   random effect of tree within quadrat (Combo) within Site
 
 ```{r Model_building}
@@ -1868,17 +1996,15 @@ resid <- residuals(simulateResiduals(M13), quantileFunction = qnorm, outlierValu
 scatter.smooth(predict(M13,re.form = NA), resid) # looks great
 plotQQunif(M13)
 
-M13.2 <- glmmTMB(dfratio ~ Estuary * poly(Elevation,2) + Tree_sapling + YSR + (1|Site/Combo/Tree), family = "gaussian", data = manleaf_wide_grey_rest)
+# check collinearity on model without interactions
+M0 <- glmmTMB(dfratio ~ Estuary + Elevation + Tree_sapling + YSR + (1|Site/Combo/Tree), family = "gaussian", data = manleaf_wide_grey_rest)
+check_collinearity(M0)
+
+M13.2 <- glmmTMB(dfratio ~ Estuary + Tree_sapling + YSR + (1|Site/Combo/Tree), family = "gaussian", data = manleaf_wide_grey_rest)
 
 resid <- residuals(simulateResiduals(M13.2), quantileFunction = qnorm, outlierValues = c(-7,7))
 scatter.smooth(predict(M13.2,re.form = NA), resid) # looks great
 plotQQunif(M13.2)
-
-anova(M13,M13.2)
-
-# check collinearity on model without interactions
-M0 <- glmmTMB(dfratio ~ Estuary + Elevation + Tree_sapling + YSR + (1|Site/Combo/Tree), family = "gaussian", data = manleaf_wide_grey_rest)
-check_collinearity(M0)
 ```
 
 Next, test the model.
@@ -1891,6 +2017,11 @@ M13 <- glmmTMB(dfratio ~ Estuary + poly(Elevation,2) + Tree_sapling + YSR + (1|S
 M <- glmmTMB(dfratio ~ Estuary + poly(Elevation,2) + Tree_sapling + (1|Site/Combo/Tree), family = "gaussian", data = manleaf_wide_grey_rest)
 
 anova(M13, M)
+
+M13.2 <- glmmTMB(dfratio ~ Estuary + Tree_sapling + YSR + (1|Site/Combo/Tree), family = "gaussian", data = manleaf_wide_grey_rest)
+M <- glmmTMB(dfratio ~ Estuary + Tree_sapling + (1|Site/Combo/Tree), family = "gaussian", data = manleaf_wide_grey_rest)
+
+anova(M13.2, M)
 
 joint_tests(M13)
 
@@ -1934,8 +2065,6 @@ boxplot(manleaf_wide_grey_rest$LMA ~ manleaf_wide_grey_rest$Tree_sapling)
 
 Next, create a model.
 
--   try with estuary/elevation interaction - it improves the model, so keep it
-
 ```{r Model_building}
 M14 <- glmmTMB(LMA ~ Estuary + poly(Elevation,2) + Tree_sapling + YSR + (1|Site/Combo/Tree_ID), family = "gaussian", data = manleaf_wide_grey_rest) # error
 
@@ -1943,19 +2072,17 @@ resid <- residuals(simulateResiduals(M14), quantileFunction = qnorm, outlierValu
 scatter.smooth(predict(M14,re.form = NA), resid) 
 plotQQunif(M14) 
 
-M14.2 <- glmmTMB(LMA ~ Estuary * poly(Elevation,2) + Tree_sapling + YSR + (1|Site/Combo/Tree_ID), family = "gaussian", data = manleaf_wide_grey_rest)
-
-resid <- residuals(simulateResiduals(M14.2), quantileFunction = qnorm, outlierValues = c(-7,7))
-scatter.smooth(predict(M14.2,re.form = NA), resid) 
-plotQQunif(M14.2)
-
-anova(M14,M14.2)
-
-# assumptions plots for 14.2 look good, warning message is ok
 
 # check collinearity on model without interactions
 M0 <- glmmTMB(LMA ~ Estuary + Elevation + Tree_sapling + YSR, family = "gaussian", data = manleaf_wide_grey_rest)
 check_collinearity(M0)
+
+# try without elevation
+M14.2 <- glmmTMB(LMA ~ Estuary + Tree_sapling + YSR + (1|Site/Combo/Tree_ID), family = "gaussian", data = manleaf_wide_grey_rest)
+
+resid <- residuals(simulateResiduals(M14.2), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M14.2,re.form = NA), resid) 
+plotQQunif(M14.2)
 ```
 
 Next, test the model.
@@ -1965,6 +2092,11 @@ M14 <- glmmTMB(LMA ~ Estuary * poly(Elevation,2) + Tree_sapling + YSR + (1|Site/
 M <- glmmTMB(LMA ~ Estuary * poly(Elevation,2) + Tree_sapling + (1|Site/Combo/Tree_ID), family = "gaussian", data = manleaf_wide_grey_rest)
 
 anova(M14, M)
+
+M14.2 <- glmmTMB(LMA ~ Estuary + Tree_sapling + YSR + (1|Site/Combo/Tree_ID), family = "gaussian", data = manleaf_wide_grey_rest)
+M <- glmmTMB(LMA ~ Estuary + Tree_sapling + (1|Site/Combo/Tree_ID), family = "gaussian", data = manleaf_wide_grey_rest)
+
+anova(M14.2,M)
 
 joint_tests(M14)
 
@@ -2039,6 +2171,13 @@ anova(M,M15)
 # check collinearity on model without interactions
 M0 <- glmmTMB(log(Area) ~ Estuary + Elevation + Tree_sapling + YSR + (1|Site/Combo/Tree), family = "gaussian", data = manleaf_wide_grey_rest)
 check_collinearity(M0)
+
+# without elevation
+M15.1 <- glmmTMB(log(Area) ~ Estuary + Tree_sapling + YSR + (1|Site/Combo/Tree), family = "gaussian", data = manleaf_wide_grey_rest)
+
+resid <- residuals(simulateResiduals(M15.1), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M15.1,re.form = NA), resid) 
+plotQQunif(M15.1)
 ```
 
 Next, test the model.
@@ -2051,6 +2190,11 @@ M15 <- glmmTMB(log(Area) ~ Estuary * Elevation + Tree_sapling + YSR + (1|Site/Co
 M <- glmmTMB(log(Area) ~ Estuary * Elevation + Tree_sapling + (1|Site/Combo/Tree), family = "gaussian", data = manleaf_wide_grey_rest)
 
 anova(M15,M)
+
+M15.1 <- glmmTMB(log(Area) ~ Estuary + Tree_sapling + YSR + (1|Site/Combo/Tree), family = "gaussian", data = manleaf_wide_grey_rest)
+M <- glmmTMB(log(Area) ~ Estuary + Tree_sapling + (1|Site/Combo/Tree), family = "gaussian", data = manleaf_wide_grey_rest)
+
+anova(M15.1,M)
 
 joint_tests(M15)
 
@@ -2065,6 +2209,8 @@ Finally, plot the results.
 emmip(M15, ~ YSR | Elevation, at = list(YSR = c(6:33)), type = "response", CIs = TRUE)
 
 emmip(M15, ~ YSR | Elevation, at = list(YSR = c(6:33), Elevation = c(-0.5,0,0.5,1)), type = "response", CIs = TRUE)
+
+emmip(M15.1, ~ YSR, at = list(YSR = c(6:33)), type = "response", CIs = TRUE)
 
 ```
 
@@ -2100,10 +2246,9 @@ Next, create a model.
 
 -   **QQ PLOT LOOKS WEIRD**
 
--   only using tree data because using all data and including "Tree_sapling" as a factor comes up with a model convergence problem
+-   There are no sapling data, so therefore don't need to include the Tree_sapling term
 
 ```{r Model_building}
-
 M16 <- glmmTMB(Herb_prop ~ Estuary * Elevation + YSR + (1|Site/Combo/Tree), family = "beta_family", data = manleaf_wide_grey_rest_t) 
 
 resid <- residuals(simulateResiduals(M16), quantileFunction = qnorm, outlierValues = c(-7,7))
@@ -2123,6 +2268,13 @@ anova(M16,M16.2)
 # check collinearity on model without interactions
 M0 <- glmmTMB(Herb_prop ~ Estuary + Elevation + YSR + (1|Site/Combo/Tree), family = "tweedie", data = manleaf_wide_grey_rest_t)
 check_collinearity(M0)
+
+# without elevation
+M16.3 <- glmmTMB(Herb_prop ~ Estuary + YSR + (1|Site/Combo/Tree), family = "tweedie", data = manleaf_wide_grey_rest_t) 
+
+resid <- residuals(simulateResiduals(M16.3), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M16.3,re.form = NA), resid) 
+plotQQunif(M16.3)
 ```
 
 Next, test the model.
@@ -2132,6 +2284,11 @@ M16.2 <- glmmTMB(Herb_prop ~ Estuary * Elevation + YSR + (1|Site/Combo/Tree), fa
 M <- glmmTMB(Herb_prop ~ Estuary * Elevation + (1|Site/Combo/Tree), family = "tweedie", data = manleaf_wide_grey_rest_t) 
 
 anova(M16.2,M)
+
+M16.3 <- glmmTMB(Herb_prop ~ Estuary + YSR + (1|Site/Combo/Tree), family = "tweedie", data = manleaf_wide_grey_rest_t) 
+M <- glmmTMB(Herb_prop ~ Estuary + (1|Site/Combo/Tree), family = "tweedie", data = manleaf_wide_grey_rest_t) 
+
+anova(M16.3,M)
 
 joint_tests(M16.2)
 
@@ -2143,6 +2300,10 @@ emmeans(M16.2, ~ YSR, at = list(YSR = c(5,9,12,16,30,33)), type = "response")
 Finally, plot the results.
 
 ```{r Plot}
+emmip(M16.2, ~ YSR | Elevation, at = list(YSR = c(6:33), Elevation = c(-0.5,0,0.5,1)), type = "response", CIs = TRUE)
+
+emmip(M16.3, ~ YSR, at = list(YSR = c(6:33)), type = "response", CIs = TRUE)
+
 # restoring sites YSR
 m_herb_rest <- ggplot(manleaf_wide_grey_rest, aes(x=YSR, y=`Herb_%`, fill=Estuary, group = YSR)) +
     geom_boxplot(width = 2) +
@@ -2289,6 +2450,14 @@ plotQQunif(M18)
 # check collinearity on a model without interactions
 M0 <- glmmTMB(Trees ~ Estuary + Elevation + rest_status + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm)
 check_collinearity(M0)
+
+# try without elevation
+
+M18.1 <- glmmTMB(Trees ~ Estuary + rest_status + Estuary:rest_status + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm)
+
+resid <- residuals(simulateResiduals(M18.1), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M18.1,re.form = NA), resid) 
+plotQQunif(M18.1)
 ```
 
 Next, test the model:
@@ -2302,7 +2471,13 @@ M <- glmmTMB(Trees ~ Estuary * Elevation + rest_status + (1|Site) + offset(log(Q
 
 M0 <- glmmTMB(Trees ~ Estuary * Elevation + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm)
 
-anova(M18,M,M0)  
+anova(M18,M,M0) 
+
+M18.1 <- glmmTMB(Trees ~ Estuary + rest_status + Estuary:rest_status + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm)
+M <- glmmTMB(Trees ~ Estuary + rest_status + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm)
+M0 <- glmmTMB(Trees ~ Estuary + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm)
+
+anova(M18.1,M,M0) 
 
 joint_tests(M18)
 
@@ -2316,6 +2491,8 @@ Finally, plot the results.
 ```{r Plot}
 
 emmip(M18, ~ rest_status | Estuary, type = "response", CIs = TRUE, engine = "ggplot", xlab = "Restoration status", ylab = "Number of trees per 10m2", offset = log(100))
+
+emmip(M18.1, ~ rest_status | Estuary, type = "response", CIs = TRUE, engine = "ggplot", xlab = "Restoration status", ylab = "Number of trees per 10m2", offset = log(100))
 ```
 
 ## 3bi. Number of saplings
@@ -2368,7 +2545,18 @@ plotQQunif(M19)
 # check collinearity on a model without interactions
 M0 <- glmmTMB(Saplings ~ Elevation + Estuary + rest_status + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm)
 check_collinearity(M0)
+
+# without elevation
+M19.1 <- glmmTMB(Saplings ~ Estuary + rest_status + Estuary:rest_status + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm)
+
+resid <- residuals(simulateResiduals(M19.1), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M19.1,re.form = NA), resid) 
+plotQQunif(M19.1)
 ```
+
+M19 \<- glmmTMB(Saplings \~ Elevation \* Estuary + rest_status + Estuary:rest_status + (1\|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm)
+
+resid \<- residuals(simulateResiduals(M19), quantileFunction = qnorm, outlierValues = c(-7,7)) scatter.smooth(predict(M19,re.form = NA), resid) plotQQunif(M19)
 
 Next, test the model:
 
@@ -2382,7 +2570,13 @@ M <- glmmTMB(Saplings ~ Elevation * Estuary + rest_status + (1|Site) + offset(lo
 
 M0 <- glmmTMB(Saplings ~ Elevation * Estuary + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm)
 
-anova(M19,M,M0)    
+anova(M19,M,M0)  
+
+M19.1 <- glmmTMB(Saplings ~ Estuary + rest_status + Estuary:rest_status + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm)
+M <- glmmTMB(Saplings ~ Estuary + rest_status + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm)
+M0 <- glmmTMB(Saplings ~ Estuary + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm)
+
+anova(M19.1,M,M0)  
 
 joint_tests(M19)  
 
@@ -2396,6 +2590,8 @@ Finally, plot the results.
 ```{r Plot}
 
 emmip(M19, ~ rest_status, type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Number of saplings per 10m2", offset = log(100))
+
+emmip(M19.1, ~ rest_status, type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Number of saplings per 10m2", offset = log(100))
 ```
 
 ## 
@@ -2448,6 +2644,12 @@ plotQQunif(M19.3)
 # check collinearity on a model without interactions
 M0 <- glmmTMB(`Seedlings_<30cm_1x1` ~ Elevation + Estuary + rest_status + (1|Site), family = "nbinom2", data = manq_comm)
 check_collinearity(M0)
+
+M19.31 <- glmmTMB(`Seedlings_<30cm_1x1` ~ Estuary + rest_status + Estuary:rest_status + (1|Site), family = "nbinom2", data = manq_comm)
+
+resid <- residuals(simulateResiduals(M19.31), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M19.31,re.form = NA), resid) 
+plotQQunif(M19.31)
 ```
 
 Next, test the model:
@@ -2462,7 +2664,13 @@ M <- glmmTMB(`Seedlings_<30cm_1x1` ~ Elevation * Estuary + rest_status + (1|Site
 
 M0 <- glmmTMB(`Seedlings_<30cm_1x1` ~ Elevation * Estuary + (1|Site), family = "nbinom2", data = manq_comm)
 
-anova(M19.3,M,M0)    
+anova(M19.3,M,M0) 
+
+M19.31 <- glmmTMB(`Seedlings_<30cm_1x1` ~ Estuary + rest_status + Estuary:rest_status + (1|Site), family = "nbinom2", data = manq_comm)
+M <- glmmTMB(`Seedlings_<30cm_1x1` ~ Estuary + rest_status + (1|Site), family = "nbinom2", data = manq_comm)
+M0 <- glmmTMB(`Seedlings_<30cm_1x1` ~ Estuary + (1|Site), family = "nbinom2", data = manq_comm)
+
+anova(M19.31,M,M0) 
 
 joint_tests(M19.3)  
 
@@ -2475,6 +2683,8 @@ Finally, plot the results.
 
 ```{r Plot}
 emmip(M19.3, ~ rest_status, type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Number of small seedlings per m2")
+
+emmip(M19.31, ~ rest_status, type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Number of small seedlings per m2")
 ```
 
 ## 
@@ -2527,6 +2737,13 @@ plotQQunif(M19.5)
 # check collinearity on a model without interactions
 M0 <- glmmTMB(`Seedlings_30-100cm_1x1` ~ Elevation + Estuary + rest_status + (1|Site), family = "nbinom2", data = manq_comm)
 check_collinearity(M0)
+
+# without elevation
+M19.51 <- glmmTMB(`Seedlings_30-100cm_1x1` ~ Estuary + rest_status + Estuary:rest_status + (1|Site), family = "nbinom2", data = manq_comm)
+
+resid <- residuals(simulateResiduals(M19.51), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M19.51,re.form = NA), resid) 
+plotQQunif(M19.51)
 ```
 
 Next, test the model:
@@ -2541,7 +2758,13 @@ M <- glmmTMB(`Seedlings_30-100cm_1x1` ~ Elevation * Estuary + rest_status + (1|S
 
 M0 <- glmmTMB(`Seedlings_30-100cm_1x1` ~ Elevation * Estuary + (1|Site), family = "nbinom2", data = manq_comm)
 
-anova(M19.5,M,M0)    
+anova(M19.5,M,M0)  
+
+M19.51 <- glmmTMB(`Seedlings_30-100cm_1x1` ~ Estuary + rest_status + Estuary:rest_status + (1|Site), family = "nbinom2", data = manq_comm)
+M <- glmmTMB(`Seedlings_30-100cm_1x1` ~ Estuary + rest_status + (1|Site), family = "nbinom2", data = manq_comm)
+M0 <- glmmTMB(`Seedlings_30-100cm_1x1` ~ Estuary + (1|Site), family = "nbinom2", data = manq_comm)
+
+anova(M19.51,M,M0) 
 
 joint_tests(M19.5)  
 
@@ -2553,7 +2776,9 @@ emmeans(M19.5, ~ rest_status, type = "response")
 Finally, plot the results.
 
 ```{r Plot}
-emmip(M19.3, ~ rest_status, type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Number of small seedlings per m2")
+emmip(M19.5, ~ rest_status, type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Number of medium seedlings per m2")
+
+emmip(M19.51, ~ rest_status, type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Number of medium seedlings per m2")
 ```
 
 ## 
@@ -2608,6 +2833,13 @@ anova(M20.1,M20.2) # use the negative binomial model
 # check collinearity on a model without interactions
 M0 <- glmmTMB(Hollows ~ Estuary + Elevation + rest_status + offset(log(Quadrat_size_m2)) + (1|Site), family = "nbinom2", data = mantree_comm)
 check_collinearity(M0)
+
+# without elevation
+M20.3 <- glmmTMB(Hollows ~ Estuary + rest_status + Estuary:rest_status + offset(log(Quadrat_size_m2)) + (1|Site), family = "nbinom2", data = mantree_comm)
+
+resid <- residuals(simulateResiduals(M20.3), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M20.3,re.form = NA), resid) 
+plotQQunif(M20.3)
 ```
 
 Next, test the model:
@@ -2621,7 +2853,13 @@ M <- glmmTMB(Hollows ~ Estuary * Elevation + rest_status + offset(log(Quadrat_si
 
 M0 <- glmmTMB(Hollows ~ Estuary * Elevation + offset(log(Quadrat_size_m2)) + (1|Site), family = "nbinom2", data = mantree_comm)
 
-anova(M0,M,M20.2)    
+anova(M0,M,M20.2)  
+
+M20.3 <- glmmTMB(Hollows ~ Estuary + rest_status + Estuary:rest_status + offset(log(Quadrat_size_m2)) + (1|Site), family = "nbinom2", data = mantree_comm)
+M <- glmmTMB(Hollows ~ Estuary + rest_status + offset(log(Quadrat_size_m2)) + (1|Site), family = "nbinom2", data = mantree_comm)
+M0 <- glmmTMB(Hollows ~ Estuary + offset(log(Quadrat_size_m2)) + (1|Site), family = "nbinom2", data = mantree_comm)
+
+anova(M0,M,M20.3) 
 
 joint_tests(M20.2)  
 
@@ -2638,6 +2876,8 @@ Finally, plot the results.
 emmip(M20.2, ~ rest_status | Estuary, type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Number of hollows per 10m2", offset = log(100))
 
 emmip(M20.2, ~ rest_status, type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Number of hollows per 10m2", offset = log(100))
+
+emmip(M20.3, ~ rest_status, type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Number of hollows per 10m2", offset = log(100))
 ```
 
 ## 
@@ -2678,21 +2918,17 @@ scatter.smooth(predict(M21,re.form = NA), resid)
 plotQQunif(M21)
 
 # looks fine
-# try with elevation * estuary interaction
-
-M21.2 <- glmmTMB(Cover_prop ~ Estuary * Elevation + rest_status + Estuary:rest_status + (1|Site), family = "beta_family", data = mantree_comm)
-
-resid <- residuals(simulateResiduals(M21.2), quantileFunction = qnorm, outlierValues = c(-7,7))
-scatter.smooth(predict(M21.2,re.form = NA), resid) 
-plotQQunif(M21.2)
-
-anova(M21,M21.2)
-
-# no difference between these so stick with simpler model without interaction
 
 # check collinearity on a model without interactions
 M0 <- glmmTMB(Cover_prop ~ Estuary + Elevation + rest_status + (1|Site), family = "beta_family", data = mantree_comm)
 check_collinearity(M0)
+
+# without elevation
+M21.1 <- glmmTMB(Cover_prop ~ Estuary + rest_status + Estuary:rest_status + (1|Site), family = "beta_family", data = mantree_comm)
+
+resid <- residuals(simulateResiduals(M21.1), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M21.1,re.form = NA), resid) 
+plotQQunif(M21.1)
 ```
 
 Next, test the model:
@@ -2706,7 +2942,13 @@ M <- glmmTMB(Cover_prop ~ Estuary + Elevation + rest_status + (1|Site), family =
 
 M0 <- glmmTMB(Cover_prop ~ Estuary + Elevation + (1|Site), family = "beta_family", data = mantree_comm)
 
-anova(M21, M, M0)    
+anova(M21, M, M0) 
+
+M21.1 <- glmmTMB(Cover_prop ~ Estuary + rest_status + Estuary:rest_status + (1|Site), family = "beta_family", data = mantree_comm)
+M <- glmmTMB(Cover_prop ~ Estuary + rest_status + (1|Site), family = "beta_family", data = mantree_comm)
+M0 <- glmmTMB(Cover_prop ~ Estuary + (1|Site), family = "beta_family", data = mantree_comm)
+
+anova(M21.1, M, M0) 
 
 joint_tests(M21)  
 
@@ -2720,6 +2962,8 @@ Finally, plot the results.
 ```{r Plot}
 
 emmip(M21, ~ rest_status | Estuary, type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Canopy cover (proportion)")
+
+emmip(M21.1, ~ rest_status | Estuary, type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Canopy cover (proportion)")
 ```
 
 ## 
@@ -2772,25 +3016,16 @@ plotQQunif(M21.6)
 
 anova(M21.5,M21.6) #M21.6 is better, diagnostics plots seem good enough, use this
 
-# test whether adding species * elevation or removing est*elev interaction improves the model
+# check collinearity on a model without interactions
+M0 <- glmmTMB(Stems ~ Estuary + Elevation + Species + rest_status + (1|Site/Combo), family = "nbinom2", data = mantree_nored)
+check_collinearity(M0)
 
-M21.7 <- glmmTMB(Stems ~ Estuary * Elevation + Species + Species:Elevation + rest_status + Species : rest_status + Estuary:rest_status + (1|Site/Combo), family = "nbinom2", data = mantree_nored)
+# without elevation
+M21.7 <- glmmTMB(Stems ~ Estuary + Species * rest_status + Estuary:rest_status + (1|Site/Combo), family = "nbinom2", data = mantree_nored)
 
 resid <- residuals(simulateResiduals(M21.7), quantileFunction = qnorm, outlierValues = c(-7,7))
 scatter.smooth(predict(M21.7,re.form = NA), resid) 
 plotQQunif(M21.7)
-
-M21.8 <- glmmTMB(Stems ~ Estuary + Elevation + Species * rest_status + Estuary:rest_status + (1|Site/Combo), family = "nbinom2", data = mantree_nored)
-
-resid <- residuals(simulateResiduals(M21.8), quantileFunction = qnorm, outlierValues = c(-7,7))
-scatter.smooth(predict(M21.8,re.form = NA), resid) 
-plotQQunif(M21.8)
-
-anova(M21.7,M21.8,M21.6) # neither improves the model, stick with 21.6
-
-# check collinearity on a model without interactions
-M0 <- glmmTMB(Stems ~ Estuary + Elevation + Species + rest_status + (1|Site/Combo), family = "nbinom2", data = mantree_nored)
-check_collinearity(M0)
 ```
 
 Next, test the model:
@@ -2806,7 +3041,14 @@ M <- glmmTMB(Stems ~ Estuary * Elevation + Species + rest_status + (1|Site/Combo
 
 M0 <- glmmTMB(Stems ~ Estuary * Elevation + Species + (1|Site/Combo), family = "nbinom2", data = mantree_nored)
 
-anova(M21.6,M1,M,M0)    
+anova(M21.6,M1,M,M0) 
+
+M21.7 <- glmmTMB(Stems ~ Estuary + Species * rest_status + Estuary:rest_status + (1|Site/Combo), family = "nbinom2", data = mantree_nored)
+M1 <- glmmTMB(Stems ~ Estuary + Species * rest_status + (1|Site/Combo), family = "nbinom2", data = mantree_nored)
+M <- glmmTMB(Stems ~ Estuary + Species + rest_status + (1|Site/Combo), family = "nbinom2", data = mantree_nored)
+M0 <- glmmTMB(Stems ~ Estuary + Species + (1|Site/Combo), family = "nbinom2", data = mantree_nored)
+
+anova(M21.7,M1,M,M0) 
 
 joint_tests(M21.6)  
 
@@ -2825,6 +3067,8 @@ emmip(M21.6, ~ rest_status, at = list(YSR = c(5,9,12,16,30,33)), type = "respons
 emmip(M21.6, ~ rest_status | Species, at = list(YSR = c(5,9,12,16,30,33)), type = "response")
 emmip(M21.6, ~ rest_status | Estuary, at = list(YSR = c(5,9,12,16,30,33)), type = "response")
 emmip(M21.6, ~ rest_status | Species | Estuary, at = list(YSR = c(5,9,12,16,30,33)), type = "response")
+
+emmip(M21.7, ~ rest_status, at = list(YSR = c(5,9,12,16,30,33)), type = "response")
 ```
 
 ## 
@@ -2877,30 +3121,18 @@ scatter.smooth(predict(M22,re.form = NA), resid)
 plotQQunif(M22)
 
 # log is better
-# check whether including elev*est interaction improves the model
-
-M22.2 <- glmmTMB(log(DBH_cm) ~ Estuary * Elevation + Species * rest_status + Estuary: rest_status + (1|Site/Combo), family = "gaussian", data = mantree_nored)
-
-resid <- residuals(simulateResiduals(M22.2), quantileFunction = qnorm, outlierValues = c(-7,7))
-scatter.smooth(predict(M22.2,re.form = NA), resid) 
-plotQQunif(M22.2)
-
-anova(M22,M22.2)
-# no difference, so use simpler model
-
-# also check whether species * elevation improves the model
-
-M22.3 <- glmmTMB(log(DBH_cm) ~ Estuary + Elevation * Species + rest_status + Species:rest_status + Estuary: rest_status + (1|Site/Combo), family = "gaussian", data = mantree_nored)
-
-resid <- residuals(simulateResiduals(M22.3), quantileFunction = qnorm, outlierValues = c(-7,7))
-scatter.smooth(predict(M22.3,re.form = NA), resid) 
-plotQQunif(M22.3)
-
-anova(M22,M22.3) # no difference, so use simpler model
 
 # check collinearity on a model without interactions
 M0 <- glmmTMB(log(DBH_cm) ~ Estuary + Elevation + Species + rest_status + (1|Site/Combo), family = "gaussian", data = mantree_nored)
 check_collinearity(M0)
+
+# without elevation
+
+M22.1 <- glmmTMB(log(DBH_cm) ~ Estuary + Species * rest_status + Estuary: rest_status + (1|Site/Combo), family = "gaussian", data = mantree_nored)
+
+resid <- residuals(simulateResiduals(M22.1), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M22.1,re.form = NA), resid) 
+plotQQunif(M22.1)
 ```
 
 Next, test the model:
@@ -2916,7 +3148,14 @@ M <- glmmTMB(log(DBH_cm) ~ Estuary + Elevation + Species + rest_status + (1|Site
 
 M0 <- glmmTMB(log(DBH_cm) ~ Estuary + Elevation + Species + (1|Site/Combo), family = "gaussian", data = mantree_nored)
 
-anova(M22,M1,M,M0)    
+anova(M22,M1,M,M0)  
+
+M22.1 <- glmmTMB(log(DBH_cm) ~ Estuary + Species * rest_status + Estuary: rest_status + (1|Site/Combo), family = "gaussian", data = mantree_nored)
+M1 <- glmmTMB(log(DBH_cm) ~ Estuary + Species * rest_status + (1|Site/Combo), family = "gaussian", data = mantree_nored)
+M <- glmmTMB(log(DBH_cm) ~ Estuary + Species + rest_status + (1|Site/Combo), family = "gaussian", data = mantree_nored)
+M0 <- glmmTMB(log(DBH_cm) ~ Estuary + Species + (1|Site/Combo), family = "gaussian", data = mantree_nored)
+
+anova(M22.1,M1,M,M0) 
 
 joint_tests(M22)  
 
@@ -2934,6 +3173,11 @@ emmip(M22, ~ rest_status, type = "response", CIs = TRUE, engine = "ggplot", xlab
 emmip(M22, ~ rest_status | Species, type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Diameter (cm)")
 emmip(M22, ~ rest_status | Estuary, type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Diameter (cm)")
 emmip(M22, ~ rest_status | Species | Estuary, type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Diameter (cm)") 
+
+emmip(M22.1, ~ rest_status, type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Diameter (cm)")
+emmip(M22.1, ~ rest_status | Species, type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Diameter (cm)")
+emmip(M22.1, ~ rest_status | Estuary, type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Diameter (cm)")
+emmip(M22.1, ~ rest_status | Species | Estuary, type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Diameter (cm)") 
 
 ggplot(mantree_nored, aes(x = as.factor(rest_status), y = DBH_cm)) +
   geom_boxplot() +
@@ -3000,31 +3244,17 @@ scatter.smooth(predict(M23.2,re.form = NA), resid)
 plotQQunif(M23.2)
 
 anova(M23.1,M23.2) # sqrt transformed version has significantly lower AIC so use that
-# test whether Elev * Est interaction improves the model
-
-M23.3 <- glmmTMB(sqrt(Height_m) ~ Estuary * Elevation + Species * rest_status + Estuary : rest_status + (1|Site/Combo), family = "gaussian", data = mantree_nored)
-
-resid <- residuals(simulateResiduals(M23.3), quantileFunction = qnorm, outlierValues = c(-7,7))
-scatter.smooth(predict(M23.3,re.form = NA), resid) 
-plotQQunif(M23.3)
-
-anova(M23.3,M23.2)
-# no improvement, therefore don't use it
-
-# also test whether Elev * Species interaction improves the model
-
-M23.4 <- glmmTMB(sqrt(Height_m) ~ Estuary + Elevation * Species + rest_status + Species:rest_status + Estuary : rest_status + (1|Site/Combo), family = "gaussian", data = mantree_nored)
-
-resid <- residuals(simulateResiduals(M23.4), quantileFunction = qnorm, outlierValues = c(-7,7))
-scatter.smooth(predict(M23.4,re.form = NA), resid) 
-plotQQunif(M23.4)
-
-anova(M23.4,M23.2)
-# improves the model, therefore use it
 
 # check collinearity on a model without interactions
 M0 <- glmmTMB(sqrt(Height_m) ~ Estuary + Elevation + Species + rest_status + (1|Site/Combo), family = "gaussian", data = mantree_nored)
 check_collinearity(M0)
+
+# without elevation
+M23.3 <- glmmTMB(sqrt(Height_m) ~ Estuary + Species * rest_status + Estuary : rest_status + (1|Site/Combo), family = "gaussian", data = mantree_nored)
+
+resid <- residuals(simulateResiduals(M23.3), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M23.3,re.form = NA), resid) 
+plotQQunif(M23.3)
 ```
 
 Next, test the model:
@@ -3032,22 +3262,29 @@ Next, test the model:
 -   use anova to test the model against a null model without YSR to test the importance of YSR
 
 ```{r Model_testing}
-M23.4 <- glmmTMB(sqrt(Height_m) ~ Estuary + Elevation * Species + rest_status + Species:rest_status + Estuary : rest_status + (1|Site/Combo), family = "gaussian", data = mantree_nored)
+M23.2 <- glmmTMB(sqrt(Height_m) ~ Estuary + Elevation + Species + rest_status + Species:rest_status + Estuary : rest_status + (1|Site/Combo), family = "gaussian", data = mantree_nored)
 
-M1 <- glmmTMB(sqrt(Height_m) ~ Estuary + Elevation * Species + rest_status + Species:rest_status + (1|Site/Combo), family = "gaussian", data = mantree_nored)
+M1 <- glmmTMB(sqrt(Height_m) ~ Estuary + Elevation + Species + rest_status + Species:rest_status + (1|Site/Combo), family = "gaussian", data = mantree_nored)
 
-M <- glmmTMB(sqrt(Height_m) ~ Estuary + Elevation * Species + rest_status + (1|Site/Combo), family = "gaussian", data = mantree_nored)
+M <- glmmTMB(sqrt(Height_m) ~ Estuary + Elevation + Species + rest_status + (1|Site/Combo), family = "gaussian", data = mantree_nored)
 
-M0 <- glmmTMB(sqrt(Height_m) ~ Estuary + Elevation * Species + (1|Site/Combo), family = "gaussian", data = mantree_nored)
+M0 <- glmmTMB(sqrt(Height_m) ~ Estuary + Elevation + Species + (1|Site/Combo), family = "gaussian", data = mantree_nored)
 
-anova(M23.4,M1,M,M0)    
+anova(M23.2,M1,M,M0)   
 
-joint_tests(M23.4)  
+M23.3 <- glmmTMB(sqrt(Height_m) ~ Estuary + Species * rest_status + Estuary : rest_status + (1|Site/Combo), family = "gaussian", data = mantree_nored)
+M1 <- glmmTMB(sqrt(Height_m) ~ Estuary + Species * rest_status + (1|Site/Combo), family = "gaussian", data = mantree_nored)
+M <- glmmTMB(sqrt(Height_m) ~ Estuary + Species + rest_status + (1|Site/Combo), family = "gaussian", data = mantree_nored)
+M0 <- glmmTMB(sqrt(Height_m) ~ Estuary + Species + (1|Site/Combo), family = "gaussian", data = mantree_nored)
 
-summary(M23.4)  
+anova(M23.3,M1,M,M0)   
 
-emmeans(M23.4, ~ rest_status | Species, type = "response")  
-emmeans(M23.4, ~ rest_status | Estuary, type = "response") 
+joint_tests(M23.2)  
+
+summary(M23.2)  
+
+emmeans(M23.2, ~ rest_status | Species, type = "response")  
+emmeans(M23.2, ~ rest_status | Estuary, type = "response") 
 ```
 
 Finally, plot the results.
@@ -3057,6 +3294,10 @@ Finally, plot the results.
 emmip(M23.2, ~ rest_status | Estuary, type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Tree height (m)")
 
 emmip(M23.2, ~ rest_status | Species, type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Tree height (m)")
+
+emmip(M23.3, ~ rest_status | Estuary, type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Tree height (m)")
+
+emmip(M23.3, ~ rest_status | Species, type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Tree height (m)")
 ```
 
 ## 
@@ -3113,20 +3354,17 @@ anova(M24.1,M24.2,M24.3)
 
 # normal looks best and has the lowest AIC value
 
-# also check whether the elev * est interaction improves the model
-
-M24.4 <- glmmTMB(Pneu_0.5x0.5 ~ Estuary * Elevation + rest_status + Estuary:rest_status + (1|Site/Combo), family = "gaussian", data = manq_comm)
-
-resid <- residuals(simulateResiduals(M24.4), quantileFunction = qnorm, outlierValues = c(-7,7))
-scatter.smooth(predict(M24.4,re.form = NA), resid) 
-plotQQunif(M24.4)
-
-anova(M24.4,M24.3)
-# marginal difference, but residuals of the interaction plot look slightly better so use it
-
 # check collinearity on a model without interactions
 M0 <- glmmTMB(Pneu_0.5x0.5 ~ Estuary + Elevation + rest_status + (1|Site/Combo), family = "gaussian", data = manq_comm)
 check_collinearity(M0)
+
+# without elevation
+
+M24.5 <- glmmTMB(Pneu_0.5x0.5 ~ Estuary + rest_status + Estuary:rest_status + (1|Site/Combo), family = "gaussian", data = manq_comm)
+
+resid <- residuals(simulateResiduals(M24.5), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M24.5,re.form = NA), resid) 
+plotQQunif(M24.5)
 ```
 
 Next, test the model:
@@ -3140,7 +3378,13 @@ M <- glmmTMB(Pneu_0.5x0.5 ~ Estuary * Elevation + rest_status + (1|Site/Combo), 
 
 M0 <- glmmTMB(Pneu_0.5x0.5 ~ Estuary * Elevation + (1|Site/Combo), family = "gaussian", data = manq_comm)
 
-anova(M0,M,M24.4)    
+anova(M0,M,M24.4)
+
+M24.5 <- glmmTMB(Pneu_0.5x0.5 ~ Estuary + rest_status + Estuary:rest_status + (1|Site/Combo), family = "gaussian", data = manq_comm)
+M <- glmmTMB(Pneu_0.5x0.5 ~ Estuary + rest_status + (1|Site/Combo), family = "gaussian", data = manq_comm)
+M0 <- glmmTMB(Pneu_0.5x0.5 ~ Estuary + (1|Site/Combo), family = "gaussian", data = manq_comm)
+
+anova(M0,M,M24.5)
 
 joint_tests(M24.4)  
 
@@ -3152,7 +3396,9 @@ emmeans(M24.4, ~ rest_status | Estuary, type = "response")
 Finally, plot the results.
 
 ```{r Plot}
-emmip(M24.3, ~ rest_status | Estuary, type = "response", CIs = TRUE, engine = "ggplot", xlab = "Restoration status", ylab = "Number of pneumatophores per 0.25m2")
+emmip(M24.4, ~ rest_status | Estuary, type = "response", CIs = TRUE, engine = "ggplot", xlab = "Restoration status", ylab = "Number of pneumatophores per 0.25m2")
+
+emmip(M24.5, ~ rest_status | Estuary, type = "response", CIs = TRUE, engine = "ggplot", xlab = "Restoration status", ylab = "Number of pneumatophores per 0.25m2")
 ```
 
 ## 
@@ -3213,20 +3459,16 @@ anova(M25.1,M25.2)
 
 # sqrt transformed model looks better and has lower AIC, so use that
 
-# see if elev * est interaction improves the model
+# check collinearity on a model without interactions
+M0 <- glmmTMB(sqrt(Pneu_ht_mm) ~ Estuary + Elevation + rest_status + (1|Site/Combo/Subquadrat), family = "gaussian", data = manq)
+check_collinearity(M0)
 
-M25.3 <- glmmTMB(sqrt(Pneu_ht_mm) ~ Estuary * poly(Elevation,2) + rest_status + Estuary:rest_status + (1|Site/Combo/Subquadrat), family = "gaussian", data = manq)
+# without elevation
+M25.3 <- glmmTMB(sqrt(Pneu_ht_mm) ~ Estuary + rest_status + Estuary:rest_status + (1|Site/Combo/Subquadrat), family = "gaussian", data = manq)
 
 resid <- residuals(simulateResiduals(M25.3), quantileFunction = qnorm, outlierValues = c(-7,7))
 scatter.smooth(predict(M25.3,re.form = NA), resid) 
 plotQQunif(M25.3)
-
-anova(M25.3,M25.2)
-# no difference, stick with simpler model
-
-# check collinearity on a model without interactions
-M0 <- glmmTMB(sqrt(Pneu_ht_mm) ~ Estuary + Elevation + rest_status + (1|Site/Combo/Subquadrat), family = "gaussian", data = manq)
-check_collinearity(M0)
 ```
 
 Next, test the model:
@@ -3240,7 +3482,13 @@ M <- glmmTMB(sqrt(Pneu_ht_mm) ~ Estuary + poly(Elevation,2) + rest_status + (1|S
 
 M0 <- glmmTMB(sqrt(Pneu_ht_mm) ~ Estuary + poly(Elevation,2) + (1|Site/Combo/Subquadrat), family = "gaussian", data = manq)
 
-anova(M0,M,M25.2)    
+anova(M0,M,M25.2)  
+
+M25.3 <- glmmTMB(sqrt(Pneu_ht_mm) ~ Estuary + rest_status + Estuary:rest_status + (1|Site/Combo/Subquadrat), family = "gaussian", data = manq)
+M <- glmmTMB(sqrt(Pneu_ht_mm) ~ Estuary + rest_status + (1|Site/Combo/Subquadrat), family = "gaussian", data = manq)
+M0 <- glmmTMB(sqrt(Pneu_ht_mm) ~ Estuary + (1|Site/Combo/Subquadrat), family = "gaussian", data = manq)
+
+anova(M0,M,M25.3) 
 
 joint_tests(M25.2)  
 
@@ -3256,6 +3504,10 @@ Finally, plot the results.
 emmip(M25.2, ~ rest_status, type = "response", CIs = TRUE, engine = "ggplot", xlab = "Restoration status", ylab = "Pneumatophore height (mm)")
 
 emmip(M25.2, ~ rest_status | Estuary, type = "response", CIs = TRUE, engine = "ggplot", xlab = "Restoration status", ylab = "Pneumatophore height (mm)")
+
+emmip(M25.3, ~ rest_status, type = "response", CIs = TRUE, engine = "ggplot", xlab = "Restoration status", ylab = "Pneumatophore height (mm)")
+
+emmip(M25.3, ~ rest_status | Estuary, type = "response", CIs = TRUE, engine = "ggplot", xlab = "Restoration status", ylab = "Pneumatophore height (mm)")
 ```
 
 ## 
@@ -3321,6 +3573,14 @@ anova(M26.1,M26.2,M26.3)
 # check collinearity on a model without interactions
 M0 <- glmmTMB(log(Pneu_dia_mm) ~ Estuary + Elevation + rest_status + (1|Site/Combo/Subquadrat), family = "gaussian", data = manq)
 check_collinearity(M0)
+
+# without elevation
+
+M26.4 <- glmmTMB(log(Pneu_dia_mm) ~ Estuary + rest_status + Estuary:rest_status + (1|Site/Combo/Subquadrat), family = "gaussian", data = manq)
+
+resid <- residuals(simulateResiduals(M26.4), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M26.4,re.form = NA), resid) 
+plotQQunif(M26.4)
 ```
 
 Next, test the model:
@@ -3334,7 +3594,13 @@ M <- glmmTMB(log(Pneu_dia_mm) ~ Estuary * Elevation + rest_status + (1|Site/Comb
 
 M0 <- glmmTMB(log(Pneu_dia_mm) ~ Estuary * Elevation + (1|Site/Combo/Subquadrat), family = "gaussian", data = manq)
 
-anova(M0,M,M26.3)    
+anova(M0,M,M26.3) 
+
+M26.4 <- glmmTMB(log(Pneu_dia_mm) ~ Estuary + rest_status + Estuary:rest_status + (1|Site/Combo/Subquadrat), family = "gaussian", data = manq)
+M <- glmmTMB(log(Pneu_dia_mm) ~ Estuary + rest_status + (1|Site/Combo/Subquadrat), family = "gaussian", data = manq)
+M0 <- glmmTMB(log(Pneu_dia_mm) ~ Estuary + (1|Site/Combo/Subquadrat), family = "gaussian", data = manq)
+
+anova(M0,M,M26.4) 
 
 joint_tests(M26.3)  
 
@@ -3348,6 +3614,8 @@ Finally, plot the results.
 
 ```{r Plot}
 emmip(M26.3, ~ rest_status, type = "response", CIs = TRUE, engine = "ggplot", xlab = "Restoration status", ylab = "Pneumatophore diameter")
+
+emmip(M26.4, ~ rest_status, type = "response", CIs = TRUE, engine = "ggplot", xlab = "Restoration status", ylab = "Pneumatophore diameter")
 ```
 
 ## 
@@ -3408,20 +3676,17 @@ scatter.smooth(predict(M28,re.form = NA), resid)
 plotQQunif(M28)
 
 # assumptions look great
-# check if adding est * elev interaction improves the model
-
-M28.1 <- glmmTMB(dfratio ~ Estuary * poly(Elevation,2) + Tree_sapling + rest_status + (1|Site/Combo/Tree), family = "gaussian", data = manleaf_wide_grey)
-
-resid <- residuals(simulateResiduals(M28.1), quantileFunction = qnorm, outlierValues = c(-7,7))
-scatter.smooth(predict(M28.1,re.form = NA), resid) 
-plotQQunif(M28.1)
-
-anova(M28,M28.1)
-# no difference so stick with original
 
 # check collinearity on a model without interactions
 M0 <- glmmTMB(dfratio ~ Estuary + Elevation + Tree_sapling + rest_status + (1|Site/Combo/Tree), family = "gaussian", data = manleaf_wide_grey)
 check_collinearity(M0)
+
+# without elevation
+M28.1 <- glmmTMB(dfratio ~ Estuary + Tree_sapling + rest_status + (1|Site/Combo/Tree), family = "gaussian", data = manleaf_wide_grey)
+
+resid <- residuals(simulateResiduals(M28.1), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M28.1,re.form = NA), resid) 
+plotQQunif(M28.1)
 ```
 
 Next, test the model:
@@ -3433,7 +3698,12 @@ M28 <- glmmTMB(dfratio ~ Estuary + poly(Elevation,2) + Tree_sapling + rest_statu
 
 M0 <- glmmTMB(dfratio ~ Estuary + poly(Elevation,2) + Tree_sapling + (1|Site/Combo/Tree), family = "gaussian", data = manleaf_wide_grey)
 
-anova(M0,M28)    
+anova(M0,M28)  
+
+M28.1 <- glmmTMB(dfratio ~ Estuary + Tree_sapling + rest_status + (1|Site/Combo/Tree), family = "gaussian", data = manleaf_wide_grey)
+M0 <- glmmTMB(dfratio ~ Estuary + Tree_sapling + (1|Site/Combo/Tree), family = "gaussian", data = manleaf_wide_grey)
+
+anova(M0,M28.1)
 
 joint_tests(M28)  
 
@@ -3446,6 +3716,8 @@ Finally, plot the results.
 
 ```{r Plot}
 emmip(M28, ~ rest_status, type = "response", CIs = TRUE, engine = "ggplot", xlab = "Restoration status", ylab = "Dry:fresh leaf weight ratio")
+
+emmip(M28.1, ~ rest_status, type = "response", CIs = TRUE, engine = "ggplot", xlab = "Restoration status", ylab = "Dry:fresh leaf weight ratio")
 ```
 
 ## 
@@ -3496,6 +3768,14 @@ plotQQunif(M29)
 # check collinearity on a model without interactions
 M0 <- glmmTMB(LMA ~ Estuary + Elevation + Tree_sapling + rest_status, family = "gaussian", data = manleaf_wide_grey)
 check_collinearity(M0)
+
+# without elevation
+
+M29.1 <- glmmTMB(LMA ~ Estuary + Tree_sapling + rest_status + (1|Site/Combo/Tree_ID), family = "gaussian", data = manleaf_wide_grey)
+
+resid <- residuals(simulateResiduals(M29.1), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M29.1,re.form = NA), resid) 
+plotQQunif(M29.1)
 ```
 
 Next, test the model:
@@ -3507,7 +3787,12 @@ M29 <- glmmTMB(LMA ~ Estuary + poly(Elevation,2) + Tree_sapling + rest_status + 
 
 M0 <- glmmTMB(LMA ~ Estuary + poly(Elevation,2) + Tree_sapling + (1|Site/Combo/Tree_ID), family = "gaussian", data = manleaf_wide_grey)
 
-anova(M0,M29)    
+anova(M0,M29)   
+
+M29.1 <- glmmTMB(LMA ~ Estuary + Tree_sapling + rest_status + (1|Site/Combo/Tree_ID), family = "gaussian", data = manleaf_wide_grey)
+M0 <- glmmTMB(LMA ~ Estuary + Tree_sapling + (1|Site/Combo/Tree_ID), family = "gaussian", data = manleaf_wide_grey)
+
+anova(M0,M29.1)
 
 joint_tests(M29)  
 
@@ -3523,6 +3808,8 @@ Finally, plot the results.
 ```{r Plot}
 
 emmip(M29, ~ rest_status, type = "response", CIs = TRUE, engine = "ggplot", xlab = "Restoration status", ylab = "Leaf mass per area")
+
+emmip(M29.1, ~ rest_status, type = "response", CIs = TRUE, engine = "ggplot", xlab = "Restoration status", ylab = "Leaf mass per area")
 ```
 
 ## 
@@ -3572,13 +3859,13 @@ Next, create a model.
 -   Check assumptions using resid and scatter.smooth, plotQQunif and check_collinearity with a model without interactions
 
 ```{r Model_building}
-M30.1 <- glmmTMB(Area ~ Estuary + Species*Elevation + Estuary:Elevation + Tree_sapling + rest_status + Species:rest_status + (1|Site/Combo/Tree), family = "gaussian", data = manleafandherb_nored)
+M30.1 <- glmmTMB(Area ~ Estuary + Species*Elevation + Estuary:Elevation + Tree_sapling + rest_status + Species:rest_status + Estuary:rest_status + (1|Site/Combo/Tree), family = "gaussian", data = manleafandherb_nored)
   
 resid <- residuals(simulateResiduals(M30.1), quantileFunction = qnorm, outlierValues = c(-7,7))
 scatter.smooth(predict(M30.1,re.form = NA), resid) 
 plotQQunif(M30.1)
 
-M30.2 <- glmmTMB(log(Area) ~ Estuary + Species*Elevation + Estuary:Elevation + Tree_sapling + rest_status + Species:rest_status + (1|Site/Combo/Tree), family = "gaussian", data = manleafandherb_nored)
+M30.2 <- glmmTMB(log(Area) ~ Estuary + Species*Elevation + Estuary:Elevation + Tree_sapling + rest_status + Species:rest_status + Estuary:rest_status + (1|Site/Combo/Tree), family = "gaussian", data = manleafandherb_nored)
   
 resid <- residuals(simulateResiduals(M30.2), quantileFunction = qnorm, outlierValues = c(-7,7))
 scatter.smooth(predict(M30.2,re.form = NA), resid) 
@@ -3587,28 +3874,13 @@ plotQQunif(M30.2)
 anova(M30.1,M30.2)
 
 # log transformed model is better
-# check if adding a rest_status * estuary interaction improves the model
 
-M30.3 <- glmmTMB(log(Area) ~ Estuary + Species*Elevation + Estuary:Elevation + Tree_sapling + rest_status + Species:rest_status + Estuary:rest_status + (1|Site/Combo/Tree), family = "gaussian", data = manleafandherb_nored)
+M30.3 <- glmmTMB(log(Area) ~ Estuary + Species + Tree_sapling + rest_status + Species:rest_status + Estuary:rest_status + (1|Site/Combo/Tree), family = "gaussian", data = manleafandherb_nored)
   
 resid <- residuals(simulateResiduals(M30.3), quantileFunction = qnorm, outlierValues = c(-7,7))
 scatter.smooth(predict(M30.3,re.form = NA), resid) 
 plotQQunif(M30.3)
 
-anova(M30.3,M30.2)
-# does not improve model, use without interaction
-
-# also check if the Species*Elevation improved the model
-
-
-M30.4 <- glmmTMB(log(Area) ~ Estuary + Species + Elevation + Estuary:Elevation + Tree_sapling + rest_status + Species:rest_status + (1|Site/Combo/Tree), family = "gaussian", data = manleafandherb_nored)
-  
-resid <- residuals(simulateResiduals(M30.4), quantileFunction = qnorm, outlierValues = c(-7,7))
-scatter.smooth(predict(M30.4,re.form = NA), resid) 
-plotQQunif(M30.4)
-
-anova(M30.4,M30.2)
-# it does improve the model so keep it
 
 # check collinearity on a model without interactions
 M0 <- glmmTMB(log(Area) ~ Estuary + Species+Elevation + Tree_sapling + rest_status + (1|Site/Combo/Tree), family = "gaussian", data = manleafandherb_nored)
@@ -3620,13 +3892,23 @@ Next, test the model:
 -   use anova to test the model against a null model without rest_status and its interaction with species
 
 ```{r Model_testing}
-M30.2 <- glmmTMB(log(Area) ~ Estuary + Species*Elevation + Estuary:Elevation + Tree_sapling + rest_status + Species:rest_status + (1|Site/Combo/Tree), family = "gaussian", data = manleafandherb_nored)
+M30.2 <- glmmTMB(log(Area) ~ Estuary + Species*Elevation + Estuary:Elevation + Tree_sapling + rest_status + Species:rest_status + Estuary:rest_status + (1|Site/Combo/Tree), family = "gaussian", data = manleafandherb_nored)
+
+M1 <- glmmTMB(log(Area) ~ Estuary + Species*Elevation + Estuary:Elevation + Tree_sapling + rest_status + Species:rest_status + (1|Site/Combo/Tree), family = "gaussian", data = manleafandherb_nored)
 
 M <- glmmTMB(log(Area) ~ Estuary + Species*Elevation + Estuary:Elevation + Tree_sapling + rest_status + (1|Site/Combo/Tree), family = "gaussian", data = manleafandherb_nored)
 
 M0 <- glmmTMB(log(Area) ~ Estuary + Species*Elevation + Estuary:Elevation + Tree_sapling + (1|Site/Combo/Tree), family = "gaussian", data = manleafandherb_nored)
 
-anova(M0,M,M30.2)    
+anova(M0,M,M1,M30.2)    
+
+M30.3 <- glmmTMB(log(Area) ~ Estuary + Species + Tree_sapling + rest_status + Species:rest_status + Estuary:rest_status + (1|Site/Combo/Tree), family = "gaussian", data = manleafandherb_nored)
+M1 <- glmmTMB(log(Area) ~ Estuary + Species + Tree_sapling + rest_status + Species:rest_status + (1|Site/Combo/Tree), family = "gaussian", data = manleafandherb_nored)
+M <- glmmTMB(log(Area) ~ Estuary + Species + Tree_sapling + rest_status + (1|Site/Combo/Tree), family = "gaussian", data = manleafandherb_nored)
+M0 <- glmmTMB(log(Area) ~ Estuary + Species + Tree_sapling + (1|Site/Combo/Tree), family = "gaussian", data = manleafandherb_nored)
+
+anova(M0,M,M1,M30.3)
+
 
 joint_tests(M30.2)  
 
@@ -3640,6 +3922,9 @@ Finally, plot the results.
 
 ```{r Plot}
 emmip(M30.2, ~ rest_status | Species, type = "response", CIs = TRUE, engine = "ggplot", xlab = "Restoration status", ylab = "Leaf area (mm^2)") +
+  theme_bw()
+
+emmip(M30.3, ~ rest_status | Species, type = "response", CIs = TRUE, engine = "ggplot", xlab = "Restoration status", ylab = "Leaf area (mm^2)") +
   theme_bw()
 ```
 
@@ -3710,32 +3995,23 @@ anova(M31.1,M31.2)
 
 # beta model looks better but still weird
 
-# check whether rest_status * estuary or elev * species are important
-
-M31.3 <- glmmTMB(Herb_prop ~ Estuary + Species + Elevation + Estuary:Elevation + Tree_sapling + rest_status + Species:rest_status + (1|Site/Combo/Tree), family = "beta_family", data = manleafandherb_nored)
-  
-resid <- residuals(simulateResiduals(M31.3), quantileFunction = qnorm, outlierValues = c(-7,7))
-scatter.smooth(predict(M31.3,re.form = NA), resid) 
-plotQQunif(M31.3)
-
 M31.4 <- glmmTMB(Herb_prop ~ Estuary + Species*Elevation + Estuary:Elevation + Tree_sapling + rest_status + Species:rest_status + Estuary:rest_status + (1|Site/Combo/Tree), family = "beta_family", data = manleafandherb_nored)
   
 resid <- residuals(simulateResiduals(M31.4), quantileFunction = qnorm, outlierValues = c(-7,7))
 scatter.smooth(predict(M31.4,re.form = NA), resid) 
 plotQQunif(M31.4)
 
-M31.5 <- glmmTMB(Herb_prop ~ Estuary + Estuary:Elevation + Tree_sapling + rest_status + Species:rest_status + Estuary:rest_status + (1|Site/Combo/Tree), family = "beta_family", data = manleafandherb_nored)
+# check collinearity on a model without interactions
+M0 <- glmmTMB(Herb_prop ~ Estuary + Species+Elevation + Tree_sapling + rest_status + (1|Site/Combo/Tree), family = "beta_family", data = manleafandherb_nored)
+check_collinearity(M0)
+
+# without elevation
+
+M31.5 <- glmmTMB(Herb_prop ~ Estuary + Species + Tree_sapling + rest_status + Species:rest_status + Estuary:rest_status + (1|Site/Combo/Tree), family = "beta_family", data = manleafandherb_nored)
   
 resid <- residuals(simulateResiduals(M31.5), quantileFunction = qnorm, outlierValues = c(-7,7))
 scatter.smooth(predict(M31.5,re.form = NA), resid) 
 plotQQunif(M31.5)
-
-anova(M31.1,M31.3,M31.4,M31.5)
-# M31.4 is best
-
-# check collinearity on a model without interactions
-M0 <- glmmTMB(Herb_prop ~ Estuary + Species+Elevation + Tree_sapling + rest_status + (1|Site/Combo/Tree), family = "beta_family", data = manleafandherb_nored)
-check_collinearity(M0)
 ```
 
 Next, test the model:
@@ -3748,7 +4024,14 @@ M1 <- glmmTMB(Herb_prop ~ Estuary + Species*Elevation + Estuary:Elevation + Tree
 M <- glmmTMB(Herb_prop ~ Estuary + Species*Elevation + Estuary:Elevation + Tree_sapling + rest_status + (1|Site/Combo/Tree), family = "beta_family", data = manleafandherb_nored)
 M0 <- glmmTMB(Herb_prop ~ Estuary + Species*Elevation + Estuary:Elevation + Tree_sapling + (1|Site/Combo/Tree), family = "beta_family", data = manleafandherb_nored)
 
-anova(M1, M0,M,M31.4)    
+anova(M1, M0,M,M31.4)
+
+M31.5 <- glmmTMB(Herb_prop ~ Estuary + Species + Tree_sapling + rest_status + Species:rest_status + Estuary:rest_status + (1|Site/Combo/Tree), family = "beta_family", data = manleafandherb_nored)
+M1 <- glmmTMB(Herb_prop ~ Estuary + Species + Tree_sapling + rest_status + Species:rest_status + (1|Site/Combo/Tree), family = "beta_family", data = manleafandherb_nored)
+M <- glmmTMB(Herb_prop ~ Estuary + Species + Tree_sapling + rest_status + (1|Site/Combo/Tree), family = "beta_family", data = manleafandherb_nored)
+M0 <- glmmTMB(Herb_prop ~ Estuary + Species + Tree_sapling + (1|Site/Combo/Tree), family = "beta_family", data = manleafandherb_nored)
+
+anova(M1, M0,M,M31.5)
 
 joint_tests(M31.4)  
 
@@ -3763,6 +4046,8 @@ Finally, plot the results.
 ```{r Plot}
 
 emmip(M31.4, ~ rest_status | Species, type = "response", CIs = TRUE, engine = "ggplot", xlab = "Restoration status", ylab = "Leaf herbivory (proportion)")
+
+emmip(M31.5, ~ rest_status | Estuary, type = "response", CIs = TRUE, engine = "ggplot", xlab = "Restoration status", ylab = "Leaf herbivory (proportion)")
 ```
 
 ## 
