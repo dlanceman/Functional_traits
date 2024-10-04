@@ -2000,6 +2000,7 @@ plotQQunif(M13)
 M0 <- glmmTMB(dfratio ~ Estuary + Elevation + Tree_sapling + YSR + (1|Site/Combo/Tree), family = "gaussian", data = manleaf_wide_grey_rest)
 check_collinearity(M0)
 
+# no elevation
 M13.2 <- glmmTMB(dfratio ~ Estuary + Tree_sapling + YSR + (1|Site/Combo/Tree), family = "gaussian", data = manleaf_wide_grey_rest)
 
 resid <- residuals(simulateResiduals(M13.2), quantileFunction = qnorm, outlierValues = c(-7,7))
@@ -2453,7 +2454,7 @@ check_collinearity(M0)
 
 # try without elevation
 
-M18.1 <- glmmTMB(Trees ~ Estuary + rest_status + Estuary:rest_status + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm)
+M18.1 <- glmmTMB(Trees ~ Estuary*rest_status + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm)
 
 resid <- residuals(simulateResiduals(M18.1), quantileFunction = qnorm, outlierValues = c(-7,7))
 scatter.smooth(predict(M18.1,re.form = NA), resid) 
@@ -2473,7 +2474,7 @@ M0 <- glmmTMB(Trees ~ Estuary * Elevation + (1|Site) + offset(log(Quadrat_size_m
 
 anova(M18,M,M0) 
 
-M18.1 <- glmmTMB(Trees ~ Estuary + rest_status + Estuary:rest_status + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm)
+M18.1 <- glmmTMB(Trees ~ Estuary * rest_status + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm)
 M <- glmmTMB(Trees ~ Estuary + rest_status + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm)
 M0 <- glmmTMB(Trees ~ Estuary + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm)
 
@@ -2547,7 +2548,7 @@ M0 <- glmmTMB(Saplings ~ Elevation + Estuary + rest_status + (1|Site) + offset(l
 check_collinearity(M0)
 
 # without elevation
-M19.1 <- glmmTMB(Saplings ~ Estuary + rest_status + Estuary:rest_status + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm)
+M19.1 <- glmmTMB(Saplings ~ Estuary * rest_status + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm)
 
 resid <- residuals(simulateResiduals(M19.1), quantileFunction = qnorm, outlierValues = c(-7,7))
 scatter.smooth(predict(M19.1,re.form = NA), resid) 
@@ -2572,7 +2573,7 @@ M0 <- glmmTMB(Saplings ~ Elevation * Estuary + (1|Site) + offset(log(Quadrat_siz
 
 anova(M19,M,M0)  
 
-M19.1 <- glmmTMB(Saplings ~ Estuary + rest_status + Estuary:rest_status + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm)
+M19.1 <- glmmTMB(Saplings ~ Estuary * rest_status + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm)
 M <- glmmTMB(Saplings ~ Estuary + rest_status + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm)
 M0 <- glmmTMB(Saplings ~ Estuary + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm)
 
@@ -2645,7 +2646,8 @@ plotQQunif(M19.3)
 M0 <- glmmTMB(`Seedlings_<30cm_1x1` ~ Elevation + Estuary + rest_status + (1|Site), family = "nbinom2", data = manq_comm)
 check_collinearity(M0)
 
-M19.31 <- glmmTMB(`Seedlings_<30cm_1x1` ~ Estuary + rest_status + Estuary:rest_status + (1|Site), family = "nbinom2", data = manq_comm)
+# no elevation
+M19.31 <- glmmTMB(`Seedlings_<30cm_1x1` ~ Estuary * rest_status + (1|Site), family = "nbinom2", data = manq_comm)
 
 resid <- residuals(simulateResiduals(M19.31), quantileFunction = qnorm, outlierValues = c(-7,7))
 scatter.smooth(predict(M19.31,re.form = NA), resid) 
@@ -2666,7 +2668,7 @@ M0 <- glmmTMB(`Seedlings_<30cm_1x1` ~ Elevation * Estuary + (1|Site), family = "
 
 anova(M19.3,M,M0) 
 
-M19.31 <- glmmTMB(`Seedlings_<30cm_1x1` ~ Estuary + rest_status + Estuary:rest_status + (1|Site), family = "nbinom2", data = manq_comm)
+M19.31 <- glmmTMB(`Seedlings_<30cm_1x1` ~ Estuary * rest_status + (1|Site), family = "nbinom2", data = manq_comm)
 M <- glmmTMB(`Seedlings_<30cm_1x1` ~ Estuary + rest_status + (1|Site), family = "nbinom2", data = manq_comm)
 M0 <- glmmTMB(`Seedlings_<30cm_1x1` ~ Estuary + (1|Site), family = "nbinom2", data = manq_comm)
 
@@ -2739,7 +2741,7 @@ M0 <- glmmTMB(`Seedlings_30-100cm_1x1` ~ Elevation + Estuary + rest_status + (1|
 check_collinearity(M0)
 
 # without elevation
-M19.51 <- glmmTMB(`Seedlings_30-100cm_1x1` ~ Estuary + rest_status + Estuary:rest_status + (1|Site), family = "nbinom2", data = manq_comm)
+M19.51 <- glmmTMB(`Seedlings_30-100cm_1x1` ~ Estuary * rest_status + (1|Site), family = "nbinom2", data = manq_comm)
 
 resid <- residuals(simulateResiduals(M19.51), quantileFunction = qnorm, outlierValues = c(-7,7))
 scatter.smooth(predict(M19.51,re.form = NA), resid) 
@@ -2835,7 +2837,7 @@ M0 <- glmmTMB(Hollows ~ Estuary + Elevation + rest_status + offset(log(Quadrat_s
 check_collinearity(M0)
 
 # without elevation
-M20.3 <- glmmTMB(Hollows ~ Estuary + rest_status + Estuary:rest_status + offset(log(Quadrat_size_m2)) + (1|Site), family = "nbinom2", data = mantree_comm)
+M20.3 <- glmmTMB(Hollows ~ Estuary * rest_status + offset(log(Quadrat_size_m2)) + (1|Site), family = "nbinom2", data = mantree_comm)
 
 resid <- residuals(simulateResiduals(M20.3), quantileFunction = qnorm, outlierValues = c(-7,7))
 scatter.smooth(predict(M20.3,re.form = NA), resid) 
@@ -2855,7 +2857,7 @@ M0 <- glmmTMB(Hollows ~ Estuary * Elevation + offset(log(Quadrat_size_m2)) + (1|
 
 anova(M0,M,M20.2)  
 
-M20.3 <- glmmTMB(Hollows ~ Estuary + rest_status + Estuary:rest_status + offset(log(Quadrat_size_m2)) + (1|Site), family = "nbinom2", data = mantree_comm)
+M20.3 <- glmmTMB(Hollows ~ Estuary * rest_status + offset(log(Quadrat_size_m2)) + (1|Site), family = "nbinom2", data = mantree_comm)
 M <- glmmTMB(Hollows ~ Estuary + rest_status + offset(log(Quadrat_size_m2)) + (1|Site), family = "nbinom2", data = mantree_comm)
 M0 <- glmmTMB(Hollows ~ Estuary + offset(log(Quadrat_size_m2)) + (1|Site), family = "nbinom2", data = mantree_comm)
 
@@ -2924,7 +2926,7 @@ M0 <- glmmTMB(Cover_prop ~ Estuary + Elevation + rest_status + (1|Site), family 
 check_collinearity(M0)
 
 # without elevation
-M21.1 <- glmmTMB(Cover_prop ~ Estuary + rest_status + Estuary:rest_status + (1|Site), family = "beta_family", data = mantree_comm)
+M21.1 <- glmmTMB(Cover_prop ~ Estuary * rest_status + (1|Site), family = "beta_family", data = mantree_comm)
 
 resid <- residuals(simulateResiduals(M21.1), quantileFunction = qnorm, outlierValues = c(-7,7))
 scatter.smooth(predict(M21.1,re.form = NA), resid) 
@@ -2944,7 +2946,7 @@ M0 <- glmmTMB(Cover_prop ~ Estuary + Elevation + (1|Site), family = "beta_family
 
 anova(M21, M, M0) 
 
-M21.1 <- glmmTMB(Cover_prop ~ Estuary + rest_status + Estuary:rest_status + (1|Site), family = "beta_family", data = mantree_comm)
+M21.1 <- glmmTMB(Cover_prop ~ Estuary * rest_status + (1|Site), family = "beta_family", data = mantree_comm)
 M <- glmmTMB(Cover_prop ~ Estuary + rest_status + (1|Site), family = "beta_family", data = mantree_comm)
 M0 <- glmmTMB(Cover_prop ~ Estuary + (1|Site), family = "beta_family", data = mantree_comm)
 
@@ -3360,7 +3362,7 @@ check_collinearity(M0)
 
 # without elevation
 
-M24.5 <- glmmTMB(Pneu_0.5x0.5 ~ Estuary + rest_status + Estuary:rest_status + (1|Site/Combo), family = "gaussian", data = manq_comm)
+M24.5 <- glmmTMB(Pneu_0.5x0.5 ~ Estuary * rest_status + (1|Site/Combo), family = "gaussian", data = manq_comm)
 
 resid <- residuals(simulateResiduals(M24.5), quantileFunction = qnorm, outlierValues = c(-7,7))
 scatter.smooth(predict(M24.5,re.form = NA), resid) 
@@ -3380,7 +3382,7 @@ M0 <- glmmTMB(Pneu_0.5x0.5 ~ Estuary * Elevation + (1|Site/Combo), family = "gau
 
 anova(M0,M,M24.4)
 
-M24.5 <- glmmTMB(Pneu_0.5x0.5 ~ Estuary + rest_status + Estuary:rest_status + (1|Site/Combo), family = "gaussian", data = manq_comm)
+M24.5 <- glmmTMB(Pneu_0.5x0.5 ~ Estuary * rest_status + (1|Site/Combo), family = "gaussian", data = manq_comm)
 M <- glmmTMB(Pneu_0.5x0.5 ~ Estuary + rest_status + (1|Site/Combo), family = "gaussian", data = manq_comm)
 M0 <- glmmTMB(Pneu_0.5x0.5 ~ Estuary + (1|Site/Combo), family = "gaussian", data = manq_comm)
 
@@ -3464,7 +3466,7 @@ M0 <- glmmTMB(sqrt(Pneu_ht_mm) ~ Estuary + Elevation + rest_status + (1|Site/Com
 check_collinearity(M0)
 
 # without elevation
-M25.3 <- glmmTMB(sqrt(Pneu_ht_mm) ~ Estuary + rest_status + Estuary:rest_status + (1|Site/Combo/Subquadrat), family = "gaussian", data = manq)
+M25.3 <- glmmTMB(sqrt(Pneu_ht_mm) ~ Estuary * rest_status + (1|Site/Combo/Subquadrat), family = "gaussian", data = manq)
 
 resid <- residuals(simulateResiduals(M25.3), quantileFunction = qnorm, outlierValues = c(-7,7))
 scatter.smooth(predict(M25.3,re.form = NA), resid) 
@@ -3484,7 +3486,7 @@ M0 <- glmmTMB(sqrt(Pneu_ht_mm) ~ Estuary + poly(Elevation,2) + (1|Site/Combo/Sub
 
 anova(M0,M,M25.2)  
 
-M25.3 <- glmmTMB(sqrt(Pneu_ht_mm) ~ Estuary + rest_status + Estuary:rest_status + (1|Site/Combo/Subquadrat), family = "gaussian", data = manq)
+M25.3 <- glmmTMB(sqrt(Pneu_ht_mm) ~ Estuary * rest_status + (1|Site/Combo/Subquadrat), family = "gaussian", data = manq)
 M <- glmmTMB(sqrt(Pneu_ht_mm) ~ Estuary + rest_status + (1|Site/Combo/Subquadrat), family = "gaussian", data = manq)
 M0 <- glmmTMB(sqrt(Pneu_ht_mm) ~ Estuary + (1|Site/Combo/Subquadrat), family = "gaussian", data = manq)
 
@@ -3576,7 +3578,7 @@ check_collinearity(M0)
 
 # without elevation
 
-M26.4 <- glmmTMB(log(Pneu_dia_mm) ~ Estuary + rest_status + Estuary:rest_status + (1|Site/Combo/Subquadrat), family = "gaussian", data = manq)
+M26.4 <- glmmTMB(log(Pneu_dia_mm) ~ Estuary * rest_status + (1|Site/Combo/Subquadrat), family = "gaussian", data = manq)
 
 resid <- residuals(simulateResiduals(M26.4), quantileFunction = qnorm, outlierValues = c(-7,7))
 scatter.smooth(predict(M26.4,re.form = NA), resid) 
@@ -3875,7 +3877,7 @@ anova(M30.1,M30.2)
 
 # log transformed model is better
 
-M30.3 <- glmmTMB(log(Area) ~ Estuary + Species + Tree_sapling + rest_status + Species:rest_status + Estuary:rest_status + (1|Site/Combo/Tree), family = "gaussian", data = manleafandherb_nored)
+M30.3 <- glmmTMB(log(Area) ~ Estuary + Tree_sapling + Species * rest_status + Estuary:rest_status + (1|Site/Combo/Tree), family = "gaussian", data = manleafandherb_nored)
   
 resid <- residuals(simulateResiduals(M30.3), quantileFunction = qnorm, outlierValues = c(-7,7))
 scatter.smooth(predict(M30.3,re.form = NA), resid) 
@@ -3902,7 +3904,7 @@ M0 <- glmmTMB(log(Area) ~ Estuary + Species*Elevation + Estuary:Elevation + Tree
 
 anova(M0,M,M1,M30.2)    
 
-M30.3 <- glmmTMB(log(Area) ~ Estuary + Species + Tree_sapling + rest_status + Species:rest_status + Estuary:rest_status + (1|Site/Combo/Tree), family = "gaussian", data = manleafandherb_nored)
+M30.3 <- glmmTMB(log(Area) ~ Estuary + Tree_sapling + Species * rest_status + Estuary:rest_status + (1|Site/Combo/Tree), family = "gaussian", data = manleafandherb_nored)
 M1 <- glmmTMB(log(Area) ~ Estuary + Species + Tree_sapling + rest_status + Species:rest_status + (1|Site/Combo/Tree), family = "gaussian", data = manleafandherb_nored)
 M <- glmmTMB(log(Area) ~ Estuary + Species + Tree_sapling + rest_status + (1|Site/Combo/Tree), family = "gaussian", data = manleafandherb_nored)
 M0 <- glmmTMB(log(Area) ~ Estuary + Species + Tree_sapling + (1|Site/Combo/Tree), family = "gaussian", data = manleafandherb_nored)
@@ -4007,7 +4009,7 @@ check_collinearity(M0)
 
 # without elevation
 
-M31.5 <- glmmTMB(Herb_prop ~ Estuary + Species + Tree_sapling + rest_status + Species:rest_status + Estuary:rest_status + (1|Site/Combo/Tree), family = "beta_family", data = manleafandherb_nored)
+M31.5 <- glmmTMB(Herb_prop ~ Estuary + Tree_sapling + Species * rest_status + Estuary:rest_status + (1|Site/Combo/Tree), family = "beta_family", data = manleafandherb_nored)
   
 resid <- residuals(simulateResiduals(M31.5), quantileFunction = qnorm, outlierValues = c(-7,7))
 scatter.smooth(predict(M31.5,re.form = NA), resid) 

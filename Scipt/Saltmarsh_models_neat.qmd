@@ -538,7 +538,7 @@ Now, create a model:
 Check the assumptions of the model using resid and scatter.smooth and plotQQunif.
 
 ```{r Model_building}
-M <- glmmTMB(cover_prop_no01 ~ Species:(Elevation + YSR) + (1|Site) + rr(Species+0|Combo, d = 1), data = comm_comp_long, family = beta_family(link = "logit"))
+M <- glmmTMB(cover_prop_no01 ~ Species:Elevation + Species:YSR + (1|Site) + rr(Species+0|Combo, d = 1), data = comm_comp_long, family = beta_family(link = "logit"))
 
 # check assumptions
 resid <- residuals(simulateResiduals(M), quantileFunction = qnorm, outlierValues = c(-7,7))
@@ -547,7 +547,7 @@ plotQQunif(M) # not good
 
 
 # therefore try zero-inflated model
-M1 <- glmmTMB(cover_prop_no1 ~ Species:(Elevation + YSR) + (1|Site/Combo) + rr(Species+0|Combo, d = 1), data = comm_comp_long, family = beta_family(link = "logit"), ziformula = ~1)
+M1 <- glmmTMB(cover_prop_no1 ~ Species:Elevation + Species:YSR + (1|Site/Combo) + rr(Species+0|Combo, d = 1), data = comm_comp_long, family = beta_family(link = "logit"), ziformula = ~1)
 
 # check assumptions
 resid <- residuals(simulateResiduals(M1), quantileFunction = qnorm, outlierValues = c(-7,7))
@@ -695,7 +695,7 @@ Next, create a model.
 -   calculate parameter estimates using summary and emmeans
 
 ```{r Model}
-M2 <- glmmTMB(total_cover_prop_no1 ~ poly(Elevation,2) + DomSpeciesSuperSimp + poly(YSR,2) + DomSpeciesSuperSimp:YSR + (1|Site), data = salt_comm_rest_H, family = "beta_family")
+M2 <- glmmTMB(total_cover_prop_no1 ~ poly(Elevation,2) + DomSpeciesSuperSimp * poly(YSR,2) + (1|Site), data = salt_comm_rest_H, family = "beta_family")
 
 M1 <- glmmTMB(total_cover_prop_no1 ~ poly(Elevation,2) + DomSpeciesSuperSimp + poly(YSR,2) + (1|Site), data = salt_comm_rest_H, family = "beta_family")
 
@@ -801,8 +801,10 @@ emmip(M2, ~ YSR | DomSpeciesSuperSimp, at = list(YSR = c(6,10,15,20,25,30,33)), 
   geom_smooth(color = 'black') +
   theme_bw()
 
+emmip(M2, ~ YSR | DomSpeciesSuperSimp | Elevation, at = list(YSR = c(6,10,15,20,25,30,33), Elevation = c(-0.2,0,0.2,0.4,0.6,0.8)), type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Predicted proportion cover") 
+
 # fit a model not including elevation - for plotting
-M2.1 <- glmmTMB(total_cover_prop_no1 ~ DomSpeciesSuperSimp + poly(YSR,2) + DomSpeciesSuperSimp:YSR + (1|Site), data = salt_comm_rest_H, family = "beta_family")
+M2.1 <- glmmTMB(total_cover_prop_no1 ~ DomSpeciesSuperSimp * poly(YSR,2) + (1|Site), data = salt_comm_rest_H, family = "beta_family")
 
 emmip(M2.1, ~ YSR | DomSpeciesSuperSimp, at = list(YSR = c(6,10,15,20,25,30,33)), type = "response", engine = "ggplot", xlab = "Years since restoration", ylab = "Predicted proportion cover") +
   geom_point(aes(x = YSR, y = total_cover_prop_no1), data = salt_comm_rest_H) +
@@ -1048,7 +1050,7 @@ First, prepare data.
 
 -   subset for only Hunter estuary and restored data
 
--   determine which species have at least 5 values and subset for these species
+-   subset for only Sporobolus, Sarcocornia and Triglochin because these are the only species seen consistently across quadrats at sites of different ages
 
 -   remove NA data
 
@@ -1062,15 +1064,8 @@ stem_dens_unique <- stem_dens %>% distinct(unique, .keep_all = TRUE)
 
 stem_dens_unique_H_res <- stem_dens_unique %>% subset(Estuary == "Hunter") %>% subset(rest_status == 1)
 
-Stem_dens_count <-
-  stem_dens_unique_H_res %>% 
-  group_by(Species) %>% 
-  summarise(count_non_na = sum(!is.na(Stems)))
-print(Stem_dens_count, n = 21)
-#  Aster, Bolboschoenus, Phragmites, Pneumatophores, Sarcocornia, Sporobolus and Triglochin have >5 values, but exclude Pneumatophores as they only occur at 1 site
-
 stem_dens_unique_H_res <- stem_dens_unique_H_res %>% 
-  subset(Species %in% c("Aster", "Bolboschoenus", "Phragmites", "Sarcocornia", "Sporobolus", "Triglochin"))
+  subset(Species %in% c("Sarcocornia", "Sporobolus", "Triglochin"))
 
 # remove NAs
 stem_dens_unique_H_res <- stem_dens_unique_H_res %>% subset(!is.na(Stems))
@@ -1126,13 +1121,13 @@ Check assumptions:
 -   check_collinearity with a model without interactions and polynomial terms for collinearity
 
 ```{r Model_building}
-M <- glmmTMB(Stems ~ DomSpeciesSuperSimp + Species*(Elevation + YSR) +  offset(log(Quadrat_area)) + rr(Species+0|Combo, d = 2) + (1|Site), family = "poisson", data = stem_dens_unique_H_res)
+M <- glmmTMB(Stems ~ Species + DomSpeciesSuperSimp + Species:Elevation + Species:YSR  +  offset(log(Quadrat_area)) + rr(Species+0|Combo, d = 2) + (1|Site), family = "poisson", data = stem_dens_unique_H_res)
 
 resid <- residuals(simulateResiduals(M), quantileFunction = qnorm, outlierValues = c(-7,7))
 scatter.smooth(predict(M, re.form = NA), resid) # has a trend, not great but ok
 plotQQunif(M) # ok
 
-M5 <- glmmTMB(Stems ~ DomSpeciesSuperSimp + Species*(Elevation + YSR)+ offset(log(Quadrat_area)) + rr(Species+0|Combo, d = 2) + (1|Site), family = "nbinom2", data = stem_dens_unique_H_res)
+M5 <- glmmTMB(Stems ~ Species + DomSpeciesSuperSimp + Species:Elevation + Species:YSR + offset(log(Quadrat_area)) + rr(Species+0|Combo, d = 2) + (1|Site), family = "nbinom2", data = stem_dens_unique_H_res)
 
 resid <- residuals(simulateResiduals(M5), quantileFunction = qnorm, outlierValues = c(-7,7))
 scatter.smooth(predict(M5, re.form = NA), resid) # has a trend.. however this is only driven by a few points so should be ok
@@ -1155,11 +1150,11 @@ Generate model results:
 -   ref_grid to understand the mean values of each variable, including the offset, included in the model
 
 ```{r Model_testing}
-M <- glmmTMB(Stems ~ DomSpeciesSuperSimp + Species*Elevation + YSR + offset(log(Quadrat_area)) + rr(Species+0|Combo, d = 2) + (1|Site), family = "nbinom2", data = stem_dens_unique_H_res)
+M5 <- glmmTMB(Stems ~ Species + DomSpeciesSuperSimp + Species:Elevation + Species:YSR + offset(log(Quadrat_area)) + rr(Species+0|Combo, d = 2) + (1|Site), family = "nbinom2", data = stem_dens_unique_H_res)
 
-M0 <- glmmTMB(Stems ~ DomSpeciesSuperSimp + Species*Elevation + offset(log(Quadrat_area)) + rr(Species+0|Combo, d = 2) + (1|Site), family = "nbinom2", data = stem_dens_unique_H_res)
+M0 <- glmmTMB(Stems ~ Species + DomSpeciesSuperSimp + Species:Elevation + offset(log(Quadrat_area)) + rr(Species+0|Combo, d = 2) + (1|Site), family = "nbinom2", data = stem_dens_unique_H_res)
 
-anova(M5, M, M0)
+anova(M5, M0)
 summary(M5)
 
 emmeans(M5, ~ YSR | Species, at = list(YSR = c(6,11,12,16,30,33)), type = "response", offset = log(10000))
@@ -1192,12 +1187,12 @@ ggplot(data = stem_dens_unique_H_res, aes(y = total_stems, x = YSR, group = YSR)
 
 Prepare data:
 
--   Create a stems dataset (we'll use this for diameter and height) with the six species that have enough stem data
+-   Create a stems dataset (we'll use this for diameter and height) with the three species that have consistent stem data
 
 -   Then remove stem diameter NA data
 
 ```{r Prep}
-salt_H_rest_stems <- salt_H_rest %>% subset(Species %in% c("Aster", "Bolboschoenus", "Phragmites", "Sarcocornia", "Sporobolus", "Triglochin"))
+salt_H_rest_stems <- salt_H_rest %>% subset(Species %in% c("Sarcocornia", "Sporobolus", "Triglochin"))
 
 salt_H_rest_stems_dia <- salt_H_rest_stems %>% subset(!is.na(Stem_dia_mm))
 ```
@@ -1241,12 +1236,12 @@ Check assumptions
 -   check_collinearity for predictor collinearity on model without interactions
 
 ```{r Model_building}
-M <- glmmTMB(Stem_dia_mm ~ DomSpeciesSuperSimp + Species*(Elevation + sp_prop + YSR) + (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_dia)
+M <- glmmTMB(Stem_dia_mm ~ Species + DomSpeciesSuperSimp + Species:Elevation + Species:sp_prop + Species:YSR + (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_dia)
 
 plot(predict(M, re.form = NA), residuals(M)) # ok but clumped
 plotQQunif(M) # ok but not great
 
-M6 <- glmmTMB(sqrt(Stem_dia_mm) ~ DomSpeciesSuperSimp + Elevation + Species*(sp_prop + YSR) + (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_dia)
+M6 <- glmmTMB(sqrt(Stem_dia_mm) ~ Species + DomSpeciesSuperSimp + Species:Elevation + Species:sp_prop + Species:YSR + (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_dia)
 
 plot(predict(M6, re.form = NA), residuals(M6)) # looks ok
 plotQQunif(M6) # not great but better than M - but these models are robust to deviations from normality for this sample size so it's totally fine.
@@ -1255,7 +1250,7 @@ M0 <- glmmTMB(sqrt(Stem_dia_mm) ~ DomSpeciesSuperSimp + Species + Elevation + sp
 
 check_collinearity(M0) # all low
 
-anova(M6, M) # M6 is better
+anova(M6, M) # no difference, but M6 looks better
 ```
 
 Test model:
@@ -1267,11 +1262,11 @@ Test model:
 -   emmeans for parameter estimates
 
 ```{r Model_testing}
-M <- glmmTMB(sqrt(Stem_dia_mm) ~ DomSpeciesSuperSimp + Elevation + Species*sp_prop + YSR + (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_dia)
+M6 <- glmmTMB(sqrt(Stem_dia_mm) ~ Species + DomSpeciesSuperSimp + Species:Elevation + Species:sp_prop + Species:YSR + (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_dia)
 
-M0 <- glmmTMB(sqrt(Stem_dia_mm) ~ DomSpeciesSuperSimp + Elevation + Species*sp_prop  + (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_dia)
+M0 <- glmmTMB(sqrt(Stem_dia_mm) ~ Species + DomSpeciesSuperSimp + Species:Elevation + Species:sp_prop  + (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_dia)
 
-anova(M0, M, M6)
+anova(M0, M6)
 
 summary(M6)
 
@@ -1318,7 +1313,7 @@ Prep/explore
 -   explore relationship between dependent and predictor variables
 
 ```{r Prep/explore}
-salt_H_rest_stems <- salt_H_rest %>% subset(Species %in% c("Aster", "Bolboschoenus", "Phragmites", "Sarcocornia", "Sporobolus", "Triglochin"))
+salt_H_rest_stems <- salt_H_rest %>% subset(Species %in% c("Sarcocornia", "Sporobolus", "Triglochin"))
 
 salt_H_rest_stems_ht <- salt_H_rest_stems %>% subset(!is.na(Stem_ht_mm))
 
@@ -1333,7 +1328,9 @@ plot(salt_H_rest_stems_ht$Stem_ht_mm ~ salt_H_rest_stems_ht$Elevation) # not cle
 
 Now, build a model:
 
--   Use log-transformed data as raw data are right-skewed and come up with model errors (see M below)
+-   Try log-transformed data as raw data are slightly right-skewed
+
+    -   log-transformed explains more variance so use that
 
 -   We are interested in how stem heights change for each species considering all other factors, so create interactions with as many factors as possible (take factors outside of the brackets if the model doesn't run with them inside).
 
@@ -1350,12 +1347,17 @@ Check assumptions
 -   check_collinearity for collinearity between predictors on a model without interactions
 
 ```{r Model_building}
-#M <- glmmTMB(Stem_ht_mm ~ DomSpeciesSuperSimp + Species*(Elevation + sp_prop + YSR) + (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_ht)
+M <- glmmTMB(Stem_ht_mm ~ Species + DomSpeciesSuperSimp + Species:Elevation + Species:sp_prop + Species:YSR + (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_ht)
 
-M7 <- glmmTMB(log(Stem_ht_mm) ~ DomSpeciesSuperSimp + Species*(Elevation + sp_prop + YSR) +  (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_ht)
+plot(predict(M), residuals(M)) # clumped but ok
+plotQQunif(M) # great
+
+M7 <- glmmTMB(log(Stem_ht_mm) ~ Species + DomSpeciesSuperSimp + Species:Elevation + Species:sp_prop + Species:YSR +  (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_ht)
 
 plot(predict(M7), residuals(M7)) # clumped but ok
 plotQQunif(M7) # great
+
+anova(M,M7) # M7 is better
 
 M0 <- glmmTMB(log(Stem_ht_mm) ~ DomSpeciesSuperSimp + Species + Elevation + sp_prop + YSR +  (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_ht) 
 
@@ -1371,10 +1373,10 @@ Generate model results:
 -   emtrends for parameter estimates
 
 ```{r Model_testing}
-M <- glmmTMB(log(Stem_ht_mm) ~ DomSpeciesSuperSimp + Species*(Elevation + sp_prop) + YSR +  (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_ht)
-M0 <- glmmTMB(log(Stem_ht_mm) ~ DomSpeciesSuperSimp + Species*(Elevation + sp_prop) +  (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_ht)
+M7 <- glmmTMB(log(Stem_ht_mm) ~ Species + DomSpeciesSuperSimp + Species:Elevation + Species:sp_prop + Species:YSR +  (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_ht)
+M0 <- glmmTMB(log(Stem_ht_mm) ~ Species + DomSpeciesSuperSimp + Species:Elevation + Species:sp_prop + (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_ht)
 
-anova(M7, M, M0)
+anova(M7, M0)
 summary(M7)
 
 em <- emtrends(M7, var = "YSR", specs = ~Species, type = "response")
@@ -1528,17 +1530,10 @@ Check model assumptions
 -   collinearity of predictors using check_collinearity on a model without interactions (M0) (having issues with model convergence, but terms are showing low correlation and the same terms have been low correlation in other models, so it should be fine)
 
 ```{r Model_building}
-M8 <- glmmTMB(Reproduction ~ DomSpeciesSuperSimp + Elevation + Species + DomSpeciesSuperSimp:Species + Elevation:Species + Species:(reprod_type * YSR) + YSR + (1|Site/Combo), contrasts = list(reprod_type = "contr.sum"), family = "binomial", data = reprod.s_sf)
+M8 <- glmmTMB(Reproduction ~ Species + DomSpeciesSuperSimp + Species:Elevation + Species:sp_prop + Species:(reprod_type * YSR) + (1|Site/Combo), contrasts = list(reprod_type = "contr.sum"), family = "binomial", data = reprod.s_sf)
 
 resid <- residuals(simulateResiduals(M8), quantileFunction = qnorm, outlierValues = c(-7,7))
 scatter.smooth(predict(M8,re.form = NA), resid) # looks great.
-plotQQunif(M8) # amazing
-
-M8 <- glmmTMB(Reproduction ~ DomSpeciesSuperSimp + Elevation + Species*(reprod_type * YSR) + (1|Site/Combo), contrasts = list(reprod_type = "contr.sum"), family = "binomial", data = reprod.s_sf)
-
-resid <- residuals(simulateResiduals(M8), quantileFunction = qnorm, outlierValues = c(-7,7))
-scatter.smooth(predict(M8,re.form = NA), resid) # looks great.
-
 plotQQunif(M8) # amazing
 
 M0 <- glmmTMB(Reproduction ~ DomSpeciesSuperSimp + Species + Elevation +   reprod_type + YSR  + (1|Combo), contrasts = list(reprod_type = "contr.sum"), family = "binomial", data = reprod.s_sf)
@@ -1555,22 +1550,11 @@ Generate model results:
 -   emtrends and emmeans for parameter estimates
 
 ```{r Model_testing}
-M8 <- glmmTMB(Reproduction ~ DomSpeciesSuperSimp + Elevation + Species*(reprod_type * YSR) + (1|Site/Combo), contrasts = list(reprod_type = "contr.sum"), family = "binomial", data = reprod.s_sf)
+M8 <- glmmTMB(Reproduction ~ Species + DomSpeciesSuperSimp + Species:Elevation + Species:sp_prop + Species:(reprod_type * YSR) + (1|Site/Combo), contrasts = list(reprod_type = "contr.sum"), family = "binomial", data = reprod.s_sf)
+M <- glmmTMB(Reproduction ~ Species + DomSpeciesSuperSimp + Species:Elevation + Species:sp_prop + Species:(reprod_type + YSR) + (1|Site/Combo), contrasts = list(reprod_type = "contr.sum"), family = "binomial", data = reprod.s_sf)
+M0 <- glmmTMB(Reproduction ~ Species + DomSpeciesSuperSimp + Species:Elevation + Species:sp_prop + Species:reprod_type + (1|Site/Combo), contrasts = list(reprod_type = "contr.sum"), family = "binomial", data = reprod.s_sf)
 
-M1 <- glmmTMB(Reproduction ~ DomSpeciesSuperSimp + Elevation + Species*(reprod_type + YSR) + (1|Combo), contrasts = list(reprod_type = "contr.sum"), family = "binomial", data = reprod.s_sf)
-
-M <- glmmTMB(Reproduction ~ DomSpeciesSuperSimp + Elevation + Species*reprod_type + YSR + (1|Combo), contrasts = list(reprod_type = "contr.sum"), family = "binomial", data = reprod.s_sf)
-
-M0 <- glmmTMB(Reproduction ~ DomSpeciesSuperSimp + Elevation + Species*reprod_type  + (1|Combo), contrasts = list(reprod_type = "contr.sum"), family = "binomial", data = reprod.s_sf)
-
-anova(M8, M, M0, M1)
-
-M8 <- glmmTMB(Reproduction ~ DomSpeciesSuperSimp + Elevation + Species + DomSpeciesSuperSimp:Species + Elevation:Species + Species:(reprod_type * YSR) + (1|Site/Combo), contrasts = list(reprod_type = "contr.sum"), family = "binomial", data = reprod.s_sf)
-M1 <- glmmTMB(Reproduction ~ DomSpeciesSuperSimp + Elevation + Species + DomSpeciesSuperSimp:Species + Elevation:Species + Species:(reprod_type + YSR) + (1|Site/Combo), contrasts = list(reprod_type = "contr.sum"), family = "binomial", data = reprod.s_sf)
-M <- glmmTMB(Reproduction ~ DomSpeciesSuperSimp + Elevation + Species + DomSpeciesSuperSimp:Species + Elevation:Species + Species:reprod_type + YSR + (1|Site/Combo), contrasts = list(reprod_type = "contr.sum"), family = "binomial", data = reprod.s_sf)
-M0 <- glmmTMB(Reproduction ~ DomSpeciesSuperSimp + Elevation + Species + DomSpeciesSuperSimp:Species + Elevation:Species + Species:reprod_type + (1|Site/Combo), contrasts = list(reprod_type = "contr.sum"), family = "binomial", data = reprod.s_sf)
-
-anova(M8, M, M0, M1)
+anova(M8, M, M0)
 
 joint_tests(M8)
 
@@ -1605,11 +1589,7 @@ reprod_proportions <- reprod_long %>%
   ungroup()
 
 emmip(M8, ~ YSR | Species | reprod_type, at = list(YSR = c(6:33)), type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Reproduction likelihood") +   
-  geom_point(data = reprod_proportions, aes(x = YSR, y = avg, group = reprod_type))   
-
-ggplot(data = reprod.s_sf, aes(y = Reproduction, x = YSR, group = YSR, color = reprod_type, fill = reprod_type)) +   geom_boxplot() +   
-  geom_jitter() +   
-  facet_wrap(~Species)
+  geom_point(data = reprod_proportions, aes(x = YSR, y = avg, group = reprod_type)) 
 ```
 
 # 3. Natural vs restored models
@@ -1620,6 +1600,18 @@ Before we create any of these models, let's inspect the data space we're working
 
 ```{r Predictor_association}
 plot(salt_comm$Elevation ~ salt_comm$rest_status)
+
+M8.5 <- glmmTMB(Elevation ~ Estuary + rest_status + (1|Site), family = "gaussian", data = salt_comm)
+
+resid <- residuals(simulateResiduals(M8.5), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M8.5,re.form = NA), resid) 
+plotQQunif(M8.5) 
+
+check_collinearity(M8.5)
+
+M0 <- glmmTMB(Elevation ~ Estuary + (1|Site), family = "gaussian", data = salt_comm)
+
+anova(M8.5,M0)
 ```
 
 From this, we can conclude:
@@ -1717,14 +1709,14 @@ Next, create a model:
 Test assumptions using resid and scatter.smooth and plotQQunif.
 
 ```{r Model_create}
-M <- glmmTMB((Sp_cover_prop + 0.000001) ~ Estuary + Species:(Elevation + rest_status) + (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = beta_family(link = "logit"), data = salt_comm_comp_long_less)
+M <- glmmTMB((Sp_cover_prop + 0.000001) ~ Estuary + Species:Elevation + Species:rest_status + (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = beta_family(link = "logit"), data = salt_comm_comp_long_less)
 
 resid <- residuals(simulateResiduals(M), quantileFunction = qnorm, outlierValues = c(-7,7))
 scatter.smooth(predict(M, re.form = NA), resid) 
 scatter.smooth(predict(M, re.form = NA), abs(resid))
 plotQQunif(M)
 
-M9 <- glmmTMB(Sp_cover_prop ~ Estuary + Species:(Elevation + rest_status) + (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = beta_family(link = "logit"), ziformula = ~ 1, data = salt_comm_comp_long_less)
+M9 <- glmmTMB(Sp_cover_prop ~ Estuary + Species:Elevation + Species:rest_status + (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = beta_family(link = "logit"), ziformula = ~ 1, data = salt_comm_comp_long_less)
 
 resid <- residuals(simulateResiduals(M9), quantileFunction = qnorm, outlierValues = c(-7,7))
 scatter.smooth(predict(M9, re.form = NA), resid) 
@@ -1819,33 +1811,20 @@ ggplot(salt_comm, aes(y = total_cover_prop, x = rest_status, group = rest_status
 
 Next, create a model:
 
--   **Need to decide whether either of these models is ok and if so which is better. Then write up the aspects of the chosen model**
-
--   **??** Use log(1-x) transformed data as the original data were highly left skewed
+-   beta distribution
 
 -   Include Site as a random factor
 
 -   Include Elevation, DomSpeciesSuperSimp and Estuary as covariates
 
 ```{r Model_create}
-M <- glmmTMB(total_cover_prop_offset ~ Elevation +  DomSpeciesSuperSimp + Estuary + rest_status + (1|Site), family = "beta_family", data = salt_comm)
-
-resid <- residuals(simulateResiduals(M), quantileFunction = qnorm, outlierValues = c(-7,7))
-scatter.smooth(predict(M,re.form = NA), resid)
-scatter.smooth(predict(M,re.form = NA), abs(resid))
-check_collinearity(M) 
-plotQQunif(M)
-
-
-M10 <- glmmTMB(log(1-total_cover_prop_offset) ~ Elevation +  DomSpeciesSuperSimp + Estuary + rest_status + (1|Site), data = salt_comm)
+M10 <- glmmTMB(total_cover_prop_offset ~ Estuary + DomSpeciesSuperSimp + Elevation + rest_status + (1|Site), family = "beta_family", data = salt_comm)
 
 resid <- residuals(simulateResiduals(M10), quantileFunction = qnorm, outlierValues = c(-7,7))
 scatter.smooth(predict(M10,re.form = NA), resid) 
 scatter.smooth(predict(M10,re.form = NA), abs(resid))
 check_collinearity(M10) 
 plotQQunif(M10)
-
-anova(M, M10)
 ```
 
 Next, test the model.
@@ -1855,15 +1834,15 @@ Next, test the model.
 -   calculate parameter estimates using summary and emmeans
 
 ```{r Model_test}
-M0 <- glmmTMB(total_cover_prop_offset ~ Elevation +  DomSpeciesSuperSimp + Estuary + (1|Site), family = "beta_family", data = salt_comm)
+M0 <- glmmTMB(total_cover_prop_offset ~ Estuary + DomSpeciesSuperSimp + Elevation + (1|Site), family = "beta_family", data = salt_comm)
 
-anova(M, M0)
+anova(M10, M0)
 
-joint_tests(M)
-summary(M)
-emmeans(M, pairwise ~ rest_status, type = "response")
-emmeans(M, pairwise ~ Estuary, type = "response")
-emmeans(M, pairwise ~ DomSpeciesSuperSimp, type = "response")
+joint_tests(M10)
+summary(M10)
+emmeans(M10, pairwise ~ rest_status, type = "response")
+emmeans(M10, pairwise ~ Estuary, type = "response")
+emmeans(M10, pairwise ~ DomSpeciesSuperSimp, type = "response")
 ```
 
 Finally, plot the data.
@@ -1945,14 +1924,14 @@ Next, create a model:
     -   the zero-inflated model has slightly better looking assumptions graphs and a significantly lower AIC value, so use that (M11)
 
 ```{r Model_create}
-M <- glmmTMB(Burrows_0.5x0.5 ~ DomSpeciesSuperSimp + Elevation + Estuary + rest_status + (1|Site), data = salt_comm_burrows, family = "poisson")
+M <- glmmTMB(Burrows_0.5x0.5 ~ Estuary + DomSpeciesSuperSimp + Elevation + rest_status + (1|Site), data = salt_comm_burrows, family = "poisson")
 
 resid <- residuals(simulateResiduals(M), quantileFunction = qnorm, outlierValues = c(-7,7))
 scatter.smooth(predict(M, re.form = NA), resid)
 check_collinearity(M) # low collinearity
 plotQQunif(M)
 
-M11 <- glmmTMB(Burrows_0.5x0.5 ~ DomSpeciesSuperSimp + Elevation + Estuary + rest_status + (1|Site), data = salt_comm_burrows, family = "poisson", ziformula =~1)
+M11 <- glmmTMB(Burrows_0.5x0.5 ~ Estuary + DomSpeciesSuperSimp + Elevation + rest_status + (1|Site), data = salt_comm_burrows, family = "poisson", ziformula =~1)
 
 resid <- residuals(simulateResiduals(M11), quantileFunction = qnorm, outlierValues = c(-7,7))
 scatter.smooth(predict(M11, re.form = NA), resid)
@@ -1969,7 +1948,7 @@ Next, test the model.
 -   calculate parameter estimates using summary and emmeans
 
 ```{r Model_test}
-M0 <- glmmTMB(Burrows_0.5x0.5 ~ DomSpeciesSuperSimp + Elevation + Estuary + (1|Site), data = salt_comm_burrows, family = "poisson", ziformula =~1)
+M0 <- glmmTMB(Burrows_0.5x0.5 ~ Estuary + DomSpeciesSuperSimp + Elevation + (1|Site), data = salt_comm_burrows, family = "poisson", ziformula =~1)
 
 anova(M11, M0)
 
@@ -2001,7 +1980,7 @@ First, prepare and explore the data:
 
 -   Because there are multiple stem height/diameter measurements per species per quadrat but only one stem density measurement, we need to first create a dataset with one stem density row per species/quadrat ("stem_dens_unique")
 
--   Subset for only species with enough data and remove NAs
+-   Subset for only species with consistent data across sites and remove NAs
 
 -   Explore the data (both while accounting for quadrat size - total stems - and without accounting - Stems) using histograms of raw and transformed data
 
@@ -2013,7 +1992,7 @@ stem_dens$unique <- factor(interaction(stem_dens$Combo, stem_dens$Species, sep =
 stem_dens_unique <- stem_dens %>% distinct(unique, .keep_all = TRUE) 
 
 stem_dens_unique_less <- stem_dens_unique %>% 
-  subset(Species %in% c("Sporobolus", "Sarcocornia", "Triglochin", "Pneumatophores")) %>% 
+  subset(Species %in% c("Sporobolus", "Sarcocornia", "Triglochin")) %>% 
   subset(!is.na(Stems)) 
 
 hist(stem_dens_unique_less$total_stems) # highly right skewed
@@ -2044,19 +2023,19 @@ Next, create a model:
 -   Check collinearity using an equivalent model without interactions. The interaction-less model has warnings so test it without Dominant Species.
 
 ```{r Model_create}
-M <- glmmTMB(Stems ~ Estuary + DomSpeciesSuperSimp + Species*(Elevation + rest_status) + (1|Site/Combo) + rr(Species+0|Combo, d = 1) + offset(log(Quadrat_area)), family = "poisson", data = stem_dens_unique_less)
+M <- glmmTMB(Stems ~ Estuary + Species + DomSpeciesSuperSimp + Species:Elevation + Species:rest_status + (1|Site/Combo) + rr(Species+0|Combo, d = 1) + offset(log(Quadrat_area)), family = "poisson", data = stem_dens_unique_less)
 
 resid <- residuals(simulateResiduals(M), quantileFunction = qnorm, outlierValues = c(-7,7))
 scatter.smooth(predict(M, re.form = NA), resid)
 plotQQunif(M)
 
-M0 <- glmmTMB(Stems ~ Estuary + DomSpeciesSuperSimp + Species*(Elevation + rest_status) + (1|Site/Combo) + rr(Species+0|Combo, d = 1) + offset(log(Quadrat_area)), family = "nbinom2", data = stem_dens_unique_less)
+M0 <- glmmTMB(Stems ~ Estuary + Species + DomSpeciesSuperSimp + Species:Elevation + Species:rest_status + (1|Site/Combo) + rr(Species+0|Combo, d = 1) + offset(log(Quadrat_area)), family = "nbinom2", data = stem_dens_unique_less)
 
 resid <- residuals(simulateResiduals(M0), quantileFunction = qnorm, outlierValues = c(-7,7))
 scatter.smooth(predict(M0, re.form = NA), resid)
 plotQQunif(M0)
 
-M12 <- glmmTMB(sqrt(Stems) ~ Estuary + DomSpeciesSuperSimp + Species * (Elevation +  rest_status) +  (1|Site/Combo) + rr(Species+0|Combo, d = 1) + offset(log(Quadrat_area)), family = "gaussian", data = stem_dens_unique_less)
+M12 <- glmmTMB(sqrt(Stems) ~ Estuary + Species + DomSpeciesSuperSimp + Species:Elevation + Species:rest_status +  (1|Site/Combo) + rr(Species+0|Combo, d = 1) + offset(log(Quadrat_area)), family = "gaussian", data = stem_dens_unique_less)
 
 resid <- residuals(simulateResiduals(M12), quantileFunction = qnorm, outlierValues = c(-7,7))
 scatter.smooth(predict(M12, re.form = NA), resid)
@@ -2073,17 +2052,15 @@ Next, test the model.
 -   calculate parameter estimates using summary and emmeans
 
 ```{r Model_test}
-M <- glmmTMB(sqrt(Stems) ~ Estuary + DomSpeciesSuperSimp + Species * Elevation +  rest_status +  (1|Site/Combo) + rr(Species+0|Combo, d = 1) + offset(log(Quadrat_area)), family = "gaussian", data = stem_dens_unique_less)
+M12 <- glmmTMB(sqrt(Stems) ~ Estuary + Species + DomSpeciesSuperSimp + Species:Elevation + Species:rest_status +  (1|Site/Combo) + rr(Species+0|Combo, d = 1) + offset(log(Quadrat_area)), family = "gaussian", data = stem_dens_unique_less)
 
-M0 <- glmmTMB(sqrt(Stems) ~ Estuary + DomSpeciesSuperSimp + Species * Elevation +   (1|Site/Combo) + rr(Species+0|Combo, d = 1) + offset(log(Quadrat_area)), family = "gaussian", data = stem_dens_unique_less)
+M <- glmmTMB(sqrt(Stems) ~ Estuary + Species + DomSpeciesSuperSimp + Species:Elevation +  (1|Site/Combo) + rr(Species+0|Combo, d = 1) + offset(log(Quadrat_area)), family = "gaussian", data = stem_dens_unique_less)
 
-anova(M12,M,M0)
+anova(M12,M)
 
 
 joint_tests(M12)
-emmeans(M12, pairwise~rest_status, type = "response")
-emmeans(M12, pairwise~rest_status|Species, type = "response")
-emmeans(M12, pairwise~Elevation|Species, type = "response")
+emmeans(M12, ~rest_status, type = "response")
 summary(M12)
 ```
 
@@ -2094,9 +2071,6 @@ Finally, plot the data:
 -   ggplot to compare stem densities for each species between natural and restoring sites (don't include, no difference) and to inspect elevation trends for each species
 
 ```{r Plot}
-k <- emtrends(M12, var = "Elevation", ~Species)
-plot(k)
-
 ggplot(stem_dens_unique_less, aes(x=as.factor(rest_status), y=total_stems + 0.0001, fill = as.factor(rest_status))) +
     geom_boxplot() +
   geom_jitter()  +
@@ -2108,28 +2082,16 @@ ggplot(stem_dens_unique_less, aes(x=as.factor(rest_status), y=total_stems + 0.00
           legend.position = "none")+
   xlab("Restoration status")  + 
   ylab("Number of stems per m2") +
-  facet_wrap(~Species) +
-  scale_y_continuous(trans = "log10") + 
+  facet_wrap(~Species, scales = "free") +
   scale_x_discrete(labels = c('Natural','Restoring'))
 # print at 1200 x 800
-
-ggplot(stem_dens_unique_less, aes(x=Elevation, y=total_stems + 0.0001)) +
-    geom_smooth(method = lm) +
-  geom_jitter()  +
-    theme_bw() +
-    theme(axis.text = element_text(size = 24),
-          axis.title = element_text(size = 28),
-          strip.text = element_text(size = 28))+
-  xlab("Elevation")  + 
-  ylab("Number of stems per m2") +
-  facet_wrap(~Species)
 ```
 
 ## 3e. Stem diameter
 
 First, prepare and explore the data:
 
--   subset for only Sporobolus, Sarcocornia, Pneumatophores and Triglochin as these are the only species that exist in both natural and restored sites
+-   subset for only Sporobolus, Sarcocornia, and Triglochin as these are the only species that exist in both natural and restored sites across multiple sites
 
 -   remove NA data
 
@@ -2141,7 +2103,7 @@ First, prepare and explore the data:
 
 ```{r Prep/explore}
 salt_less <- salt %>% 
-  subset(Species %in% c("Sporobolus", "Sarcocornia", "Pneumatophores", "Triglochin")) %>% 
+  subset(Species %in% c("Sporobolus", "Sarcocornia", "Triglochin")) %>% 
   subset(!is.na(Stem_dia_mm)) 
 
 hist(salt_less$Stem_dia_mm) # highly right skewed
@@ -2169,7 +2131,7 @@ Next, create a model:
 -   gaussian distribution **(alternative is Gamma with log-link, but residuals look almost identical)**
 
 ```{r Model_create}
-M13 <- glmmTMB(log(Stem_dia_mm) ~ DomSpeciesSuperSimp + Estuary + Species*(Elevation + sp_prop + rest_status) +  (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_less)
+M13 <- glmmTMB(log(Stem_dia_mm) ~ Estuary + Species + DomSpeciesSuperSimp + Species:Elevation + Species:sp_prop + Species:rest_status +  (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_less)
 
 resid <- residuals(simulateResiduals(M13), quantileFunction = qnorm, outlierValues = c(-7,7))
 scatter.smooth(predict(M13, re.form = NA), resid) 
@@ -2184,11 +2146,9 @@ Next, test the model:
 -   calculate parameter estimates using summary and emmeans
 
 ```{r Model_test}
-M <- glmmTMB(log(Stem_dia_mm) ~ DomSpeciesSuperSimp + Estuary + Species*(Elevation + sp_prop)  + rest_status +  (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_less)
+M0 <- glmmTMB(log(Stem_dia_mm) ~ Estuary + Species + DomSpeciesSuperSimp + Species:Elevation + Species:sp_prop +  (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_less)
 
-M0 <- glmmTMB(log(Stem_dia_mm) ~ DomSpeciesSuperSimp + Estuary + Species*(Elevation + sp_prop) +  (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_less)
-
-anova(M13,M,M0)
+anova(M13,M0)
 
 joint_tests(M13)
 emmeans(M13, pairwise ~ rest_status | Species, type = "response")
@@ -2227,7 +2187,7 @@ First, prepare and explore the data:
 
 ```{r Prep/explore}
 salt_less <- salt %>% 
-  subset(Species %in% c("Sporobolus", "Sarcocornia", "Pneumatophores", "Triglochin")) %>% subset(!is.na(Stem_ht_mm))
+  subset(Species %in% c("Sporobolus", "Sarcocornia", "Triglochin")) %>% subset(!is.na(Stem_ht_mm))
 
 hist(salt_less$Stem_ht_mm) # somewhat right skewed
 hist(log(salt_less$Stem_ht_mm)) # somewhat left skewed
@@ -2254,7 +2214,7 @@ Next, create a model:
 -   gaussian distribution
 
 ```{r Model_create}
-M14 <- glmmTMB(sqrt(Stem_ht_mm) ~ Estuary + DomSpeciesSuperSimp + Species*(Elevation + sp_prop + rest_status) +  (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_less)
+M14 <- glmmTMB(sqrt(Stem_ht_mm) ~ Estuary + Species + DomSpeciesSuperSimp + Species:Elevation + Species:sp_prop + Species:rest_status +  (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_less)
 
 resid <- residuals(simulateResiduals(M14), quantileFunction = qnorm, outlierValues = c(-7,7))
 scatter.smooth(predict(M14, re.form = NA), resid) # fine but some outliers
@@ -2270,11 +2230,9 @@ Next, test the model.
 -   anova comparing the model to a null model without the Species\*rest_status interaction and without rest_status entirely to test whether rest_status impacts the model
 
 ```{r Model_test}
-M <- glmmTMB(sqrt(Stem_ht_mm) ~ Estuary + DomSpeciesSuperSimp + Species + Species*(Elevation + sp_prop) + rest_status +  (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_less)
+M0 <- glmmTMB(sqrt(Stem_ht_mm) ~ Estuary + Species + DomSpeciesSuperSimp + Species:Elevation + Species:sp_prop +  (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_less)
 
-M0 <- glmmTMB(sqrt(Stem_ht_mm) ~ Estuary + DomSpeciesSuperSimp + Species + Species*(Elevation + sp_prop) +  (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_less)
-
-anova(M14, M, M0)
+anova(M14, M0)
 
 
 joint_tests(M14)
@@ -2295,6 +2253,8 @@ First, prepare the data.
 -   as done in the reproduction section above (but so this section can be run independently): create a reproduction dataframe with relevant columns, recode the Seeds variable into a binary factor, create a unique column for each unique species per quadrat, and only take one of each unique combination as a new dataframe "reprod_unique"
 
 -   subset for only species with enough data in both natural and restored sites
+
+-   subset for only Hunter estuary (not much Maroochy data, and the inclusion of the term Estuary is causing model convergence issues)
 
 -   convert to long format with one row for reproduction type and another for presence/absence
 
@@ -2326,6 +2286,8 @@ reprod_all_long <- reprod_unique_less %>% pivot_longer(cols = c("Buds", "Flowers
 reprod_all_long <- reprod_all_long %>% subset(!is.na(Reproduction)) %>% 
   subset(reprod_type %in% c("Flowers", "Seeds"))
 
+reprod_all_long_H <- reprod_all_long %>% subset(Estuary == "Hunter") 
+
 reprod_spor <- salt[,c(5,6,7,11,18,24,25,28,30:34)] %>% 
   subset(Species == "Sporobolus") %>% 
   mutate(unique = factor(interaction(Combo, Species, sep = ":")))
@@ -2346,19 +2308,19 @@ Next, explore the data.
 -   histograms are not very meaningful as the data are only zeroes and ones, likewise a non-linear relationship with a continuous predictor is impossible
 
 ```{r Explore}
-reprod_all_proportions <- reprod_all_long %>% 
+reprod_all_H_proportions <- reprod_all_long_H %>% 
   group_by(Site, Species, reprod_type) %>% 
   summarise(avg = mean(Reproduction), se = sd(Reproduction)/sqrt(n()), rest_status = mean(rest_status)) %>% 
   ungroup()
 
-reprod_all_proportions %>%  
+reprod_all_H_proportions %>%  
   subset(rest_status == 0) %>% 
   ggplot(aes(x = Site, y = avg, group = reprod_type, color = reprod_type, ymin = avg-se, ymax = avg+se)) +
   geom_point() +
   geom_errorbar() +
   facet_wrap(~Species)
 
-reprod_all_proportions %>%  
+reprod_all_H_proportions %>%  
   subset(rest_status == 1) %>% 
   ggplot(aes(x = Site, y = avg, group = reprod_type, color = reprod_type, ymin = avg-se, ymax = avg+se)) +
   geom_point() +
@@ -2387,7 +2349,7 @@ Next, create a model:
 -   include quadrat (Combo) nested within site as a random factor
 
 ```{r Model_create}
-M15 <- glmmTMB(Reproduction ~ DomSpeciesSuperSimp + Elevation + Species + Species:Elevation + sp_prop + reprod_type * rest_status + Species:(sp_prop + reprod_type * rest_status) + (1|Site/Combo), contrasts = list(reprod_type = "contr.sum"), family = "binomial", data = reprod_all_long)
+M15 <- glmmTMB(Reproduction ~ Species + DomSpeciesSuperSimp + Species:Elevation + Species:sp_prop + Species:(reprod_type * rest_status) + (1|Site/Combo), contrasts = list(reprod_type = "contr.sum"), family = "binomial", data = reprod_all_long_H)
 
 resid <- residuals(simulateResiduals(M15), quantilefunction = qnorm, outlierValues = c(-7,7))
 scatter.smooth(resid, predict(M15)) # there are quite a few large values but they are evenly spread so should be ok
@@ -2400,22 +2362,13 @@ Next, test the model.
 -   use an anova to compare the model to null models without the Species\*rest_status\*reprod_type interaction, without the Species\*rest_status interaction and without rest_status entirely
 
 ```{r Model_test}
-M15 <- glmmTMB(Reproduction ~ DomSpeciesSuperSimp + Elevation + Species*(sp_prop + reprod_type *  rest_status) + (1|Site/Combo), contrasts = list(reprod_type = "contr.sum"), family = "binomial", data = reprod_all_long)
+M15 <- glmmTMB(Reproduction ~ Species + DomSpeciesSuperSimp + Species:Elevation + Species:sp_prop + Species:(reprod_type * rest_status) + (1|Site/Combo), contrasts = list(reprod_type = "contr.sum"), family = "binomial", data = reprod_all_long_H)
 
-M1 <- glmmTMB(Reproduction ~ DomSpeciesSuperSimp + Elevation + Species*(reprod_type + sp_prop + rest_status) + (1|Site/Combo), contrasts = list(reprod_type = "contr.sum"), family = "binomial", data = reprod_all_long)
+M <- glmmTMB(Reproduction ~ Species + DomSpeciesSuperSimp + Species:Elevation + Species:sp_prop + Species:(reprod_type + rest_status) + (1|Site/Combo), contrasts = list(reprod_type = "contr.sum"), family = "binomial", data = reprod_all_long_H)
 
-M <- glmmTMB(Reproduction ~ DomSpeciesSuperSimp + Elevation + Species*(reprod_type + sp_prop) + rest_status + (1|Site/Combo), contrasts = list(reprod_type = "contr.sum"), family = "binomial", data = reprod_all_long)
+M0 <- glmmTMB(Reproduction ~ Species + DomSpeciesSuperSimp + Species:Elevation + Species:sp_prop + Species:reprod_type + (1|Site/Combo), contrasts = list(reprod_type = "contr.sum"), family = "binomial", data = reprod_all_long_H)
 
-M0 <- glmmTMB(Reproduction ~ DomSpeciesSuperSimp + Elevation + Species*(reprod_type + sp_prop) + (1|Site/Combo), contrasts = list(reprod_type = "contr.sum"), family = "binomial", data = reprod_all_long)
-
-anova(M15,M1,M,M0)
-
-M15 <- glmmTMB(Reproduction ~ DomSpeciesSuperSimp + Elevation + Species + Species:Elevation + sp_prop + reprod_type * rest_status + Species:(sp_prop + reprod_type * rest_status) + (1|Site/Combo), contrasts = list(reprod_type = "contr.sum"), family = "binomial", data = reprod_all_long)
-M1 <- glmmTMB(Reproduction ~ DomSpeciesSuperSimp + Elevation + Species + Species:Elevation + sp_prop + reprod_type * rest_status + Species:(sp_prop + reprod_type + rest_status) + (1|Site/Combo), contrasts = list(reprod_type = "contr.sum"), family = "binomial", data = reprod_all_long)
-M <- glmmTMB(Reproduction ~ DomSpeciesSuperSimp + Elevation + Species + Species:Elevation + sp_prop + reprod_type * rest_status + Species:(sp_prop + reprod_type) + rest_status + (1|Site/Combo), contrasts = list(reprod_type = "contr.sum"), family = "binomial", data = reprod_all_long)
-M0 <- glmmTMB(Reproduction ~ DomSpeciesSuperSimp + Elevation + Species + Species:Elevation + sp_prop + reprod_type * rest_status + Species:(sp_prop + reprod_type) + (1|Site/Combo), contrasts = list(reprod_type = "contr.sum"), family = "binomial", data = reprod_all_long)
-
-anova(M15,M1,M,M0)
+anova(M15,M,M0)
 
 joint_tests(M15)
 
@@ -2427,4 +2380,16 @@ emmeans(M15, ~ rest_status | Species | reprod_type, type = "response")
 Finally, plot the data.
 
 ```{r Plot}
+reprod_proportions_H <- reprod_all_long_H %>% 
+  group_by(rest_status, Site, Species, reprod_type) %>% 
+  summarise(avg = mean(Reproduction), 
+            se = sd(Reproduction)/sqrt(n()), 
+            YSR = mean(YSR)) %>% 
+  subset(Species %in% c("Sporobolus", "Sarcocornia", "Triglochin")) %>% 
+  subset(reprod_type != "Buds") %>% 
+  ungroup()
+
+ggplot(aes(x = rest_status, y = avg, group = rest_status), data = reprod_proportions_H) +
+  geom_boxplot() +
+  facet_wrap(~reprod_type + Species)
 ```
