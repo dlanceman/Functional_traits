@@ -536,8 +536,6 @@ Our dependent variables of interest are:
 
     -   Tree height
 
-    -   Reproduction (can't test for relationships here as it's presence/absence)
-
 -   Subquadrat variables
 
     -   Number of pneumatophores
@@ -547,8 +545,6 @@ Our dependent variables of interest are:
     -   Pneumatophore diameter
 
     -   Number of seedlings
-
-    -   Groundcover (% bare and % litter)
 
 -   Leaf variables (note that herbivory was measured on different leaves to area, so any correlation would be at the tree level rather than the leaf level)
 
@@ -560,6 +556,10 @@ Our dependent variables of interest are:
 
     -   Leaf herbivory
 
+    -   Leaf dry weight
+
+    -   Leaf wet weight
+
 Check for correlations using a correlation matrix of correlation coefficients and by creating correlation plots.
 
 Exclude variables if their correlation coefficient is very large (e.g. \>0.7).
@@ -568,7 +568,9 @@ Exclude variables if their correlation coefficient is very large (e.g. \>0.7).
 
 -   All manq variables have low to moderate correlations except Litter and Bare which are almost completely negatively correlated - only use one of these
 
--   All manleaf variables have low to moderate correlations except LMA and dfratio which have a correlation of 0.71. This is somewhat high but ok to retain both.
+-   Both dry weight and wet weight are strongly correlated with leaf area, so don't include those
+
+    -   All other manleaf variables have low to moderate correlations except LMA and dfratio which have a correlation of 0.71. This is somewhat high but ok to retain both.
 
 ```{r Correlations}
 t <- cor(mantree[,c(13,19,20,22,27,28,29)], use = "pairwise.complete.obs") 
@@ -577,16 +579,16 @@ t
 mantree_numeric <- mantree[,c(13,19,20,22,27,28,29)]
 plot(mantree_numeric)
 
-u <- cor(manq[,c(8,9,11,12,13,16,17)], use = "pairwise.complete.obs")
+u <- cor(manq[,c(8,9,11,16,17)], use = "pairwise.complete.obs")
 u
 
-manq_numeric <- manq[,c(8,9,11,12,13,16,17)]
+manq_numeric <- manq[,c(8,9,11,16,17)]
 plot(manq_numeric)
 
-v <- cor(manleafandherb[,c(11,14,15,17)], use = "pairwise.complete.obs")
+v <- cor(manleafandherb[,c(11,12,13,14,15,17)], use = "pairwise.complete.obs")
 v
 
-manleaf_numeric <- manleafandherb[,c(11,14,15,17)]
+manleaf_numeric <- manleafandherb[,c(11,12,13,14,15,17)]
 plot(manleaf_numeric)
 ```
 
@@ -787,23 +789,23 @@ Next, test the model:
 -   use anova to test the model against a null model without YSR to test the importance of YSR
 
 ```{r Model_testing}
-M2.2 <- glmmTMB(Trees ~ Elevation * Estuary + YSR + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm_rest)
-M0 <- glmmTMB(Trees ~ Elevation * Estuary + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm_rest)
+#M2.2 <- glmmTMB(Trees ~ Elevation * Estuary + YSR + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm_rest)
+#M0 <- glmmTMB(Trees ~ Elevation * Estuary + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm_rest)
 
-anova(M0,M2.2)
+#anova(M0,M2.2)
 
 M2.3 <- glmmTMB(Trees ~ Estuary + YSR + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm_rest)
 M0 <- glmmTMB(Trees ~ Estuary + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm_rest)
 
 anova(M0,M2.3)
 
-em <- emmeans(M2.2, ~ YSR, at = list(YSR = c(5,9,12,16,30,33)), type = "response")
+em <- emmeans(M2.3, ~ YSR, at = list(YSR = c(5,9,12,16,30,33)), type = "response")
 
 em
 
 plot(em)
 
-joint_tests(M2.2)
+joint_tests(M2.3)
 ```
 
 Finally, plot the results.
@@ -911,13 +913,13 @@ Next, test the model.
 -   Use an anova to test it against two null models that lack the polynomial YSR and lack YSR altogether
 
 ```{r Model_testing}
-M3.2 <- glmmTMB(Saplings ~ Estuary * Elevation + poly(YSR, 2) + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2",data = mantree_comm_rest)
+#M3.2 <- glmmTMB(Saplings ~ Estuary * Elevation + poly(YSR, 2) + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2",data = mantree_comm_rest)
 
-M <- glmmTMB(Saplings ~ Estuary * Elevation + YSR + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2",data = mantree_comm_rest)
+#M <- glmmTMB(Saplings ~ Estuary * Elevation + YSR + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2",data = mantree_comm_rest)
 
-M0 <- glmmTMB(Saplings ~ Estuary * Elevation + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2",data = mantree_comm_rest)
+#M0 <- glmmTMB(Saplings ~ Estuary * Elevation + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2",data = mantree_comm_rest)
 
-anova(M3.2,M,M0)  
+#anova(M3.2,M,M0)  
 
 M3.3 <- glmmTMB(total_saplings ~ Estuary + poly(YSR, 2) + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2",data = mantree_comm_rest) 
 
@@ -927,11 +929,11 @@ M00 <- glmmTMB(total_saplings ~ Estuary + (1|Site) + offset(log(Quadrat_size_m2)
 
 anova(M3.3,M1,M00)
 
-joint_tests(M3.2)  
+joint_tests(M3.3)  
 
-summary(M3.2)  
+summary(M3.3)  
 
-em <- emmeans(M3.2, ~ YSR, at = list(YSR = c(5,9,12,16,30,33)), type = "response", offset = log(100))  
+em <- emmeans(M3.3, ~ YSR, at = list(YSR = c(5,9,12,16,30,33)), type = "response", offset = log(100))  
 
 em  
 
@@ -1043,11 +1045,11 @@ Next, test the model.
 -   Use an anova to test it against a model that lacks YSR
 
 ```{r Model_testing}
-M3.4 <- glmmTMB(`Seedlings_<30cm_1x1` ~ Estuary * Elevation + YSR + (1|Site/Combo), data = manq_comm_rest, family = "nbinom2") 
+#M3.4 <- glmmTMB(`Seedlings_<30cm_1x1` ~ Estuary * Elevation + YSR + (1|Site/Combo), data = manq_comm_rest, family = "nbinom2") 
 
-M0 <- glmmTMB(`Seedlings_<30cm_1x1` ~ Estuary * Elevation + (1|Site/Combo), data = manq_comm_rest, family = "nbinom2") 
+#M0 <- glmmTMB(`Seedlings_<30cm_1x1` ~ Estuary * Elevation + (1|Site/Combo), data = manq_comm_rest, family = "nbinom2") 
 
-anova(M3.4,M0)  
+#anova(M3.4,M0)  
 
 M3.5 <- glmmTMB(`Seedlings_<30cm_1x1` ~ Estuary + YSR + (1|Site/Combo), data = manq_comm_rest, family = "nbinom2") 
 
@@ -1164,11 +1166,11 @@ plotQQunif(M3.7)
 Next, test the model.
 
 ```{r Model_testing}
-M3.6 <- glmmTMB(`Seedlings_30-100cm_1x1` ~ Estuary * Elevation + YSR + (1|Site/Combo), data = manq_comm_rest, family = "nbinom2") 
+#M3.6 <- glmmTMB(`Seedlings_30-100cm_1x1` ~ Estuary * Elevation + YSR + (1|Site/Combo), data = manq_comm_rest, family = "nbinom2") 
 
-M0 <- glmmTMB(`Seedlings_30-100cm_1x1` ~ Estuary * Elevation + (1|Site/Combo), data = manq_comm_rest, family = "nbinom2") 
+#M0 <- glmmTMB(`Seedlings_30-100cm_1x1` ~ Estuary * Elevation + (1|Site/Combo), data = manq_comm_rest, family = "nbinom2") 
 
-anova(M3.6,M0) 
+#anova(M3.6,M0) 
 
 M3.7 <- glmmTMB(`Seedlings_30-100cm_1x1` ~ Estuary + YSR + (1|Site/Combo), data = manq_comm_rest, family = "nbinom2") 
 
@@ -1269,18 +1271,18 @@ Next, test the model.
 -   Compare model with a null model (without YSR) to test for the importance of YSR
 
 ```{r Model_testing}
-M4.2 <- glmmTMB(Hollows ~ Elevation * Estuary + YSR + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm_rest)
-M0 <- glmmTMB(Hollows ~ Elevation * Estuary + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm_rest)
+#M4.2 <- glmmTMB(Hollows ~ Elevation * Estuary + YSR + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm_rest)
+#M0 <- glmmTMB(Hollows ~ Elevation * Estuary + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm_rest)
 
-anova(M4.2, M0)
+#anova(M4.2, M0)
 
-em <- emmeans(M4.2, ~ YSR, at = list(YSR = c(5:33)), type = "response")
+#em <- emmeans(M4.2, ~ YSR, at = list(YSR = c(5:33)), type = "response")
 
-em
+#em
 
-plot(em) 
+#plot(em) 
 
-joint_tests(M4.2)
+#joint_tests(M4.2)
 
 # without elevation
 M4.21 <- glmmTMB(Hollows ~ Estuary + YSR + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm_rest)
@@ -1360,10 +1362,10 @@ Next, test the model.
 -   compare the model against null models without the polynomial term and without YSR entirely to test the importance of YSR
 
 ```{r Model_testing}
-M <- glmmTMB(Canopy_cover_prop ~ Estuary * Elevation + YSR + (1|Site), family = "beta_family", data = mantree_comm_rest)
-M0 <- glmmTMB(Canopy_cover_prop ~ Estuary * Elevation + (1|Site), family = "beta_family", data = mantree_comm_rest)
+#M <- glmmTMB(Canopy_cover_prop ~ Estuary * Elevation + YSR + (1|Site), family = "beta_family", data = mantree_comm_rest)
+#M0 <- glmmTMB(Canopy_cover_prop ~ Estuary * Elevation + (1|Site), family = "beta_family", data = mantree_comm_rest)
 
-anova(M5, M, M0)
+#anova(M5, M, M0)
 
 M5.2 <- glmmTMB(Canopy_cover_prop ~ Estuary + poly(YSR, 2) + (1|Site), family = "beta_family", data = mantree_comm_rest)
 M <- glmmTMB(Canopy_cover_prop ~ Estuary + YSR + (1|Site), family = "beta_family", data = mantree_comm_rest)
@@ -1371,11 +1373,11 @@ M0 <- glmmTMB(Canopy_cover_prop ~ Estuary + (1|Site), family = "beta_family", da
 
 anova(M5.2,M,M0)
 
-joint_tests(M5)
+joint_tests(M5.2)
 
-summary(M5)
+summary(M5.2)
 
-emmeans(M5, ~ YSR | Estuary, at = list(YSR = c(5,9,12,16,30,33)), type = "response")
+emmeans(M5.2, ~ YSR | Estuary, at = list(YSR = c(5,9,12,16,30,33)), type = "response")
 ```
 
 Finally, plot the results.
@@ -1447,16 +1449,16 @@ plotQQunif(M6.3)
 Next, test the model.
 
 ```{r Model_testing}
-M0 <- glmmTMB(Stems ~ Estuary + Elevation + (1|Site/Combo), family = "poisson", data = mantree_grey_rest)
+#M0 <- glmmTMB(Stems ~ Estuary + Elevation + (1|Site/Combo), family = "poisson", data = mantree_grey_rest)
 
-anova(M6.1, M0)
-
-joint_tests(M6.1)
+#anova(M6.1, M0)
 
 M6.3 <- glmmTMB(Stems ~ Estuary + YSR + (1|Site/Combo), family = "poisson", data = mantree_grey_rest)
 M0 <- glmmTMB(Stems ~ Estuary + (1|Site/Combo), family = "poisson", data = mantree_grey_rest)
 
 anova(M6.3, M0)
+
+joint_tests(M6.3)
 ```
 
 Finally, plot the results.
@@ -1527,25 +1529,62 @@ Next, test the model:
 -   Use anova to compare model with null models that lack the polynomial YSR term (M) and lack YSR altogether (M0)
 
 ```{r Model_testing}
-M <- glmmTMB(log(DBH_cm) ~ Estuary * Elevation + YSR + (1|Site/Combo), family = "gaussian", data = mantree_grey_rest)
-M0 <- glmmTMB(log(DBH_cm) ~ Estuary * Elevation + (1|Site/Combo), family = "gaussian", data = mantree_grey_rest)
+#M <- glmmTMB(log(DBH_cm) ~ Estuary * Elevation + YSR + (1|Site/Combo), family = "gaussian", data = mantree_grey_rest)
+#M0 <- glmmTMB(log(DBH_cm) ~ Estuary * Elevation + (1|Site/Combo), family = "gaussian", data = mantree_grey_rest)
 
-anova(M7, M, M0)
+#anova(M7, M, M0)
 
 M <- glmmTMB(log(DBH_cm) ~ Estuary + YSR + (1|Site/Combo), family = "gaussian", data = mantree_grey_rest)
 M0 <- glmmTMB(log(DBH_cm) ~ Estuary + (1|Site/Combo), family = "gaussian", data = mantree_grey_rest)
 
 anova(M7.1,M,M0)
 
-joint_tests(M7)
+joint_tests(M7.1)
+
+emmeans(M7.1, ~YSR, at = list(YSR = c(5,9,12,16,30,33)), type = "response")
+
 ```
 
 Finally, plot the results.
 
 ```{r Plot}
-emmip(M7, ~ YSR, at = list(YSR = c(5:33)), type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "DBH")
+emmip(M7.1, ~ YSR, at = list(YSR = c(5:33)), type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "DBH (cm)")
 
-emmip(M7.1, ~ YSR, at = list(YSR = c(5:33)), type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "DBH")
+# restoring sites YSR
+m_DBH_rest <- ggplot(mantree_grey_rest, aes(x=YSR, y=DBH_cm, fill=Estuary, group = YSR)) +
+    geom_boxplot(width = 2) +
+  geom_jitter(height = 0) +
+    scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A") +
+    theme_classic() +
+    theme(legend.position = "none",
+          axis.text = element_text(size = 24),
+          axis.title = element_text(size = 28)) +
+  xlab("Years since restoration") +
+  ylab("Tree DBH (cm)") +
+  ylim(0,52) +
+  xlim(0,35) 
+m_DBH_rest
+
+# natural sites
+m_DBH_nat <- ggplot(mantree_grey_nat, aes(x=Site, y=DBH_cm, fill=Estuary, group = Site)) +
+    geom_boxplot(width = 0.4) +
+  geom_jitter(height = 0, width = 0.1) +
+    scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A") +
+    theme_classic() +
+    theme(legend.text = element_text(size = 20),
+          legend.title = element_text(size = 24),
+          axis.text = element_text(size = 24),
+          axis.text.y = element_blank(), # remove y axis labels when combining plot with restored
+          axis.title = element_text(size = 28)) +
+  xlab("Site") +
+  ylim(0,52) +
+  ylab("") 
+m_DBH_nat
+
+# plot natural and restored together
+ggarrange(m_DBH_rest,m_DBH_nat,ncol =2,nrow=1,widths = c(1.2,1))
+
+ggsave("C:/Users/z5204897/OneDrive - UNSW/Desktop/PhD/Data_analysis/Project/Functional_traits/Output/Mangrove_DBH.jpg", width = 4000, height = 2500, units = "px")
 ```
 
 ## 2g. Tree height
@@ -1618,24 +1657,23 @@ plotQQunif(M8.31)
 Next, test the model.
 
 ```{r Model_testing}
-M8.3 <- glmmTMB(log(Height_m) ~ Estuary * poly(Elevation, 2) + poly(YSR,2) + (1|Site/Combo), family = "gaussian", data = mantree_grey_rest)
-M <- glmmTMB(log(Height_m) ~ Estuary * poly(Elevation, 2) + YSR + (1|Site/Combo), family = "gaussian", data = mantree_grey_rest)
-M0 <- glmmTMB(log(Height_m) ~ Estuary * poly(Elevation, 2) + (1|Site/Combo), family = "gaussian", data = mantree_grey_rest)
+#M8.3 <- glmmTMB(log(Height_m) ~ Estuary * poly(Elevation, 2) + poly(YSR,2) + (1|Site/Combo), family = "gaussian", data = mantree_grey_rest)
+#M <- glmmTMB(log(Height_m) ~ Estuary * poly(Elevation, 2) + YSR + (1|Site/Combo), family = "gaussian", data = mantree_grey_rest)
+#M0 <- glmmTMB(log(Height_m) ~ Estuary * poly(Elevation, 2) + (1|Site/Combo), family = "gaussian", data = mantree_grey_rest)
 
-anova(M8.3,M,M0)
+#anova(M8.3,M,M0)
 
-joint_tests(M8.3)
+#joint_tests(M8.3)
 
-summary(M8.3)
+#summary(M8.3)
 
-em <- emtrends(M8.3, var = "YSR")
+#em <- emtrends(M8.3, var = "YSR")
 
+#em
 
-em
+#plot(em)
 
-plot(em)
-
-emmeans(M8.3, ~ YSR | Estuary, at = list(YSR = c(5,9,12,16,30,33)), type = "response")
+#emmeans(M8.3, ~ YSR | Estuary, at = list(YSR = c(5,9,12,16,30,33)), type = "response")
 
 # try without elevation
 
@@ -1656,17 +1694,50 @@ em
 
 plot(em)
 
-emmeans(M8.31, ~ YSR | Estuary, at = list(YSR = c(5,9,12,16,30,33)), type = "response")
+emmeans(M8.31, ~ YSR, at = list(YSR = c(5,9,12,16,30,33)), type = "response")
 ```
 
 Finally, plot the results.
 
 ```{r Plot}
-emmip(M8.3, ~ YSR, at = list(YSR = c(5:33)), type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Tree height") +
-  geom_boxplot(data = mantree_grey_rest, aes(x = YSR, y = Height_m, group = YSR))
-
 emmip(M8.31, ~ YSR, at = list(YSR = c(5:33)), type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Tree height") +
   geom_boxplot(data = mantree_grey_rest, aes(x = YSR, y = Height_m, group = YSR))
+
+# restoring sites YSR
+m_Ht_rest <- ggplot(mantree_grey_rest, aes(x=YSR, y=Height_m, fill=Estuary, group = YSR)) +
+    geom_boxplot(width = 2) +
+  geom_jitter(height = 0) +
+    scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A") +
+    theme_classic() +
+    theme(legend.position = "none",
+          axis.text = element_text(size = 24),
+          axis.title = element_text(size = 28)) +
+  xlab("Years since restoration") +
+  ylab("Height (m)") +
+  xlim(0,35) +
+  ylim(0,11.5)
+m_Ht_rest
+
+# natural sites
+m_Ht_nat <- ggplot(mantree_grey_nat, aes(x=Site, y=Height_m, fill=Estuary, group = Site)) +
+    geom_boxplot(width = 0.4) +
+  geom_jitter(height = 0, width = 0.1) +
+    scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A") +
+    theme_classic() +
+    theme(legend.text = element_text(size = 20),
+          legend.title = element_text(size = 24),
+          axis.text = element_text(size = 24),
+          axis.text.y = element_blank(), # remove y axis labels when combining plot with restored
+          axis.title = element_text(size = 28)) +
+  xlab("Site") +
+  ylab("") +
+  ylim(0,11.5)
+m_Ht_nat
+
+# plot natural and restored together
+ggarrange(m_Ht_rest,m_Ht_nat,ncol =2,nrow=1,widths = c(1.2,1))
+
+ggsave("C:/Users/z5204897/OneDrive - UNSW/Desktop/PhD/Data_analysis/Project/Functional_traits/Output/Mangrove_Height.jpg", width = 4000, height = 2500, units = "px")
 ```
 
 ## 2i. Number of pneumatophores
@@ -1732,14 +1803,14 @@ Next, test the model.
 -   Looks like there is evidence of a polynomial effect of YSR
 
 ```{r Model_testing}
-M9.1 <- glmmTMB(Pneu_0.5x0.5 ~ Estuary * Elevation + YSR + (1|Site/Combo), data = manq_comm_rest, family = "gaussian")
-M0 <- glmmTMB(Pneu_0.5x0.5 ~ Estuary * Elevation + (1|Site/Combo), data = manq_comm_rest, family = "gaussian")
+#M9.1 <- glmmTMB(Pneu_0.5x0.5 ~ Estuary * Elevation + YSR + (1|Site/Combo), data = manq_comm_rest, family = "gaussian")
+#M0 <- glmmTMB(Pneu_0.5x0.5 ~ Estuary * Elevation + (1|Site/Combo), data = manq_comm_rest, family = "gaussian")
 
-anova(M9.1,M0)
+#anova(M9.1,M0)
 
-joint_tests(M9.1)
+#joint_tests(M9.1)
 
-emmeans(M9.1, ~ YSR | Estuary, at = list(YSR = c(5,9,12,16,30,33)), type = "response")
+#emmeans(M9.1, ~ YSR | Estuary, at = list(YSR = c(5,9,12,16,30,33)), type = "response")
 
 # without elevation
 
@@ -1822,11 +1893,11 @@ plotQQunif(M10.3)
 Next, test the model.
 
 ```{r Model_testing}
-M10.2 <- glmmTMB(sqrt(Pneu_ht_mm) ~ Estuary * Elevation + poly(YSR,2) + (1|Site/Combo/Subquadrat), data = manq_rest, family = "gaussian")
-M <- glmmTMB(sqrt(Pneu_ht_mm) ~ Estuary * Elevation + YSR + (1|Site/Combo/Subquadrat), data = manq_rest, family = "gaussian")
-M0 <- glmmTMB(sqrt(Pneu_ht_mm) ~ Estuary * Elevation + (1|Site/Combo/Subquadrat), data = manq_rest, family = "gaussian")
+#M10.2 <- glmmTMB(sqrt(Pneu_ht_mm) ~ Estuary * Elevation + poly(YSR,2) + (1|Site/Combo/Subquadrat), data = manq_rest, family = "gaussian")
+#M <- glmmTMB(sqrt(Pneu_ht_mm) ~ Estuary * Elevation + YSR + (1|Site/Combo/Subquadrat), data = manq_rest, family = "gaussian")
+#M0 <- glmmTMB(sqrt(Pneu_ht_mm) ~ Estuary * Elevation + (1|Site/Combo/Subquadrat), data = manq_rest, family = "gaussian")
 
-anova(M10.2,M,M0)
+#anova(M10.2,M,M0)
 
 M10.3 <- glmmTMB(sqrt(Pneu_ht_mm) ~ Estuary + poly(YSR,2) + (1|Site/Combo/Subquadrat), data = manq_rest, family = "gaussian")
 M <- glmmTMB(sqrt(Pneu_ht_mm) ~ Estuary + YSR + (1|Site/Combo/Subquadrat), data = manq_rest, family = "gaussian")
@@ -1834,17 +1905,15 @@ M0 <- glmmTMB(sqrt(Pneu_ht_mm) ~ Estuary + (1|Site/Combo/Subquadrat), data = man
 
 anova(M10.3,M,M0)
 
-joint_tests(M10.2)
+joint_tests(M10.3)
 
-emmeans(M10.2, ~ YSR, at = list(YSR = c(5,9,12,16,30,33)), type = "response")
+emmeans(M10.3, ~ YSR, at = list(YSR = c(5,9,12,16,30,33)), type = "response")
+emmeans(M10.3, ~ Estuary, type = "response")
 ```
 
 Finally, plot the results.
 
 ```{r Plot}
-emmip(M10.2, ~ YSR, at = list(YSR = c(5:33)), type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Pneumatophore height") +
-  geom_boxplot(data = manq_rest, aes(x = YSR, y = Pneu_ht_mm, group = YSR))
-
 emmip(M10.3, ~ YSR, at = list(YSR = c(5:33)), type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Pneumatophore height") +
   geom_boxplot(data = manq_rest, aes(x = YSR, y = Pneu_ht_mm, group = YSR))
 
@@ -1864,7 +1933,7 @@ m_pneu_ht_rest <- ggplot(manq_rest, aes(x=YSR, y=Pneu_ht_mm/10, fill=Estuary, gr
 m_pneu_ht_rest
 
 # natural sites
-m_pneu_ht_nat <- ggplot(manq_rest, aes(x=Site, y=Pneu_ht_mm/10, fill=Estuary, group = Site)) +
+m_pneu_ht_nat <- ggplot(manq_nat, aes(x=Site, y=Pneu_ht_mm/10, fill=Estuary, group = Site)) +
     geom_boxplot(width = 0.4) +
   geom_jitter(width = 0.1) +
     scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A") +
@@ -1882,7 +1951,7 @@ m_pneu_ht_nat
 # plot natural and restored together
 ggarrange(m_pneu_ht_rest,m_pneu_ht_nat,ncol =2,nrow=1,widths = c(1.2,1))
 
-ggsave("C:/Users/z5204897/OneDrive - UNSW/Desktop/PhD/Data_analysis/Project/Functional_traits/Output/Pneumatophore_height.jpg", width = 4000, height = 3000, units = "px")
+ggsave("C:/Users/z5204897/OneDrive - UNSW/Desktop/PhD/Data_analysis/Project/Functional_traits/Output/Pneumatophore_height.jpg", width = 4000, height = 2500, units = "px")
 ```
 
 ## 2k. Pneumatophore diameter
@@ -1935,11 +2004,11 @@ plotQQunif(M11.3)
 Next, test the model.
 
 ```{r Model_testing}
-M11.2 <- glmmTMB(sqrt(Pneu_dia_mm) ~ Estuary + poly(Elevation,2) + poly(YSR, 2) + (1|Site/Combo/Subquadrat), family = "gaussian", data = manq_rest)
-M <- glmmTMB(sqrt(Pneu_dia_mm) ~ Estuary + poly(Elevation,2) + YSR + (1|Site/Combo/Subquadrat), family = "gaussian", data = manq_rest)
-M0 <- glmmTMB(sqrt(Pneu_dia_mm) ~ Estuary + poly(Elevation,2) + (1|Site/Combo/Subquadrat), family = "gaussian", data = manq_rest)
+#M11.2 <- glmmTMB(sqrt(Pneu_dia_mm) ~ Estuary + poly(Elevation,2) + poly(YSR, 2) + (1|Site/Combo/Subquadrat), family = "gaussian", data = manq_rest)
+#M <- glmmTMB(sqrt(Pneu_dia_mm) ~ Estuary + poly(Elevation,2) + YSR + (1|Site/Combo/Subquadrat), family = "gaussian", data = manq_rest)
+#M0 <- glmmTMB(sqrt(Pneu_dia_mm) ~ Estuary + poly(Elevation,2) + (1|Site/Combo/Subquadrat), family = "gaussian", data = manq_rest)
 
-anova(M11.2,M,M0)
+#anova(M11.2,M,M0)
 
 M11.3 <- glmmTMB(sqrt(Pneu_dia_mm) ~ Estuary + poly(YSR, 2) + (1|Site/Combo/Subquadrat), family = "gaussian", data = manq_rest)
 M <- glmmTMB(sqrt(Pneu_dia_mm) ~ Estuary + YSR + (1|Site/Combo/Subquadrat), family = "gaussian", data = manq_rest)
@@ -1947,9 +2016,9 @@ M0 <- glmmTMB(sqrt(Pneu_dia_mm) ~ Estuary + (1|Site/Combo/Subquadrat), family = 
 
 anova(M11.3,M,M0)
 
-joint_tests(M11.2)
+joint_tests(M11.3)
 
-emmeans(M11.2, ~ YSR, at = list(YSR = c(5,9,12,16,30,33)), type = "response")
+emmeans(M11.3, ~ YSR, at = list(YSR = c(5,9,12,16,30,33)), type = "response")
 ```
 
 Finally, plot the results.
@@ -1962,7 +2031,7 @@ emmip(M11.3, ~ YSR, at = list(YSR = c(5:33)), type = "response", CIs = TRUE, eng
   geom_boxplot(data = manq_rest, aes(x = YSR, y = Pneu_dia_mm, group = YSR))
 ```
 
-## ?2m. Leaf dry:fresh ratio
+## 2m. Leaf dry:fresh ratio
 
 First, prepare and explore the data.
 
@@ -2013,22 +2082,22 @@ Next, test the model.
 -   Compare it against a null model lacking YSR using anova
 
 ```{r Model_testing}
-M13 <- glmmTMB(dfratio ~ Estuary + poly(Elevation,2) + Tree_sapling + YSR + (1|Site/Combo/Tree), family = "gaussian", data = manleaf_wide_grey_rest)
+#M13 <- glmmTMB(dfratio ~ Estuary + poly(Elevation,2) + Tree_sapling + YSR + (1|Site/Combo/Tree), family = "gaussian", data = manleaf_wide_grey_rest)
 
-M <- glmmTMB(dfratio ~ Estuary + poly(Elevation,2) + Tree_sapling + (1|Site/Combo/Tree), family = "gaussian", data = manleaf_wide_grey_rest)
+#M <- glmmTMB(dfratio ~ Estuary + poly(Elevation,2) + Tree_sapling + (1|Site/Combo/Tree), family = "gaussian", data = manleaf_wide_grey_rest)
 
-anova(M13, M)
+#anova(M13, M)
 
 M13.2 <- glmmTMB(dfratio ~ Estuary + Tree_sapling + YSR + (1|Site/Combo/Tree), family = "gaussian", data = manleaf_wide_grey_rest)
 M <- glmmTMB(dfratio ~ Estuary + Tree_sapling + (1|Site/Combo/Tree), family = "gaussian", data = manleaf_wide_grey_rest)
 
 anova(M13.2, M)
 
-joint_tests(M13)
+joint_tests(M13.2)
 
-summary(M13)
+summary(M13.2)
 
-em <- emmeans(M13, ~ YSR, at = list(YSR = c(5,9,12,16,30,33)))
+em <- emmeans(M13.2, ~ YSR, at = list(YSR = c(5,9,12,16,30,33)))
 
 em 
 
@@ -2089,40 +2158,28 @@ plotQQunif(M14.2)
 Next, test the model.
 
 ```{r Model_testing}
-M14 <- glmmTMB(LMA ~ Estuary * poly(Elevation,2) + Tree_sapling + YSR + (1|Site/Combo/Tree_ID), family = "gaussian", data = manleaf_wide_grey_rest)
-M <- glmmTMB(LMA ~ Estuary * poly(Elevation,2) + Tree_sapling + (1|Site/Combo/Tree_ID), family = "gaussian", data = manleaf_wide_grey_rest)
+#M14 <- glmmTMB(LMA ~ Estuary * poly(Elevation,2) + Tree_sapling + YSR + (1|Site/Combo/Tree_ID), family = "gaussian", data = manleaf_wide_grey_rest)
+#M <- glmmTMB(LMA ~ Estuary * poly(Elevation,2) + Tree_sapling + (1|Site/Combo/Tree_ID), family = "gaussian", data = manleaf_wide_grey_rest)
 
-anova(M14, M)
+#anova(M14, M)
 
 M14.2 <- glmmTMB(LMA ~ Estuary + Tree_sapling + YSR + (1|Site/Combo/Tree_ID), family = "gaussian", data = manleaf_wide_grey_rest)
 M <- glmmTMB(LMA ~ Estuary + Tree_sapling + (1|Site/Combo/Tree_ID), family = "gaussian", data = manleaf_wide_grey_rest)
 
 anova(M14.2,M)
 
-joint_tests(M14)
+joint_tests(M14.2)
 
-summary(M14)
+summary(M14.2)
 
-emmeans(M14, ~YSR, at = list(YSR = c(5,9,12,16,30,33)))
+emmeans(M14.2, ~YSR, at = list(YSR = c(5,9,12,16,30,33)))
 ```
 
 Finally, plot the results.
 
 ```{r Plot}
-emmip(M14, ~YSR, at = list(YSR = c(5,9,12,16,30,33))) +
-  geom_boxplot(data = manleaf_wide_grey_rest, aes(x = YSR, y = LMA, group = YSR, color = Estuary))
-
-# the boxplots do not align with the trend. Try plotting without elevation to see if that could be influencing the results
-
-M14.1 <- glmmTMB(LMA ~ Estuary + Tree_sapling + YSR + (1|Site/Combo/Tree_ID), family = "gaussian", data = manleaf_wide_grey_rest)
-emmip(M14.1, ~YSR, at = list(YSR = c(5,9,12,16,30,33))) +
-  geom_boxplot(data = manleaf_wide_grey_rest, aes(x = YSR, y = LMA, group = YSR))
-
-# less steep slope but still a trend. try removing other variables to see their impact
-
-M14.2 <- glmmTMB(LMA ~ Tree_sapling + YSR + (1|Site/Combo/Tree_ID), family = "gaussian", data = manleaf_wide_grey_rest)
 emmip(M14.2, ~YSR, at = list(YSR = c(5,9,12,16,30,33))) +
-  geom_boxplot(data = manleaf_wide_grey_rest, aes(x = YSR, y = LMA, group = YSR))
+  geom_boxplot(data = manleaf_wide_grey_rest, aes(x = YSR, y = LMA, group = YSR, color = Estuary))
 
 ```
 
@@ -2187,21 +2244,21 @@ Next, test the model.
 
 ```{r Model_testing}
 
-M15 <- glmmTMB(log(Area) ~ Estuary * Elevation + Tree_sapling + YSR + (1|Site/Combo/Tree), family = "gaussian", data = manleaf_wide_grey_rest)
-M <- glmmTMB(log(Area) ~ Estuary * Elevation + Tree_sapling + (1|Site/Combo/Tree), family = "gaussian", data = manleaf_wide_grey_rest)
+#M15 <- glmmTMB(log(Area) ~ Estuary * Elevation + Tree_sapling + YSR + (1|Site/Combo/Tree), family = "gaussian", data = manleaf_wide_grey_rest)
+#M <- glmmTMB(log(Area) ~ Estuary * Elevation + Tree_sapling + (1|Site/Combo/Tree), family = "gaussian", data = manleaf_wide_grey_rest)
 
-anova(M15,M)
+#anova(M15,M)
 
 M15.1 <- glmmTMB(log(Area) ~ Estuary + Tree_sapling + YSR + (1|Site/Combo/Tree), family = "gaussian", data = manleaf_wide_grey_rest)
 M <- glmmTMB(log(Area) ~ Estuary + Tree_sapling + (1|Site/Combo/Tree), family = "gaussian", data = manleaf_wide_grey_rest)
 
 anova(M15.1,M)
 
-joint_tests(M15)
+joint_tests(M15.1)
 
-summary(M15)
+summary(M15.1)
 
-emmeans(M15, ~ YSR, at = list(YSR = c(5,9,12,16,30,33)), type = "response")
+emmeans(M15.1, ~ YSR, at = list(YSR = c(5,9,12,16,30,33)), type = "response")
 ```
 
 Finally, plot the results.
@@ -2281,28 +2338,27 @@ plotQQunif(M16.3)
 Next, test the model.
 
 ```{r Model_testing}
-M16.2 <- glmmTMB(Herb_prop ~ Estuary * Elevation + YSR + (1|Site/Combo/Tree), family = "tweedie", data = manleaf_wide_grey_rest_t) 
-M <- glmmTMB(Herb_prop ~ Estuary * Elevation + (1|Site/Combo/Tree), family = "tweedie", data = manleaf_wide_grey_rest_t) 
+#M16.2 <- glmmTMB(Herb_prop ~ Estuary * Elevation + YSR + (1|Site/Combo/Tree), family = "tweedie", data = manleaf_wide_grey_rest_t) 
+#M <- glmmTMB(Herb_prop ~ Estuary * Elevation + (1|Site/Combo/Tree), family = "tweedie", data = manleaf_wide_grey_rest_t) 
 
-anova(M16.2,M)
+#anova(M16.2,M)
 
 M16.3 <- glmmTMB(Herb_prop ~ Estuary + YSR + (1|Site/Combo/Tree), family = "tweedie", data = manleaf_wide_grey_rest_t) 
 M <- glmmTMB(Herb_prop ~ Estuary + (1|Site/Combo/Tree), family = "tweedie", data = manleaf_wide_grey_rest_t) 
 
 anova(M16.3,M)
 
-joint_tests(M16.2)
+joint_tests(M16.3)
 
-summary(M16.2)
+summary(M16.3)
 
-emmeans(M16.2, ~ YSR, at = list(YSR = c(5,9,12,16,30,33)), type = "response")
+emmeans(M16.3, ~ YSR, at = list(YSR = c(5,9,12,16,30,33)), type = "response")
+emmeans(M16.3, ~ Estuary, type = "response")
 ```
 
 Finally, plot the results.
 
 ```{r Plot}
-emmip(M16.2, ~ YSR | Elevation, at = list(YSR = c(6:33), Elevation = c(-0.5,0,0.5,1)), type = "response", CIs = TRUE)
-
 emmip(M16.3, ~ YSR, at = list(YSR = c(6:33)), type = "response", CIs = TRUE)
 
 # restoring sites YSR
@@ -2318,6 +2374,7 @@ m_herb_rest <- ggplot(manleaf_wide_grey_rest, aes(x=YSR, y=`Herb_%`, fill=Estuar
   ylab("Herbivory (%)") +
   xlim(0,35) +
   ylim(0,60)
+  #scale_y_continuous(trans = 'log10')
 m_herb_rest
 
 # natural sites
@@ -2333,13 +2390,14 @@ m_herb_nat <- ggplot(manleaf_wide_grey_nat, aes(x=Site, y=`Herb_%`, fill=Estuary
           axis.title = element_text(size = 28)) +
   xlab("Site") +
   ylab("") +
-  ylim(0,60)
+  ylim(0,60) 
+  #scale_y_continuous(trans = 'log10')
 m_herb_nat
 
 # plot natural and restored together
 ggarrange(m_herb_rest,m_herb_nat,ncol =2,nrow=1,widths = c(1.2,1))
 
-ggsave("C:/Users/z5204897/OneDrive - UNSW/Desktop/PhD/Data_analysis/Project/Functional_traits/Output/Mangrove_herbivory.jpg", width = 4000, height = 3000, units = "px")
+ggsave("C:/Users/z5204897/OneDrive - UNSW/Desktop/PhD/Data_analysis/Project/Functional_traits/Output/Mangrove_herbivory.jpg", width = 4000, height = 2500, units = "px")
 ```
 
 # 3. Restoration status models
@@ -2466,13 +2524,13 @@ Next, test the model:
 -   use anova to test the model against a null model without rest_status and without the interaction with Estuary to test the importance of rest_status
 
 ```{r Model_testing}
-M18 <- glmmTMB(Trees ~ Estuary * Elevation + rest_status + Estuary:rest_status + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm)
+#M18 <- glmmTMB(Trees ~ Estuary * Elevation + rest_status + Estuary:rest_status + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm)
 
-M <- glmmTMB(Trees ~ Estuary * Elevation + rest_status + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm)
+#M <- glmmTMB(Trees ~ Estuary * Elevation + rest_status + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm)
 
-M0 <- glmmTMB(Trees ~ Estuary * Elevation + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm)
+#M0 <- glmmTMB(Trees ~ Estuary * Elevation + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm)
 
-anova(M18,M,M0) 
+#anova(M18,M,M0) 
 
 M18.1 <- glmmTMB(Trees ~ Estuary * rest_status + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm)
 M <- glmmTMB(Trees ~ Estuary + rest_status + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm)
@@ -2480,11 +2538,11 @@ M0 <- glmmTMB(Trees ~ Estuary + (1|Site) + offset(log(Quadrat_size_m2)), family 
 
 anova(M18.1,M,M0) 
 
-joint_tests(M18)
+joint_tests(M18.1)
 
-summary(M18)
+summary(M18.1)
 
-emmeans(M18, ~ rest_status | Estuary, type = "response")  
+emmeans(M18.1, ~ rest_status | Estuary, type = "response")  
 ```
 
 Finally, plot the results.
@@ -2555,23 +2613,19 @@ scatter.smooth(predict(M19.1,re.form = NA), resid)
 plotQQunif(M19.1)
 ```
 
-M19 \<- glmmTMB(Saplings \~ Elevation \* Estuary + rest_status + Estuary:rest_status + (1\|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm)
-
-resid \<- residuals(simulateResiduals(M19), quantileFunction = qnorm, outlierValues = c(-7,7)) scatter.smooth(predict(M19,re.form = NA), resid) plotQQunif(M19)
-
 Next, test the model:
 
 -   use anova to test the model against a null model without rest_status or its interaction with Estuary
 -   The CI for saplings at each restoration status are non-overlapping
 
 ```{r Model_testing}
-M19 <- glmmTMB(Saplings ~ Elevation * Estuary + rest_status + Estuary:rest_status + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm)
+#M19 <- glmmTMB(Saplings ~ Elevation * Estuary + rest_status + Estuary:rest_status + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm)
 
-M <- glmmTMB(Saplings ~ Elevation * Estuary + rest_status + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm)
+#M <- glmmTMB(Saplings ~ Elevation * Estuary + rest_status + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm)
 
-M0 <- glmmTMB(Saplings ~ Elevation * Estuary + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm)
+#M0 <- glmmTMB(Saplings ~ Elevation * Estuary + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm)
 
-anova(M19,M,M0)  
+#anova(M19,M,M0)  
 
 M19.1 <- glmmTMB(Saplings ~ Estuary * rest_status + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm)
 M <- glmmTMB(Saplings ~ Estuary + rest_status + (1|Site) + offset(log(Quadrat_size_m2)), family = "nbinom2", data = mantree_comm)
@@ -2660,13 +2714,13 @@ Next, test the model:
 -   The CI for saplings at each restoration status are non-overlapping
 
 ```{r Model_testing}
-M19.3 <- glmmTMB(`Seedlings_<30cm_1x1` ~ Elevation * Estuary + rest_status + Estuary:rest_status + (1|Site), family = "nbinom2", data = manq_comm)
+#M19.3 <- glmmTMB(`Seedlings_<30cm_1x1` ~ Elevation * Estuary + rest_status + Estuary:rest_status + (1|Site), family = "nbinom2", data = manq_comm)
 
-M <- glmmTMB(`Seedlings_<30cm_1x1` ~ Elevation * Estuary + rest_status + (1|Site), family = "nbinom2", data = manq_comm)
+#M <- glmmTMB(`Seedlings_<30cm_1x1` ~ Elevation * Estuary + rest_status + (1|Site), family = "nbinom2", data = manq_comm)
 
-M0 <- glmmTMB(`Seedlings_<30cm_1x1` ~ Elevation * Estuary + (1|Site), family = "nbinom2", data = manq_comm)
+#M0 <- glmmTMB(`Seedlings_<30cm_1x1` ~ Elevation * Estuary + (1|Site), family = "nbinom2", data = manq_comm)
 
-anova(M19.3,M,M0) 
+#anova(M19.3,M,M0) 
 
 M19.31 <- glmmTMB(`Seedlings_<30cm_1x1` ~ Estuary * rest_status + (1|Site), family = "nbinom2", data = manq_comm)
 M <- glmmTMB(`Seedlings_<30cm_1x1` ~ Estuary + rest_status + (1|Site), family = "nbinom2", data = manq_comm)
@@ -2849,13 +2903,13 @@ Next, test the model:
 -   use anova to test the model against a null model without rest_status and without the interaction with Estuary
 
 ```{r Model_testing}
-M20.2 <- glmmTMB(Hollows ~ Estuary * Elevation + rest_status + Estuary:rest_status + offset(log(Quadrat_size_m2)) + (1|Site), family = "nbinom2", data = mantree_comm)
+#M20.2 <- glmmTMB(Hollows ~ Estuary * Elevation + rest_status + Estuary:rest_status + offset(log(Quadrat_size_m2)) + (1|Site), family = "nbinom2", data = mantree_comm)
 
-M <- glmmTMB(Hollows ~ Estuary * Elevation + rest_status + offset(log(Quadrat_size_m2)) + (1|Site), family = "nbinom2", data = mantree_comm)
+#M <- glmmTMB(Hollows ~ Estuary * Elevation + rest_status + offset(log(Quadrat_size_m2)) + (1|Site), family = "nbinom2", data = mantree_comm)
 
-M0 <- glmmTMB(Hollows ~ Estuary * Elevation + offset(log(Quadrat_size_m2)) + (1|Site), family = "nbinom2", data = mantree_comm)
+#M0 <- glmmTMB(Hollows ~ Estuary * Elevation + offset(log(Quadrat_size_m2)) + (1|Site), family = "nbinom2", data = mantree_comm)
 
-anova(M0,M,M20.2)  
+#anova(M0,M,M20.2)  
 
 M20.3 <- glmmTMB(Hollows ~ Estuary * rest_status + offset(log(Quadrat_size_m2)) + (1|Site), family = "nbinom2", data = mantree_comm)
 M <- glmmTMB(Hollows ~ Estuary + rest_status + offset(log(Quadrat_size_m2)) + (1|Site), family = "nbinom2", data = mantree_comm)
@@ -2863,12 +2917,12 @@ M0 <- glmmTMB(Hollows ~ Estuary + offset(log(Quadrat_size_m2)) + (1|Site), famil
 
 anova(M0,M,M20.3) 
 
-joint_tests(M20.2)  
+joint_tests(M20.3)  
 
-summary(M20.2)  
+summary(M20.3)  
 
-emmeans(M20.2, ~ rest_status | Estuary, type = "response", offset = log(100))  
-emmeans(M20.2, ~ rest_status, type = "response", offset = log(100)) 
+emmeans(M20.3, ~ rest_status | Estuary, type = "response", offset = log(100))  
+emmeans(M20.3, ~ rest_status, type = "response", offset = log(100)) 
 ```
 
 Finally, plot the results.
@@ -2938,13 +2992,13 @@ Next, test the model:
 -   use anova to test the model against a null model without rest_status and without its interaction with Estuary
 
 ```{r Model_testing}
-M21 <- glmmTMB(Cover_prop ~ Estuary + Elevation + rest_status + Estuary:rest_status + (1|Site), family = "beta_family", data = mantree_comm)
+#M21 <- glmmTMB(Cover_prop ~ Estuary + Elevation + rest_status + Estuary:rest_status + (1|Site), family = "beta_family", data = mantree_comm)
 
-M <- glmmTMB(Cover_prop ~ Estuary + Elevation + rest_status + (1|Site), family = "beta_family", data = mantree_comm)
+#M <- glmmTMB(Cover_prop ~ Estuary + Elevation + rest_status + (1|Site), family = "beta_family", data = mantree_comm)
 
-M0 <- glmmTMB(Cover_prop ~ Estuary + Elevation + (1|Site), family = "beta_family", data = mantree_comm)
+#M0 <- glmmTMB(Cover_prop ~ Estuary + Elevation + (1|Site), family = "beta_family", data = mantree_comm)
 
-anova(M21, M, M0) 
+#anova(M21, M, M0) 
 
 M21.1 <- glmmTMB(Cover_prop ~ Estuary * rest_status + (1|Site), family = "beta_family", data = mantree_comm)
 M <- glmmTMB(Cover_prop ~ Estuary + rest_status + (1|Site), family = "beta_family", data = mantree_comm)
@@ -2952,11 +3006,11 @@ M0 <- glmmTMB(Cover_prop ~ Estuary + (1|Site), family = "beta_family", data = ma
 
 anova(M21.1, M, M0) 
 
-joint_tests(M21)  
+joint_tests(M21.1)  
 
-summary(M21)  
+summary(M21.1)  
 
-emmeans(M21, ~ rest_status | Estuary, type = "response")  
+emmeans(M21.1, ~ rest_status | Estuary, type = "response")  
 ```
 
 Finally, plot the results.
@@ -3035,15 +3089,15 @@ Next, test the model:
 -   use anova to test the model against a null model without restoration status or its interactions with estuary or site
 
 ```{r Model_testing}
-M21.6 <- glmmTMB(Stems ~ Estuary * Elevation + Species * rest_status + Estuary:rest_status + (1|Site/Combo), family = "nbinom2", data = mantree_nored)
+#M21.6 <- glmmTMB(Stems ~ Estuary * Elevation + Species * rest_status + Estuary:rest_status + (1|Site/Combo), family = "nbinom2", data = mantree_nored)
 
-M1 <- glmmTMB(Stems ~ Estuary * Elevation + Species * rest_status + (1|Site/Combo), family = "nbinom2", data = mantree_nored)
+#M1 <- glmmTMB(Stems ~ Estuary * Elevation + Species * rest_status + (1|Site/Combo), family = "nbinom2", data = mantree_nored)
 
-M <- glmmTMB(Stems ~ Estuary * Elevation + Species + rest_status + (1|Site/Combo), family = "nbinom2", data = mantree_nored)
+#M <- glmmTMB(Stems ~ Estuary * Elevation + Species + rest_status + (1|Site/Combo), family = "nbinom2", data = mantree_nored)
 
-M0 <- glmmTMB(Stems ~ Estuary * Elevation + Species + (1|Site/Combo), family = "nbinom2", data = mantree_nored)
+#M0 <- glmmTMB(Stems ~ Estuary * Elevation + Species + (1|Site/Combo), family = "nbinom2", data = mantree_nored)
 
-anova(M21.6,M1,M,M0) 
+#anova(M21.6,M1,M,M0) 
 
 M21.7 <- glmmTMB(Stems ~ Estuary + Species * rest_status + Estuary:rest_status + (1|Site/Combo), family = "nbinom2", data = mantree_nored)
 M1 <- glmmTMB(Stems ~ Estuary + Species * rest_status + (1|Site/Combo), family = "nbinom2", data = mantree_nored)
@@ -3052,14 +3106,14 @@ M0 <- glmmTMB(Stems ~ Estuary + Species + (1|Site/Combo), family = "nbinom2", da
 
 anova(M21.7,M1,M,M0) 
 
-joint_tests(M21.6)  
+joint_tests(M21.7)  
 
-summary(M21.6)  
+summary(M21.7)  
 
-emmeans(M21.6, ~ rest_status, at = list(YSR = c(5,9,12,16,30,33)), type = "response")
-emmeans(M21.6, ~ rest_status | Species, at = list(YSR = c(5,9,12,16,30,33)), type = "response")
-emmeans(M21.6, ~ rest_status | Estuary, at = list(YSR = c(5,9,12,16,30,33)), type = "response")
-emmeans(M21.6, ~ rest_status | Species | Estuary, at = list(YSR = c(5,9,12,16,30,33)), type = "response")
+emmeans(M21.7, ~ rest_status, at = list(YSR = c(5,9,12,16,30,33)), type = "response")
+emmeans(M21.7, ~ rest_status | Species, at = list(YSR = c(5,9,12,16,30,33)), type = "response")
+emmeans(M21.7, ~ rest_status | Estuary, at = list(YSR = c(5,9,12,16,30,33)), type = "response")
+emmeans(M21.7, ~ rest_status | Species | Estuary, at = list(YSR = c(5,9,12,16,30,33)), type = "response")
 ```
 
 Finally, plot the results.
@@ -3142,15 +3196,15 @@ Next, test the model:
 -   use anova to test the model against a null model without restoration status and without its interactions with estuary and site
 
 ```{r Model_testing}
-M22 <- glmmTMB(log(DBH_cm) ~ Estuary + Elevation + Species * rest_status + Estuary:rest_status + (1|Site/Combo), family = "gaussian", data = mantree_nored)
+#M22 <- glmmTMB(log(DBH_cm) ~ Estuary + Elevation + Species * rest_status + Estuary:rest_status + (1|Site/Combo), family = "gaussian", data = mantree_nored)
 
-M1 <- glmmTMB(log(DBH_cm) ~ Estuary + Elevation + Species * rest_status + (1|Site/Combo), family = "gaussian", data = mantree_nored)
+#M1 <- glmmTMB(log(DBH_cm) ~ Estuary + Elevation + Species * rest_status + (1|Site/Combo), family = "gaussian", data = mantree_nored)
 
-M <- glmmTMB(log(DBH_cm) ~ Estuary + Elevation + Species + rest_status + (1|Site/Combo), family = "gaussian", data = mantree_nored)
+#M <- glmmTMB(log(DBH_cm) ~ Estuary + Elevation + Species + rest_status + (1|Site/Combo), family = "gaussian", data = mantree_nored)
 
-M0 <- glmmTMB(log(DBH_cm) ~ Estuary + Elevation + Species + (1|Site/Combo), family = "gaussian", data = mantree_nored)
+#M0 <- glmmTMB(log(DBH_cm) ~ Estuary + Elevation + Species + (1|Site/Combo), family = "gaussian", data = mantree_nored)
 
-anova(M22,M1,M,M0)  
+#anova(M22,M1,M,M0)  
 
 M22.1 <- glmmTMB(log(DBH_cm) ~ Estuary + Species * rest_status + Estuary: rest_status + (1|Site/Combo), family = "gaussian", data = mantree_nored)
 M1 <- glmmTMB(log(DBH_cm) ~ Estuary + Species * rest_status + (1|Site/Combo), family = "gaussian", data = mantree_nored)
@@ -3159,13 +3213,14 @@ M0 <- glmmTMB(log(DBH_cm) ~ Estuary + Species + (1|Site/Combo), family = "gaussi
 
 anova(M22.1,M1,M,M0) 
 
-joint_tests(M22)  
+joint_tests(M22.1)  
 
-summary(M22)  
+summary(M22.1)  
 
-emmeans(M22, ~ rest_status, type = "response")
-emmeans(M22, ~ rest_status | Species, type = "response")  
-emmeans(M22, ~ rest_status | Estuary, type = "response")  
+emmeans(M22.1, ~ rest_status, type = "response")
+emmeans(M22.1, ~ rest_status | Species, type = "response")  
+emmeans(M22.1, ~ rest_status | Estuary, type = "response") 
+emmeans(M22.1, ~ rest_status | Estuary | Species, type = "response")  
 ```
 
 Finally, plot the results.
@@ -3264,15 +3319,15 @@ Next, test the model:
 -   use anova to test the model against a null model without YSR to test the importance of YSR
 
 ```{r Model_testing}
-M23.2 <- glmmTMB(sqrt(Height_m) ~ Estuary + Elevation + Species + rest_status + Species:rest_status + Estuary : rest_status + (1|Site/Combo), family = "gaussian", data = mantree_nored)
+#M23.2 <- glmmTMB(sqrt(Height_m) ~ Estuary + Elevation + Species + rest_status + Species:rest_status + Estuary : rest_status + (1|Site/Combo), family = "gaussian", data = mantree_nored)
 
-M1 <- glmmTMB(sqrt(Height_m) ~ Estuary + Elevation + Species + rest_status + Species:rest_status + (1|Site/Combo), family = "gaussian", data = mantree_nored)
+#M1 <- glmmTMB(sqrt(Height_m) ~ Estuary + Elevation + Species + rest_status + Species:rest_status + (1|Site/Combo), family = "gaussian", data = mantree_nored)
 
-M <- glmmTMB(sqrt(Height_m) ~ Estuary + Elevation + Species + rest_status + (1|Site/Combo), family = "gaussian", data = mantree_nored)
+#M <- glmmTMB(sqrt(Height_m) ~ Estuary + Elevation + Species + rest_status + (1|Site/Combo), family = "gaussian", data = mantree_nored)
 
-M0 <- glmmTMB(sqrt(Height_m) ~ Estuary + Elevation + Species + (1|Site/Combo), family = "gaussian", data = mantree_nored)
+#M0 <- glmmTMB(sqrt(Height_m) ~ Estuary + Elevation + Species + (1|Site/Combo), family = "gaussian", data = mantree_nored)
 
-anova(M23.2,M1,M,M0)   
+#anova(M23.2,M1,M,M0)   
 
 M23.3 <- glmmTMB(sqrt(Height_m) ~ Estuary + Species * rest_status + Estuary : rest_status + (1|Site/Combo), family = "gaussian", data = mantree_nored)
 M1 <- glmmTMB(sqrt(Height_m) ~ Estuary + Species * rest_status + (1|Site/Combo), family = "gaussian", data = mantree_nored)
@@ -3281,12 +3336,13 @@ M0 <- glmmTMB(sqrt(Height_m) ~ Estuary + Species + (1|Site/Combo), family = "gau
 
 anova(M23.3,M1,M,M0)   
 
-joint_tests(M23.2)  
+joint_tests(M23.3)  
 
-summary(M23.2)  
+summary(M23.3)  
 
-emmeans(M23.2, ~ rest_status | Species, type = "response")  
-emmeans(M23.2, ~ rest_status | Estuary, type = "response") 
+emmeans(M23.3, ~ rest_status | Species, type = "response")  
+emmeans(M23.3, ~ rest_status | Estuary, type = "response") 
+emmeans(M23.3, ~ rest_status | Estuary | Species, type = "response") 
 ```
 
 Finally, plot the results.
@@ -3374,13 +3430,13 @@ Next, test the model:
 -   use anova to test the model against a null model without restoration status and its interaction with estuary
 
 ```{r Model_testing}
-M24.4 <- glmmTMB(Pneu_0.5x0.5 ~ Estuary * Elevation + rest_status + Estuary:rest_status + (1|Site/Combo), family = "gaussian", data = manq_comm)
+#M24.4 <- glmmTMB(Pneu_0.5x0.5 ~ Estuary * Elevation + rest_status + Estuary:rest_status + (1|Site/Combo), family = "gaussian", data = manq_comm)
 
-M <- glmmTMB(Pneu_0.5x0.5 ~ Estuary * Elevation + rest_status + (1|Site/Combo), family = "gaussian", data = manq_comm)
+#M <- glmmTMB(Pneu_0.5x0.5 ~ Estuary * Elevation + rest_status + (1|Site/Combo), family = "gaussian", data = manq_comm)
 
-M0 <- glmmTMB(Pneu_0.5x0.5 ~ Estuary * Elevation + (1|Site/Combo), family = "gaussian", data = manq_comm)
+#M0 <- glmmTMB(Pneu_0.5x0.5 ~ Estuary * Elevation + (1|Site/Combo), family = "gaussian", data = manq_comm)
 
-anova(M0,M,M24.4)
+#anova(M0,M,M24.4)
 
 M24.5 <- glmmTMB(Pneu_0.5x0.5 ~ Estuary * rest_status + (1|Site/Combo), family = "gaussian", data = manq_comm)
 M <- glmmTMB(Pneu_0.5x0.5 ~ Estuary + rest_status + (1|Site/Combo), family = "gaussian", data = manq_comm)
@@ -3388,11 +3444,11 @@ M0 <- glmmTMB(Pneu_0.5x0.5 ~ Estuary + (1|Site/Combo), family = "gaussian", data
 
 anova(M0,M,M24.5)
 
-joint_tests(M24.4)  
+joint_tests(M24.5)  
 
-summary(M24.4)  
+summary(M24.5)  
 
-emmeans(M24.4, ~ rest_status | Estuary, type = "response")  
+emmeans(M24.5, ~ rest_status | Estuary, type = "response")  
 ```
 
 Finally, plot the results.
@@ -3478,13 +3534,13 @@ Next, test the model:
 -   use anova to test the model against a null model without rest_status and its interaction with Estuary
 
 ```{r Model_testing}
-M25.2 <- glmmTMB(sqrt(Pneu_ht_mm) ~ Estuary + poly(Elevation,2) + rest_status + Estuary:rest_status + (1|Site/Combo/Subquadrat), family = "gaussian", data = manq)
+#M25.2 <- glmmTMB(sqrt(Pneu_ht_mm) ~ Estuary + poly(Elevation,2) + rest_status + Estuary:rest_status + (1|Site/Combo/Subquadrat), family = "gaussian", data = manq)
 
-M <- glmmTMB(sqrt(Pneu_ht_mm) ~ Estuary + poly(Elevation,2) + rest_status + (1|Site/Combo/Subquadrat), family = "gaussian", data = manq)
+#M <- glmmTMB(sqrt(Pneu_ht_mm) ~ Estuary + poly(Elevation,2) + rest_status + (1|Site/Combo/Subquadrat), family = "gaussian", data = manq)
 
-M0 <- glmmTMB(sqrt(Pneu_ht_mm) ~ Estuary + poly(Elevation,2) + (1|Site/Combo/Subquadrat), family = "gaussian", data = manq)
+#M0 <- glmmTMB(sqrt(Pneu_ht_mm) ~ Estuary + poly(Elevation,2) + (1|Site/Combo/Subquadrat), family = "gaussian", data = manq)
 
-anova(M0,M,M25.2)  
+#anova(M0,M,M25.2)  
 
 M25.3 <- glmmTMB(sqrt(Pneu_ht_mm) ~ Estuary * rest_status + (1|Site/Combo/Subquadrat), family = "gaussian", data = manq)
 M <- glmmTMB(sqrt(Pneu_ht_mm) ~ Estuary + rest_status + (1|Site/Combo/Subquadrat), family = "gaussian", data = manq)
@@ -3492,21 +3548,17 @@ M0 <- glmmTMB(sqrt(Pneu_ht_mm) ~ Estuary + (1|Site/Combo/Subquadrat), family = "
 
 anova(M0,M,M25.3) 
 
-joint_tests(M25.2)  
+joint_tests(M25.3)  
 
-summary(M25.2)  
+summary(M25.3)  
 
-emmeans(M25.2, ~ rest_status, type = "response")
-emmeans(M25.2, ~ rest_status | Estuary, type = "response")
+emmeans(M25.3, ~ rest_status, type = "response")
+emmeans(M25.3, ~ rest_status | Estuary, type = "response")
 ```
 
 Finally, plot the results.
 
 ```{r Plot}
-emmip(M25.2, ~ rest_status, type = "response", CIs = TRUE, engine = "ggplot", xlab = "Restoration status", ylab = "Pneumatophore height (mm)")
-
-emmip(M25.2, ~ rest_status | Estuary, type = "response", CIs = TRUE, engine = "ggplot", xlab = "Restoration status", ylab = "Pneumatophore height (mm)")
-
 emmip(M25.3, ~ rest_status, type = "response", CIs = TRUE, engine = "ggplot", xlab = "Restoration status", ylab = "Pneumatophore height (mm)")
 
 emmip(M25.3, ~ rest_status | Estuary, type = "response", CIs = TRUE, engine = "ggplot", xlab = "Restoration status", ylab = "Pneumatophore height (mm)")
@@ -3590,13 +3642,13 @@ Next, test the model:
 -   use anova to test the model against a null model without rest_status and its interaction with Estuary
 
 ```{r Model_testing}
-M26.3 <- glmmTMB(log(Pneu_dia_mm) ~ Estuary * Elevation + rest_status + Estuary:rest_status + (1|Site/Combo/Subquadrat), family = "gaussian", data = manq)
+#M26.3 <- glmmTMB(log(Pneu_dia_mm) ~ Estuary * Elevation + rest_status + Estuary:rest_status + (1|Site/Combo/Subquadrat), family = "gaussian", data = manq)
 
-M <- glmmTMB(log(Pneu_dia_mm) ~ Estuary * Elevation + rest_status + (1|Site/Combo/Subquadrat), family = "gaussian", data = manq)
+#M <- glmmTMB(log(Pneu_dia_mm) ~ Estuary * Elevation + rest_status + (1|Site/Combo/Subquadrat), family = "gaussian", data = manq)
 
-M0 <- glmmTMB(log(Pneu_dia_mm) ~ Estuary * Elevation + (1|Site/Combo/Subquadrat), family = "gaussian", data = manq)
+#M0 <- glmmTMB(log(Pneu_dia_mm) ~ Estuary * Elevation + (1|Site/Combo/Subquadrat), family = "gaussian", data = manq)
 
-anova(M0,M,M26.3) 
+#anova(M0,M,M26.3) 
 
 M26.4 <- glmmTMB(log(Pneu_dia_mm) ~ Estuary + rest_status + Estuary:rest_status + (1|Site/Combo/Subquadrat), family = "gaussian", data = manq)
 M <- glmmTMB(log(Pneu_dia_mm) ~ Estuary + rest_status + (1|Site/Combo/Subquadrat), family = "gaussian", data = manq)
@@ -3604,12 +3656,12 @@ M0 <- glmmTMB(log(Pneu_dia_mm) ~ Estuary + (1|Site/Combo/Subquadrat), family = "
 
 anova(M0,M,M26.4) 
 
-joint_tests(M26.3)  
+joint_tests(M26.4)  
 
-summary(M26.3)  
+summary(M26.4)  
 
-emmeans(M26.3, ~ rest_status, type = "response")
-emmeans(M26.3, ~ rest_status | Estuary, type = "response")
+emmeans(M26.4, ~ rest_status, type = "response")
+emmeans(M26.4, ~ rest_status | Estuary, type = "response")
 ```
 
 Finally, plot the results.
@@ -3622,7 +3674,7 @@ emmip(M26.4, ~ rest_status, type = "response", CIs = TRUE, engine = "ggplot", xl
 
 ## 
 
-## ?3m. Leaf dry:fresh ratio
+## 3m. Leaf dry:fresh ratio
 
 First, prepare and explore the data:
 
@@ -3696,22 +3748,22 @@ Next, test the model:
 -   use anova to test the model against a null model without rest_status
 
 ```{r Model_testing}
-M28 <- glmmTMB(dfratio ~ Estuary + poly(Elevation,2) + Tree_sapling + rest_status + (1|Site/Combo/Tree), family = "gaussian", data = manleaf_wide_grey)
+#M28 <- glmmTMB(dfratio ~ Estuary + poly(Elevation,2) + Tree_sapling + rest_status + (1|Site/Combo/Tree), family = "gaussian", data = manleaf_wide_grey)
 
-M0 <- glmmTMB(dfratio ~ Estuary + poly(Elevation,2) + Tree_sapling + (1|Site/Combo/Tree), family = "gaussian", data = manleaf_wide_grey)
+#M0 <- glmmTMB(dfratio ~ Estuary + poly(Elevation,2) + Tree_sapling + (1|Site/Combo/Tree), family = "gaussian", data = manleaf_wide_grey)
 
-anova(M0,M28)  
+#anova(M0,M28)  
 
 M28.1 <- glmmTMB(dfratio ~ Estuary + Tree_sapling + rest_status + (1|Site/Combo/Tree), family = "gaussian", data = manleaf_wide_grey)
 M0 <- glmmTMB(dfratio ~ Estuary + Tree_sapling + (1|Site/Combo/Tree), family = "gaussian", data = manleaf_wide_grey)
 
 anova(M0,M28.1)
 
-joint_tests(M28)  
+joint_tests(M28.1)  
 
-summary(M28)  
+summary(M28.1)  
 
-emmeans(M28, ~ rest_status, type = "response")
+emmeans(M28.1, ~ rest_status, type = "response")
 ```
 
 Finally, plot the results.
@@ -3785,22 +3837,22 @@ Next, test the model:
 -   use anova to test the model against a null model without YSR to test the importance of YSR
 
 ```{r Model_testing}
-M29 <- glmmTMB(LMA ~ Estuary + poly(Elevation,2) + Tree_sapling + rest_status + (1|Site/Combo/Tree_ID), family = "gaussian", data = manleaf_wide_grey)
+#M29 <- glmmTMB(LMA ~ Estuary + poly(Elevation,2) + Tree_sapling + rest_status + (1|Site/Combo/Tree_ID), family = "gaussian", data = manleaf_wide_grey)
 
-M0 <- glmmTMB(LMA ~ Estuary + poly(Elevation,2) + Tree_sapling + (1|Site/Combo/Tree_ID), family = "gaussian", data = manleaf_wide_grey)
+#M0 <- glmmTMB(LMA ~ Estuary + poly(Elevation,2) + Tree_sapling + (1|Site/Combo/Tree_ID), family = "gaussian", data = manleaf_wide_grey)
 
-anova(M0,M29)   
+#anova(M0,M29)   
 
 M29.1 <- glmmTMB(LMA ~ Estuary + Tree_sapling + rest_status + (1|Site/Combo/Tree_ID), family = "gaussian", data = manleaf_wide_grey)
 M0 <- glmmTMB(LMA ~ Estuary + Tree_sapling + (1|Site/Combo/Tree_ID), family = "gaussian", data = manleaf_wide_grey)
 
 anova(M0,M29.1)
 
-joint_tests(M29)  
+joint_tests(M29.1)  
 
-summary(M29)  
+summary(M29.1)  
 
-emmeans(M29, ~ rest_status, type = "response")
+emmeans(M29.1, ~ rest_status, type = "response")
 
 # can't interpret the coefficients (NAs), so would need to fix this issue if we wanted to use these
 ```
@@ -3894,15 +3946,15 @@ Next, test the model:
 -   use anova to test the model against a null model without rest_status and its interaction with species
 
 ```{r Model_testing}
-M30.2 <- glmmTMB(log(Area) ~ Estuary + Species*Elevation + Estuary:Elevation + Tree_sapling + rest_status + Species:rest_status + Estuary:rest_status + (1|Site/Combo/Tree), family = "gaussian", data = manleafandherb_nored)
+#M30.2 <- glmmTMB(log(Area) ~ Estuary + Species*Elevation + Estuary:Elevation + Tree_sapling + rest_status + Species:rest_status + Estuary:rest_status + (1|Site/Combo/Tree), family = "gaussian", data = manleafandherb_nored)
 
-M1 <- glmmTMB(log(Area) ~ Estuary + Species*Elevation + Estuary:Elevation + Tree_sapling + rest_status + Species:rest_status + (1|Site/Combo/Tree), family = "gaussian", data = manleafandherb_nored)
+#M1 <- glmmTMB(log(Area) ~ Estuary + Species*Elevation + Estuary:Elevation + Tree_sapling + rest_status + Species:rest_status + (1|Site/Combo/Tree), family = "gaussian", data = manleafandherb_nored)
 
-M <- glmmTMB(log(Area) ~ Estuary + Species*Elevation + Estuary:Elevation + Tree_sapling + rest_status + (1|Site/Combo/Tree), family = "gaussian", data = manleafandherb_nored)
+#M <- glmmTMB(log(Area) ~ Estuary + Species*Elevation + Estuary:Elevation + Tree_sapling + rest_status + (1|Site/Combo/Tree), family = "gaussian", data = manleafandherb_nored)
 
-M0 <- glmmTMB(log(Area) ~ Estuary + Species*Elevation + Estuary:Elevation + Tree_sapling + (1|Site/Combo/Tree), family = "gaussian", data = manleafandherb_nored)
+#M0 <- glmmTMB(log(Area) ~ Estuary + Species*Elevation + Estuary:Elevation + Tree_sapling + (1|Site/Combo/Tree), family = "gaussian", data = manleafandherb_nored)
 
-anova(M0,M,M1,M30.2)    
+#anova(M0,M,M1,M30.2)    
 
 M30.3 <- glmmTMB(log(Area) ~ Estuary + Tree_sapling + Species * rest_status + Estuary:rest_status + (1|Site/Combo/Tree), family = "gaussian", data = manleafandherb_nored)
 M1 <- glmmTMB(log(Area) ~ Estuary + Species + Tree_sapling + rest_status + Species:rest_status + (1|Site/Combo/Tree), family = "gaussian", data = manleafandherb_nored)
@@ -3912,12 +3964,12 @@ M0 <- glmmTMB(log(Area) ~ Estuary + Species + Tree_sapling + (1|Site/Combo/Tree)
 anova(M0,M,M1,M30.3)
 
 
-joint_tests(M30.2)  
+joint_tests(M30.3)  
 
-summary(M30.2)  
+summary(M30.3)  
 
-emmeans(M30.2, ~ rest_status, type = "response")
-emmeans(M30.2, ~ rest_status | Species, type = "response")
+emmeans(M30.3, ~ rest_status, type = "response")
+emmeans(M30.3, ~ rest_status | Species, type = "response")
 ```
 
 Finally, plot the results.
@@ -4021,12 +4073,12 @@ Next, test the model:
 -   use anova to test the model against a null model without YSR to test the importance of YSR
 
 ```{r Model_testing}
-M31.4 <- glmmTMB(Herb_prop ~ Estuary + Species*Elevation + Estuary:Elevation + Tree_sapling + rest_status + Species:rest_status + Estuary:rest_status + (1|Site/Combo/Tree), family = "beta_family", data = manleafandherb_nored)
-M1 <- glmmTMB(Herb_prop ~ Estuary + Species*Elevation + Estuary:Elevation + Tree_sapling + rest_status + Species:rest_status + (1|Site/Combo/Tree), family = "beta_family", data = manleafandherb_nored)
-M <- glmmTMB(Herb_prop ~ Estuary + Species*Elevation + Estuary:Elevation + Tree_sapling + rest_status + (1|Site/Combo/Tree), family = "beta_family", data = manleafandherb_nored)
-M0 <- glmmTMB(Herb_prop ~ Estuary + Species*Elevation + Estuary:Elevation + Tree_sapling + (1|Site/Combo/Tree), family = "beta_family", data = manleafandherb_nored)
+#M31.4 <- glmmTMB(Herb_prop ~ Estuary + Species*Elevation + Estuary:Elevation + Tree_sapling + rest_status + Species:rest_status + Estuary:rest_status + (1|Site/Combo/Tree), family = "beta_family", data = manleafandherb_nored)
+#M1 <- glmmTMB(Herb_prop ~ Estuary + Species*Elevation + Estuary:Elevation + Tree_sapling + rest_status + Species:rest_status + (1|Site/Combo/Tree), family = "beta_family", data = manleafandherb_nored)
+#M <- glmmTMB(Herb_prop ~ Estuary + Species*Elevation + Estuary:Elevation + Tree_sapling + rest_status + (1|Site/Combo/Tree), family = "beta_family", data = manleafandherb_nored)
+#M0 <- glmmTMB(Herb_prop ~ Estuary + Species*Elevation + Estuary:Elevation + Tree_sapling + (1|Site/Combo/Tree), family = "beta_family", data = manleafandherb_nored)
 
-anova(M1, M0,M,M31.4)
+#anova(M1, M0,M,M31.4)
 
 M31.5 <- glmmTMB(Herb_prop ~ Estuary + Species + Tree_sapling + rest_status + Species:rest_status + Estuary:rest_status + (1|Site/Combo/Tree), family = "beta_family", data = manleafandherb_nored)
 M1 <- glmmTMB(Herb_prop ~ Estuary + Species + Tree_sapling + rest_status + Species:rest_status + (1|Site/Combo/Tree), family = "beta_family", data = manleafandherb_nored)
@@ -4035,19 +4087,19 @@ M0 <- glmmTMB(Herb_prop ~ Estuary + Species + Tree_sapling + (1|Site/Combo/Tree)
 
 anova(M1, M0,M,M31.5)
 
-joint_tests(M31.4)  
+joint_tests(M31.5)  
 
-summary(M31.4)  
+summary(M31.5)  
 
-emmeans(M31.4, ~ rest_status | Species, type = "response")
-emmeans(M31.4, ~ rest_status | Estuary, type = "response")
+emmeans(M31.5, ~ rest_status | Species, type = "response")
+emmeans(M31.5, ~ rest_status | Estuary, type = "response")
 ```
 
 Finally, plot the results.
 
 ```{r Plot}
 
-emmip(M31.4, ~ rest_status | Species, type = "response", CIs = TRUE, engine = "ggplot", xlab = "Restoration status", ylab = "Leaf herbivory (proportion)")
+emmip(M31.5, ~ rest_status | Species, type = "response", CIs = TRUE, engine = "ggplot", xlab = "Restoration status", ylab = "Leaf herbivory (proportion)")
 
 emmip(M31.5, ~ rest_status | Estuary, type = "response", CIs = TRUE, engine = "ggplot", xlab = "Restoration status", ylab = "Leaf herbivory (proportion)")
 ```
