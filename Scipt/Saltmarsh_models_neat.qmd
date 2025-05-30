@@ -42,7 +42,7 @@ First, **load packages**.
 #install.packages("multcomp")
 #install.packages("ggfortify")
 
-library(plyr)
+#library(plyr)
 library(readxl)
 library(tidyverse)
 library(lme4)
@@ -419,10 +419,25 @@ M0 <- glmmTMB(Elevation ~ DomSpeciesSuperSimp + (1|Site), family = "gaussian", d
 
 anova(M,M0)
 
+# also test whether it is a polynomial or linear effect
+M0.5 <- glmmTMB(Elevation ~ DomSpeciesSuperSimp + YSR + (1|Site), family = "gaussian", data = salt_comm_rest_H)
+anova(M,M0.5)
+
+emmeans(M, ~ YSR, at = list(YSR = c(6,11,12,16,30,33)), type = "response")
+
 # boxplots
 
 S_Elev_rest <- ggplot(salt_comm_rest, aes(x=YSR, y=Elevation, group = YSR, fill = Estuary)) +
-    geom_boxplot(width = 2) +
+      geom_hline(yintercept = mean(salt_comm_rest$Elevation), linetype = "dashed", linewidth = 1) +
+  annotate(
+    "rect",
+    xmin = -Inf, xmax = Inf,  # Extend the rectangle across the entire x-axis
+    ymin = mean(salt_comm_rest$Elevation) - 0.14, 
+    ymax = mean(salt_comm_rest$Elevation) + 0.14,  # Set the y-range for the rectangle as the 95% confidence interval bounds
+    alpha = 0.4,  # Set the transparency level
+    fill = "grey"  # Set the fill color
+  ) +
+  geom_boxplot(width = 2) +
   geom_jitter(height = 0)  +
     scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A") +
     theme_classic() +
@@ -430,22 +445,33 @@ S_Elev_rest <- ggplot(salt_comm_rest, aes(x=YSR, y=Elevation, group = YSR, fill 
           axis.text = element_text(size = 18), # was 32
           axis.title = element_text(size = 22)) + # was 36
   xlab("Years since restoration") +
-  ylab("Elevation (m)") +
+  ylab("Elevation (m AHD)") +
   xlim(0,35)  +
   ylim(-0.5,1)
 S_Elev_rest
 
 S_Elev_nat <- ggplot(salt_comm_nat, aes(x=Site, y=Elevation, fill=Estuary, group = Site)) +
+  geom_hline(yintercept = mean(salt_comm_nat$Elevation), linetype = "dashed", linewidth = 1) +
+  annotate(
+    "rect",
+    xmin = -Inf, xmax = Inf,  # Extend the rectangle across the entire x-axis
+    ymin = mean(salt_comm_nat$Elevation) - 0.16, 
+    ymax = mean(salt_comm_nat$Elevation) + 0.16,  # Set the y-range for the rectangle as the 95% confidence interval bounds
+    alpha = 0.4,  # Set the transparency level
+    fill = "grey"  # Set the fill color
+  ) +
     geom_boxplot(width=0.4) +
   geom_jitter(width = 0.1, height = 0)  +
     scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A") +
     theme_classic() +
   guides(fill = guide_legend(position = "inside")) +
-    theme(legend.position.inside = c(0.4,0.2),
+    theme(legend.position.inside = c(0.5,0.2),
           axis.text = element_text(size = 18), # was 32
           axis.text.y = element_blank(), # remove y axis labels when combining plot with restored
-          axis.title = element_text(size = 22)) + # was 36
-  xlab("Site") +
+          axis.title = element_text(size = 22),
+          legend.text = element_text(size = 16),
+          legend.title = element_text(size = 16)) + # was 36
+  xlab("Natural site") +
   ylab("")  +
   ylim(-0.5,1)
 S_Elev_nat
@@ -453,6 +479,11 @@ S_Elev_nat
 # plot natural and restored together
 ggarrange(S_Elev_rest,S_Elev_nat,ncol =2,nrow=1,widths = c(2,1))
 # print at 1500 x 800 for paper, 2400 x 800 for preso
+
+#ggsave("C:/Users/z5204897/OneDrive - UNSW/Desktop/PhD/Data_analysis/Project/Functional_traits/Output/Saltmarsh_elev_doc.jpg", width = 2400, height = 1500, units = "px")
+
+emmip(M, ~YSR, at = list(YSR = c(5:33)), type = "response", CIs = TRUE) +
+  xlim(0,35)
 ```
 
 Given that elevations are lower with lower YSRs and higher with higher YSRs, we don't have a complete dataspace so can't model across a complete dataspace (i.e. missing data for low elevation and high YSR and low YSR and high elevation). Therefore, probably safest not to include an interaction between Elevation and YSR as the interaction would only be able to interpreted in small sections of the data.
@@ -695,7 +726,9 @@ Next, create a model.
 
 -   check covariance between predictors using check_collinearity on a model without polynomial terms (Mn)
 
--   test model using anova and comparing it to a model without the polynomial YSR (M) and a model with no YSR term at all (M0)
+-   test model using anova and comparing it to a model with no interaction with DomSpecies (M1) and with no YSR term (M0)
+
+-   if no significant interaction, compare model with a model without the polynomial YSR (M) to determine whether the trend is polynomial or linear (comparing AIC values)
 
 -   calculate parameter estimates using summary and emmeans
 
@@ -715,7 +748,7 @@ plotQQunif(M2) # great
 Mn <- glmmTMB(total_cover_prop_no1 ~ Elevation + DomSpeciesSuperSimp + YSR + (1|Site), data = salt_comm_rest_H, family = "beta_family")
 check_collinearity(Mn) # all low
 
-anova(M2,M1, M0, M)
+anova(M2,M1, M0)
 summary(M2)
 emmeans(M2, pairwise~DomSpeciesSuperSimp)
 
@@ -740,7 +773,7 @@ em2
 plot(em2)
 
 
-M2 <- glmmTMB(total_cover_prop_no1 ~ poly(Elevation,2) + DomSpeciesSuperSimp * poly(YSR,2) + (1|Site), data = salt_comm_rest_H, family = "beta_family", contrasts = list(DomSpeciesSuperSimp = "contr.sum"))
+#M2 <- glmmTMB(total_cover_prop_no1 ~ poly(Elevation,2) + DomSpeciesSuperSimp * poly(YSR,2) + (1|Site), data = salt_comm_rest_H, family = "beta_family", contrasts = list(DomSpeciesSuperSimp = "contr.sum"))
 ```
 
 Now, create some plots.
@@ -770,7 +803,16 @@ S_Cov_rest <- ggplot(salt_comm_rest_H, aes(x=YSR, y=total_cover_prop*100, group 
   ylim(0,100) 
 S_Cov_rest
 
-S_Cov_nat <- ggplot(salt_comm_nat_H, aes(x=Site, y=`Total_cover_%`, fill=Estuary, group = Site)) +
+S_Cov_nat <- ggplot(salt_comm_nat, aes(x=Site, y=`Total_cover_%`, fill=Estuary, group = Site)) +
+      geom_hline(yintercept = mean(salt_comm_nat$`Total_cover_%`, na.rm = TRUE), linetype = "dashed", linewidth = 1) +
+  annotate(
+    "rect",
+    xmin = -Inf, xmax = Inf,  # Extend the rectangle across the entire x-axis
+    ymin = 78, 
+    ymax = 92,  # Set the y-range for the rectangle as the 95% confidence interval bounds
+    alpha = 0.4,  # Set the transparency level
+    fill = "grey"  # Set the fill color
+  ) +
     geom_boxplot(width=0.4) +
   geom_jitter(width = 0.1, height = 0)  +
     scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A") +
@@ -832,6 +874,50 @@ ggplot(data = salt_comm_rest_H, aes(x = YSR, y = total_cover_prop * 100, group =
   xlab("Years since restoration") +
   ylab("Saltmarsh cover (%)") + 
   scale_color_viridis(discrete = TRUE, begin = 0.3, end = 0.8, option = "A")
+
+# plot overall predicted cover with only sporobolus and sarcocornia data and no elevation in model (given it confuses results by assuning elevation needs to stay constant over time, even though it naturally increases)
+
+M2.2 <- glmmTMB(total_cover_prop_no1 ~ DomSpeciesSuperSimp * poly(YSR,2) + (1|Site), data = salt_comm_rest_H %>% subset(DomSpecies %in% c("Sporobolus", "Sarcocornia")), family = "beta_family")
+
+em3 <- emmip(M2.2, ~ YSR, at = list(YSR = c(6,10,15,20,25,30,33)), type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Predicted proportion cover") +
+  geom_jitter(aes(x = YSR, y = total_cover_prop_no1), data = salt_comm_rest_H) +
+  ylim(0,1) +
+  theme_bw()
+
+em3
+```
+
+Make a modified figure for a poster presentation.
+
+```{r Poster_figure}
+t.test(salt_comm_nat_H$`Total_cover_%`)$conf.int # calculate natural total cover confidence interval
+
+S_Cov_rest2 <- ggplot(salt_comm_rest_H, aes(x=YSR, y=total_cover_prop*100, group = YSR, fill = Estuary)) +
+  geom_hline(yintercept = mean(salt_comm_nat_H$`Total_cover_%`, na.rm = TRUE), linetype = "dashed", linewidth = 1) + # add horizontal line for natural mean cover
+  annotate( # add grey box for natural 95% confidence interval
+    "rect",
+    xmin = -Inf, xmax = Inf,  # Extend the rectangle across the entire x-axis
+    ymin = 86, 
+    ymax = 97,  # Set the y-range for the rectangle as the 95% confidence interval bounds
+    alpha = 0.4,  # Set the transparency level
+    fill = "grey"  # Set the fill color
+  ) +
+  geom_boxplot(width = 2) +
+  geom_jitter(height = 0)  +
+    scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A") +
+    theme_classic() +
+    theme(legend.position = "none",
+          axis.text = element_text(size = 36),
+          axis.title = element_text(size = 36),
+          plot.title = element_text(size = 48), hjust = 0.5) +
+  xlab("Years since restoration") +
+  ylab("Saltmarsh cover (%)") +
+  ggtitle("Saltmarsh cover") +
+  xlim(0,35) + 
+  ylim(0,100) 
+S_Cov_rest2
+
+ggsave("C:/Users/z5204897/OneDrive - UNSW/Desktop/PhD/Data_analysis/Project/Functional_traits/Output/Saltmarsh_cover_poster.jpg", width = 2400, height = 2400, units = "px")
 ```
 
 Accounting for elevation relationships:
@@ -913,6 +999,14 @@ S_Cov_nat2 <- ggplot(salt_comm_nat, aes(x=Site, y=`Total_cover_%`, fill=DomSpeci
 S_Cov_nat2
 
 ggarrange(S_Cov_rest2, S_Cov_nat2, ncol =2,nrow=1,widths = c(2,1)) 
+
+# predicted cover using within-between model
+
+em1 <- emmip(M_WB, ~ YSR, at = list(YSR = c(6,10,15,20,25,30,33)), type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Predicted proportion cover") +
+  geom_jitter(aes(x = YSR, y = total_cover_prop_no1), data = salt_comm_rest_H) +
+  theme_bw()
+
+em1
 ```
 
 ## 2c. Burrows
@@ -964,7 +1058,9 @@ Next, create a model.
 
 -   Test assumptions using resid and scatter.smooth
 
--   Test model using anova, comparing the chosen model to a model without polynomial YSR (M) and without YSR altogether (M0)
+-   Test model using anova, comparing the chosen model to a model without YSR (M0)
+
+-   compare model with a model without the polynomial YSR (M) to determine whether the trend is polynomial or linear (comparing AIC values)
 
 -   Generate estimates for model paramaters using summary
 
@@ -988,7 +1084,9 @@ check_collinearity(M0) # all low
 M <- glmmTMB(Burrows_0.5x0.5 ~ poly(Elevation,2) + DomSpeciesSuperSimp + YSR +  (1|Site), data = salt_comm_rest_H_burrows, family = "nbinom2")
 M0 <- glmmTMB(Burrows_0.5x0.5 ~ poly(Elevation,2) + DomSpeciesSuperSimp +  (1|Site), data = salt_comm_rest_H_burrows, family = "nbinom2")
 
-anova(M3, M, M0)
+anova(M3, M0)
+
+anova(M, M3)
 
 joint_tests(M3)
 
@@ -1014,38 +1112,93 @@ Next, plot the data.
 
 ```{r Plot}
 S_Bur_rest <- ggplot(salt_comm_rest_H, aes(x=YSR, y=(Burrows_0.5x0.5+0.01), group = YSR, fill = Estuary)) +
+  geom_hline(yintercept = mean(salt_comm_rest_H$Burrows_0.5x0.5, na.rm = TRUE), linetype = "dashed", linewidth = 1) +
+  annotate(
+    "rect",
+    xmin = -Inf, xmax = Inf,  # Extend the rectangle across the entire x-axis
+    ymin = 2, 
+    ymax = 21,  # Set the y-range for the rectangle as the 95% confidence interval bounds
+    alpha = 0.4,  # Set the transparency level
+    fill = "grey"  # Set the fill color
+  ) +
     geom_boxplot(width = 2) +
   geom_jitter(height = 0)  +
     scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A") +
     theme_classic() +
     theme(legend.position = "none",
-          axis.text = element_text(size = 24),
-          axis.title = element_text(size = 28)) +
+          axis.text = element_text(size = 18),
+          axis.title = element_text(size = 22)) +
   xlab("Years since restoration") +
   ylab("Number of burrows") +
   xlim(0,35)  + ylim(0,62)
 S_Bur_rest
 
-S_Bur_nat <- ggplot(salt_comm_nat_H, aes(x=Site, y=Burrows_0.5x0.5, fill=Estuary, group = Site)) +
+S_Bur_nat <- ggplot(salt_comm_nat, aes(x=Site, y=Burrows_0.5x0.5, fill=Estuary, group = Site)) +
+    geom_hline(yintercept = mean(salt_comm_nat$Burrows_0.5x0.5, na.rm = TRUE), linetype = "dashed", linewidth = 1) +
+  annotate(
+    "rect",
+    xmin = -Inf, xmax = Inf,  # Extend the rectangle across the entire x-axis
+    ymin = 4, 
+    ymax = 56,  # Set the y-range for the rectangle as the 95% confidence interval bounds
+    alpha = 0.4,  # Set the transparency level
+    fill = "grey"  # Set the fill color
+  ) +
     geom_boxplot(width=0.4) +
   geom_jitter(width = 0.1, height = 0)  +
     scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A") +
     theme_classic() +
-    theme(legend.position = "none",
-          axis.text = element_text(size = 24),
-          axis.text.y = element_blank(), # remove y axis labels when combining plot with restored
-          axis.title = element_text(size = 28)) +
-  xlab("Site") +
+    theme(legend.position = c(0.5, 50),
+          axis.text = element_text(size = 18),
+          axis.text.y = element_blank(),# remove y axis labels when combining plot with restored
+          legend.text = element_text(size = 16),
+          legend.title = element_text(size = 16), 
+          axis.title = element_text(size = 22)) +
+  xlab("Natural site") +
   ylab("")  +
   #scale_y_log10() + 
   ylim(0,62)
 S_Bur_nat
 
-ggarrange(S_Bur_rest,S_Bur_nat,ncol =2,nrow=1,widths = c(3,1))
+ggarrange(S_Bur_rest,S_Bur_nat,ncol =2,nrow=1,widths = c(2,1))
+
+ggsave("C:/Users/z5204897/OneDrive - UNSW/Desktop/PhD/Data_analysis/Project/Functional_traits/Output/Saltmarsh_burrows_grey.jpg", width = 2400, height = 1500, units = "px")
 
 emmip(M3, ~ YSR, at = list(YSR = c(6:33)), type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Number of burrows") +
   geom_jitter(aes(x = YSR, y = Burrows_0.5x0.5), data = salt_comm_rest_H) +
+  xlim(0,35) +
   theme_bw()
+```
+
+Make a modified figure for a poster presentation.
+
+```{r Poster-figure}
+t.test(salt_comm_nat_H$Burrows_0.5x0.5)$conf.int # calculate natural total cover confidence interval
+
+S_Bur_rest2 <- ggplot(salt_comm_rest_H, aes(x=YSR, y=(Burrows_0.5x0.5+0.01), group = YSR, fill = Estuary)) +
+  geom_hline(yintercept = mean(salt_comm_nat_H$Burrows_0.5x0.5, na.rm = TRUE), linetype = "dashed", linewidth = 1) +
+  annotate(
+    "rect",
+    xmin = -Inf, xmax = Inf,  # Extend the rectangle across the entire x-axis
+    ymin = 2.1, 
+    ymax = 13.3,  # Set the y-range for the rectangle as the 95% confidence interval bounds
+    alpha = 0.4,  # Set the transparency level
+    fill = "grey"  # Set the fill color
+  ) +
+    geom_boxplot(width = 2) +
+  geom_jitter(height = 0)  +
+    scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A") +
+    theme_classic() +
+    theme(legend.position = "none",
+          axis.text = element_text(size = 36),
+          axis.title = element_text(size = 36),
+          plot.title = element_text(size = 48, hjust = 0.5)) +
+  xlab("Years since restoration") +
+  ylab("Number of burrows") +
+  ggtitle("Crab burrows") +
+  xlim(0,35) 
+S_Bur_rest2
+
+ggsave("C:/Users/z5204897/OneDrive - UNSW/Desktop/PhD/Data_analysis/Project/Functional_traits/Output/Saltmarsh_burrows_poster.jpg", width = 2400, height = 2400, units = "px")
 ```
 
 ## 2d. Stem density
@@ -1855,6 +2008,7 @@ summary(M10)
 emmeans(M10, pairwise ~ rest_status, type = "response")
 emmeans(M10, pairwise ~ Estuary, type = "response")
 emmeans(M10, pairwise ~ DomSpeciesSuperSimp, type = "response")
+emmeans(M10, pairwise ~ rest_status + DomSpeciesSuperSimp, type = "response")
 ```
 
 Finally, plot the data.
@@ -2041,15 +2195,17 @@ M <- glmmTMB(Stems ~ Estuary + Species + DomSpeciesSuperSimp + Species:Elevation
 
 resid <- residuals(simulateResiduals(M), quantileFunction = qnorm, outlierValues = c(-7,7))
 scatter.smooth(predict(M, re.form = NA), resid)
+scatter.smooth(predict(M, re.form = NA), abs(resid))
 plotQQunif(M)
 
 M0 <- glmmTMB(Stems ~ Estuary + Species + DomSpeciesSuperSimp + Species:Elevation + Species:sp_prop + Species:rest_status + (1|Site/Combo) + rr(Species+0|Combo, d = 1) + offset(log(Quadrat_area)), family = "nbinom2", data = stem_dens_unique_less)
 
 resid <- residuals(simulateResiduals(M0), quantileFunction = qnorm, outlierValues = c(-7,7))
 scatter.smooth(predict(M0, re.form = NA), resid)
+scatter.smooth(predict(M0, re.form = NA), abs(resid))
 plotQQunif(M0)
 
-M12 <- glmmTMB(sqrt(Stems) ~ Estuary + Species + DomSpeciesSuperSimp + Species:Elevation + Species:sp_prop + Species:rest_status +  (1|Site/Combo) + rr(Species+0|Combo, d = 1) + offset(log(Quadrat_area)), family = "gaussian", data = stem_dens_unique_less)
+M12 <- glmmTMB(sqrt(Stems/Quadrat_area) ~ Estuary + Species + DomSpeciesSuperSimp + Species:Elevation + Species:sp_prop + Species:rest_status +  (1|Site/Combo) + rr(Species+0|Combo, d = 1), family = "gaussian", data = stem_dens_unique_less)
 
 resid <- residuals(simulateResiduals(M12), quantileFunction = qnorm, outlierValues = c(-7,7))
 scatter.smooth(predict(M12, re.form = NA), resid)
@@ -2074,7 +2230,7 @@ anova(M12,M)
 
 
 joint_tests(M12)
-emmeans(M12, ~rest_status, type = "response")
+emmeans(M12, ~rest_status | Species, type = "response", offset = log(10000))
 summary(M12)
 ```
 
@@ -2388,6 +2544,7 @@ joint_tests(M15)
 
 summary(M15)
 
+# confidence intervals etc don't mean much unless split up by reproduction type
 emmeans(M15, ~ rest_status | Species | reprod_type, type = "response")
 ```
 
@@ -2406,4 +2563,12 @@ reprod_proportions_H <- reprod_all_long_H %>%
 ggplot(aes(x = rest_status, y = avg, group = rest_status), data = reprod_proportions_H) +
   geom_boxplot() +
   facet_wrap(~reprod_type + Species)
+```
+
+P value adjustment
+
+```{r}
+salt_main_raw_p <- tibble(variable = c(),
+                         test = c(),
+                         pvalue = c())
 ```
