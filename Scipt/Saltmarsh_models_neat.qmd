@@ -1084,20 +1084,6 @@ check_collinearity(M0) # all low
 M <- glmmTMB(Burrows_0.5x0.5 ~ poly(Elevation,2) + DomSpeciesSuperSimp + YSR +  (1|Site), data = salt_comm_rest_H_burrows, family = "nbinom2")
 M0 <- glmmTMB(Burrows_0.5x0.5 ~ poly(Elevation,2) + DomSpeciesSuperSimp +  (1|Site), data = salt_comm_rest_H_burrows, family = "nbinom2")
 
-# create a zero-inflated poisson model, consistent with the restoration status model
-M3 <- glmmTMB(Burrows_0.5x0.5 ~ poly(Elevation,2) + DomSpeciesSuperSimp + poly(YSR,2) + (1|Site), data = salt_comm_rest_H_burrows, family = "poisson", ziformula =~1)
-
-resid <- residuals(simulateResiduals(M3), quantileFunction = qnorm, outlierValues = c(-7,7))
-scatter.smooth(predict(M3,re.form = NA), resid) # good
-
-#check collinearity on a model without polynomial terms
-M0 <- glmmTMB(Burrows_0.5x0.5 ~ Elevation + DomSpeciesSuperSimp + YSR +  (1|Site), data = salt_comm_rest_H_burrows, family = "poisson", ziformula =~1)
-check_collinearity(M0)
-
-# compare to null models
-M <- glmmTMB(Burrows_0.5x0.5 ~ poly(Elevation,2) + DomSpeciesSuperSimp + YSR +  (1|Site), data = salt_comm_rest_H_burrows, family = "poisson", ziformula =~1)
-M0 <- glmmTMB(Burrows_0.5x0.5 ~ poly(Elevation,2) + DomSpeciesSuperSimp +  (1|Site), data = salt_comm_rest_H_burrows, family = "poisson", ziformula =~1)
-
 anova(M3, M0)
 
 anova(M, M3)
@@ -2160,9 +2146,9 @@ Next, create a model:
 
 -   poisson distribution because it's count data
 
--   try both a non-zero-inflated and a zero-inflated model
+-   try both a non-zero-inflated and a zero-inflated poisson model and negative binomial model
 
-    -   the zero-inflated model has slightly better looking assumptions graphs and a significantly lower AIC value, so use that (M11)
+    -   use negative binomial model
 
 ```{r Model_create}
 M <- glmmTMB(Burrows_0.5x0.5 ~ Estuary + DomSpeciesSuperSimp + Elevation + rest_status + (1|Site), data = salt_comm_burrows, family = "poisson")
@@ -2172,25 +2158,25 @@ scatter.smooth(predict(M, re.form = NA), resid)
 check_collinearity(M) # low collinearity
 plotQQunif(M)
 
-M11 <- glmmTMB(Burrows_0.5x0.5 ~ Estuary + DomSpeciesSuperSimp + Elevation + rest_status + (1|Site), data = salt_comm_burrows, family = "poisson", ziformula =~1)
-
-resid <- residuals(simulateResiduals(M11), quantileFunction = qnorm, outlierValues = c(-7,7))
-scatter.smooth(predict(M11, re.form = NA), resid)
-check_collinearity(M11) # low collinearity
-plotQQunif(M11)
-
-anova(M, M11)
-
-summary(M11)
-
-
-
-M1 <- glmmTMB(Burrows_0.5x0.5 ~ Estuary + DomSpeciesSuperSimp + Elevation + rest_status + (1|Site), data = salt_comm_burrows, family = "nbinom2")
+M1 <- glmmTMB(Burrows_0.5x0.5 ~ Estuary + DomSpeciesSuperSimp + Elevation + rest_status + (1|Site), data = salt_comm_burrows, family = "poisson", ziformula =~1)
 
 resid <- residuals(simulateResiduals(M1), quantileFunction = qnorm, outlierValues = c(-7,7))
 scatter.smooth(predict(M1, re.form = NA), resid)
 check_collinearity(M1) # low collinearity
 plotQQunif(M1)
+
+anova(M, M1)
+
+summary(M1)
+
+
+
+M11 <- glmmTMB(Burrows_0.5x0.5 ~ Estuary + DomSpeciesSuperSimp + Elevation + rest_status + (1|Site), data = salt_comm_burrows, family = "nbinom2")
+
+resid <- residuals(simulateResiduals(M11), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M11, re.form = NA), resid)
+check_collinearity(M11) # low collinearity
+plotQQunif(M11)
 
 anova(M,M1)
 ```
@@ -2202,7 +2188,7 @@ Next, test the model.
 -   calculate parameter estimates using summary and emmeans
 
 ```{r Model_test}
-M0 <- glmmTMB(Burrows_0.5x0.5 ~ Estuary + DomSpeciesSuperSimp + Elevation + (1|Site), data = salt_comm_burrows, family = "poisson", ziformula =~1)
+M0 <- glmmTMB(Burrows_0.5x0.5 ~ Estuary + DomSpeciesSuperSimp + Elevation + (1|Site), data = salt_comm_burrows, family = "nbinom2")
 
 anova(M11, M0)
 
@@ -2214,7 +2200,7 @@ emmeans(M11, pairwise ~ DomSpeciesSuperSimp, type = "response")
 Finally, plot the data.
 
 ```{r Plot}
-ggplot(salt_comm, aes(x=Estuary, y=total_cover_prop*100, fill = as.factor(DomSpeciesSuperSimp))) +
+ggplot(salt_comm, aes(x=Estuary, y=Burrows_0.5x0.5, fill = as.factor(DomSpeciesSuperSimp))) +
     geom_boxplot() +
   geom_jitter(size = 3)  +
     scale_fill_viridis(discrete = TRUE, begin = 0.5, end = 0.8, option = "A",

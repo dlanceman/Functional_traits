@@ -315,6 +315,10 @@ manleafandherb <- full_join(x = manleafall_wide, y = manherb_long, by = c("Estua
 manleafandherb <- merge(manleafandherb, mantree_comm[,c("Combo","Elevation")], by = c("Combo"), no.dups = TRUE) %>%
   mutate(Tree_ID = paste0(Combo,Tree))
 
+# fill out missing tree/sapling label data 
+manleafandherb[166:170,6] <- "Sapling"
+manleafandherb[c(696:703,709,710),6] <- "Tree"
+
 ```
 
 ### Outliers
@@ -2361,6 +2365,8 @@ emmip(M13, ~ YSR, at = list(YSR = c(5,9,12,16,30,33)))
 
 First, prepare and explore the data.
 
+Don't include Estuary as a factor, because the Maroochy estuary only had one site where we could measure leaf weights (so therefore can't compare restored and natural sites there).
+
 ```{r Prep/explore}
 hist(manleaf_wide_grey_rest$LMA) # approx normal distribution
 
@@ -2382,11 +2388,11 @@ Next, create a model.
 
 ```{r Model_building}
 # check collinearity on model without interactions
-M0 <- glmmTMB(LMA ~ Estuary + Tree_sapling + YSR, family = "gaussian", data = manleaf_wide_grey_rest)
+M0 <- glmmTMB(LMA ~ Tree_sapling + YSR, family = "gaussian", data = manleaf_wide_grey_rest)
 check_collinearity(M0)
 
 #  without elevation
-M14.2 <- glmmTMB(LMA ~ Estuary + Tree_sapling + YSR + (1|Site/Combo/Tree_ID), family = "gaussian", data = manleaf_wide_grey_rest)
+M14.2 <- glmmTMB(LMA ~ Tree_sapling + YSR + (1|Site/Combo/Tree_ID), family = "gaussian", data = manleaf_wide_grey_rest)
 
 resid <- residuals(simulateResiduals(M14.2), quantileFunction = qnorm, outlierValues = c(-7,7))
 scatter.smooth(predict(M14.2,re.form = NA), resid) 
@@ -2396,8 +2402,8 @@ plotQQunif(M14.2)
 Next, test the model.
 
 ```{r Model_testing}
-M14.2 <- glmmTMB(LMA ~ Estuary + Tree_sapling + YSR + (1|Site/Combo/Tree_ID), family = "gaussian", data = manleaf_wide_grey_rest)
-M <- glmmTMB(LMA ~ Estuary + Tree_sapling + (1|Site/Combo/Tree_ID), family = "gaussian", data = manleaf_wide_grey_rest)
+M14.2 <- glmmTMB(LMA ~ YSR + (1|Site/Combo/Tree_ID), family = "gaussian", data = manleaf_wide_grey_rest)
+M <- glmmTMB(LMA ~ (1|Site/Combo/Tree_ID), family = "gaussian", data = manleaf_wide_grey_rest)
 
 anova(M14.2,M)
 
@@ -2593,20 +2599,6 @@ resid <- residuals(simulateResiduals(M16.3), quantileFunction = qnorm, outlierVa
 scatter.smooth(predict(M16.3,re.form = NA), resid) 
 plotQQunif(M16.3)
 
-
-## use beta distribution model, consistent with restoration status model
-
-M16.4 <- glmmTMB(Herb_prop ~ Estuary + YSR + (1|Site/Combo/Tree), family = "beta_family", data = manleaf_wide_grey_rest_t) 
-
-resid <- residuals(simulateResiduals(M16.4), quantileFunction = qnorm, outlierValues = c(-7,7))
-scatter.smooth(predict(M16.4,re.form = NA), resid) 
-scatter.smooth(predict(M16.4,re.form = NA), abs(resid)) 
-plotQQunif(M16.4)
-
-
-summary(M16.4)
-
-summary(manleaf_wide_grey_rest_t$Herb_prop)
 ```
 
 Next, test the model.
@@ -2629,19 +2621,6 @@ summary(M16.3)
 emmeans(M16.3, ~ YSR, at = list(YSR = c(5,9,12,16,30,33)), type = "response")
 emmeans(M16.3, ~ Estuary, type = "response")
 
-
-# beta model, consistent with restoration status model
-M16.4 <- glmmTMB(Herb_prop ~ Estuary + YSR + (1|Site/Combo/Tree), family = "beta_family", data = manleaf_wide_grey_rest_t) 
-M <- glmmTMB(Herb_prop ~ Estuary + (1|Site/Combo/Tree), family = "beta_family", data = manleaf_wide_grey_rest_t) 
-
-anova(M16.4,M)
-
-joint_tests(M16.4)
-
-summary(M16.4)
-
-emmeans(M16.4, ~ YSR, at = list(YSR = c(5,9,12,16,30,33)), type = "response")
-emmeans(M16.4, ~ Estuary, type = "response")
 ```
 
 Finally, plot the results.
@@ -4343,7 +4322,7 @@ plotQQunif(M31.2)
 
 anova(M31.1,M31.2)
 
-# beta model looks better but still weird
+# beta model looks better but still weird (not sure if this is true...)
 
 M31.4 <- glmmTMB(Herb_prop ~ Estuary + Species*Elevation + Estuary:Elevation + Tree_sapling + rest_status + Species:rest_status + Estuary:rest_status + (1|Site/Combo/Tree), family = "beta_family", data = manleafandherb_nored)
   
@@ -4363,11 +4342,17 @@ resid <- residuals(simulateResiduals(M31.5), quantileFunction = qnorm, outlierVa
 scatter.smooth(predict(M31.5,re.form = NA), resid) 
 plotQQunif(M31.5)
 
-M31.5 <- glmmTMB(Herb_prop ~ Estuary + Tree_sapling + Species * rest_status + Estuary:rest_status + (1|Site/Combo/Tree), family = "tweedie", data = manleafandherb_nored)
+# without elevation - tweedie
+
+M31.6 <- glmmTMB(Herb_prop ~ Estuary + Tree_sapling + Species * rest_status + Estuary:rest_status + (1|Site/Combo/Tree), family = "tweedie", data = manleafandherb_nored)
   
-resid <- residuals(simulateResiduals(M31.5), quantileFunction = qnorm, outlierValues = c(-7,7))
-scatter.smooth(predict(M31.5,re.form = NA), resid) 
-plotQQunif(M31.5)
+resid <- residuals(simulateResiduals(M31.6), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M31.6,re.form = NA), resid) 
+plotQQunif(M31.6)
+
+# check collinearity on a model without interactions
+M0 <- glmmTMB(Herb_prop ~ Estuary + Species+ Tree_sapling + rest_status + (1|Site/Combo/Tree), family = "tweedie", data = manleafandherb_nored)
+check_collinearity(M0)
 ```
 
 Next, test the model:
@@ -4396,6 +4381,27 @@ summary(M31.5)
 emmeans(M31.5, ~ rest_status | Species, type = "response")
 emmeans(M31.5, ~ rest_status | Species | Estuary, type = "response")
 emmeans(M31.5, ~ rest_status | Estuary, type = "response")
+
+
+
+
+# USE TWEEDIE MODEL
+M31.6 <- glmmTMB(Herb_prop ~ Estuary + Tree_sapling + Species * rest_status + Estuary:rest_status + (1|Site/Combo/Tree), family = "tweedie", data = manleafandherb_nored)
+M1 <- glmmTMB(Herb_prop ~ Estuary + Species + Tree_sapling + rest_status + Species:rest_status + (1|Site/Combo/Tree), family = "tweedie", data = manleafandherb_nored)
+M <- glmmTMB(Herb_prop ~ Estuary + Species + Tree_sapling + rest_status + (1|Site/Combo/Tree), family = "tweedie", data = manleafandherb_nored)
+M0 <- glmmTMB(Herb_prop ~ Estuary + Species + Tree_sapling + (1|Site/Combo/Tree), family = "tweedie", data = manleafandherb_nored)
+
+anova(M0,M31.6)
+anova(M1, M0,M,M31.6)
+
+joint_tests(M31.6)  
+
+summary(M31.6)  
+
+emmeans(M31.6, ~ rest_status | Species, type = "response")
+emmeans(M31.6, ~ rest_status | Species | Estuary, type = "response")
+emmeans(M31.6, ~ rest_status | Estuary, type = "response")
+
 ```
 
 Finally, plot the results.
