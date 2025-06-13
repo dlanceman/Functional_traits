@@ -1564,6 +1564,19 @@ M6.3 <- glmmTMB(Stems ~ Estuary + YSR + (1|Site/Combo), family = "poisson", data
 resid <- residuals(simulateResiduals(M6.3), quantileFunction = qnorm, outlierValues = c(-7,7))
 scatter.smooth(predict(M6.3,re.form = NA), resid) 
 plotQQunif(M6.3)
+
+
+## use a negative binomial model, consistent with restoration status model
+
+M6.4 <- glmmTMB(Stems ~ Estuary + YSR + (1|Site/Combo), family = "nbinom2", data = mantree_grey_rest)
+
+resid <- residuals(simulateResiduals(M6.4), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M6.4,re.form = NA), resid) 
+plotQQunif(M6.4)
+
+# check collinearity on model without interactions
+M0 <- glmmTMB(Stems ~ Estuary + YSR + (1|Site/Combo), family = "nbinom2", data = mantree_grey_rest)
+check_collinearity(M0)
 ```
 
 Next, test the model.
@@ -1581,12 +1594,23 @@ anova(M6.3, M0)
 joint_tests(M6.3)
 
 emmeans(M6.3, ~ YSR, at = list(YSR = c(5,9,12,16,30,33)), type = "response")
+
+## use negative binomial model, consistent with restoration status model
+
+M6.4 <- glmmTMB(Stems ~ Estuary + YSR + (1|Site/Combo), family = "nbinom2", data = mantree_grey_rest)
+M0 <- glmmTMB(Stems ~ Estuary + (1|Site/Combo), family = "nbinom2", data = mantree_grey_rest)
+
+anova(M6.4, M0)
+
+joint_tests(M6.4)
+
+emmeans(M6.4, ~ YSR, at = list(YSR = c(5,9,12,16,30,33)), type = "response")
 ```
 
 Finally, plot the results.
 
 ```{r Plot}
-emmip(M6.1, ~ YSR, at = list(YSR = c(5:33)), type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Number of stems")
+emmip(M6.4, ~ YSR, at = list(YSR = c(5:33)), type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Number of stems")
 ```
 
 ## 2f. Tree DBH
@@ -1776,6 +1800,16 @@ scatter.smooth(predict(M8.31,re.form = NA), resid)
 scatter.smooth(predict(M8.31,re.form = NA), abs(resid)) 
 plotQQunif(M8.31)
 # residuals plot fine but not great
+
+
+## use square root normal model, consistent with restoration status model
+
+M8.41 <- glmmTMB(sqrt(Height_m) ~ Estuary + poly(YSR,2) + (1|Site/Combo), family = "gaussian", data = mantree_grey_rest)
+
+resid <- residuals(simulateResiduals(M8.41), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M8.41,re.form = NA), resid) 
+scatter.smooth(predict(M8.41,re.form = NA), abs(resid)) 
+plotQQunif(M8.41)
 ```
 
 Next, test the model.
@@ -1824,12 +1858,35 @@ em
 plot(em)
 
 emmeans(M8.31, ~ YSR, at = list(YSR = c(5,9,12,16,30,33)), type = "response")
+
+
+
+## model consistent with restoration status model
+
+M8.41 <- glmmTMB(sqrt(Height_m) ~ Estuary + poly(YSR,2) + (1|Site/Combo), family = "gaussian", data = mantree_grey_rest)
+M <- glmmTMB(sqrt(Height_m) ~ Estuary + YSR + (1|Site/Combo), family = "gaussian", data = mantree_grey_rest)
+M0 <- glmmTMB(sqrt(Height_m) ~ Estuary + (1|Site/Combo), family = "gaussian", data = mantree_grey_rest)
+
+anova(M8.41,M0)
+anova(M,M8.41)
+
+joint_tests(M8.41)
+
+summary(M8.41)
+
+em <- emtrends(M8.41, var = "YSR")
+
+em
+
+plot(em)
+
+emmeans(M8.41, ~ YSR, at = list(YSR = c(5,9,12,16,30,33)), type = "response")
 ```
 
 Finally, plot the results.
 
 ```{r Plot}
-emmip(M8.31, ~ YSR, at = list(YSR = c(5:33)), type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Tree height") +
+emmip(M8.41, ~ YSR, at = list(YSR = c(5:33)), type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Tree height") +
   #geom_boxplot(data = mantree_grey_rest, aes(x = YSR, y = Height_m, group = YSR)) +
   ylim(0,12) +
   xlim(0,35)
@@ -2156,6 +2213,15 @@ M11.3 <- glmmTMB(sqrt(Pneu_dia_mm) ~ Estuary + poly(YSR, 2) + (1|Site/Combo/Subq
 resid <- residuals(simulateResiduals(M11.3), quantileFunction = qnorm, outlierValues = c(-7,7))
 scatter.smooth(predict(M11.3,re.form = NA), resid) 
 plotQQunif(M11.3)
+
+
+## make a log normal model, consistent with restoration status model
+
+M11.4 <- glmmTMB(log(Pneu_dia_mm) ~ Estuary + poly(YSR, 2) + (1|Site/Combo/Subquadrat), family = "gaussian", data = manq_rest)
+
+resid <- residuals(simulateResiduals(M11.4), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M11.4,re.form = NA), resid) 
+plotQQunif(M11.4)
 ```
 
 Next, test the model.
@@ -2181,6 +2247,20 @@ anova(M, M11.3)
 joint_tests(M11.3)
 
 emmeans(M11.3, ~ YSR, at = list(YSR = c(5,9,12,16,30,33)), type = "response")
+
+
+# log normal model, consistent with restoration status model
+
+M11.4 <- glmmTMB(log(Pneu_dia_mm) ~ Estuary + poly(YSR, 2) + (1|Site/Combo/Subquadrat), family = "gaussian", data = manq_rest)
+M <- glmmTMB(log(Pneu_dia_mm) ~ Estuary + YSR + (1|Site/Combo/Subquadrat), family = "gaussian", data = manq_rest)
+M0 <- glmmTMB(log(Pneu_dia_mm) ~ Estuary + (1|Site/Combo/Subquadrat), family = "gaussian", data = manq_rest)
+
+anova(M11.4,M0)
+anova(M, M11.4)
+
+joint_tests(M11.4)
+
+emmeans(M11.4, ~ YSR, at = list(YSR = c(5,9,12,16,30,33)), type = "response")
 ```
 
 Finally, plot the results.
@@ -2190,6 +2270,9 @@ emmip(M11.2, ~ YSR, at = list(YSR = c(5:33)), type = "response", CIs = TRUE, eng
   geom_boxplot(data = manq_rest, aes(x = YSR, y = Pneu_dia_mm, group = YSR))
 
 emmip(M11.3, ~ YSR, at = list(YSR = c(5:33)), type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Pneumatophore diameter (mm)") +
+  geom_boxplot(data = manq_rest, aes(x = YSR, y = Pneu_dia_mm, group = YSR))
+
+emmip(M11.4, ~ YSR, at = list(YSR = c(5:33)), type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Pneumatophore diameter (mm)") +
   geom_boxplot(data = manq_rest, aes(x = YSR, y = Pneu_dia_mm, group = YSR))
 ```
 
@@ -2386,6 +2469,16 @@ M15.1 <- glmmTMB(log(Area) ~ Estuary + Tree_sapling + YSR + (1|Site/Combo/Tree),
 resid <- residuals(simulateResiduals(M15.1), quantileFunction = qnorm, outlierValues = c(-7,7))
 scatter.smooth(predict(M15.1,re.form = NA), resid) 
 plotQQunif(M15.1)
+
+
+
+# use normal model (non-transformed), consistent with restoration status model
+
+M15.2 <- glmmTMB(Area ~ Estuary + Tree_sapling + YSR + (1|Site/Combo/Tree), family = "gaussian", data = manleaf_wide_grey_rest)
+
+resid <- residuals(simulateResiduals(M15.2), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M15.2,re.form = NA), resid) 
+plotQQunif(M15.2)
 ```
 
 Next, test the model.
@@ -2409,6 +2502,20 @@ joint_tests(M15.1)
 summary(M15.1)
 
 emmeans(M15.1, ~ YSR, at = list(YSR = c(5,9,12,16,30,33)), type = "response")
+
+
+# normal model, consistent with restoration status model
+
+M15.2 <- glmmTMB(Area ~ Estuary + Tree_sapling + YSR + (1|Site/Combo/Tree), family = "gaussian", data = manleaf_wide_grey_rest)
+M <- glmmTMB(Area ~ Estuary + Tree_sapling + (1|Site/Combo/Tree), family = "gaussian", data = manleaf_wide_grey_rest)
+
+anova(M15.2,M)
+
+joint_tests(M15.2)
+
+summary(M15.2)
+
+emmeans(M15.2, ~ YSR, at = list(YSR = c(5,9,12,16,30,33)), type = "response")
 ```
 
 Finally, plot the results.
@@ -2419,6 +2526,8 @@ emmip(M15, ~ YSR | Elevation, at = list(YSR = c(6:33)), type = "response", CIs =
 emmip(M15, ~ YSR | Elevation, at = list(YSR = c(6:33), Elevation = c(-0.5,0,0.5,1)), type = "response", CIs = TRUE)
 
 emmip(M15.1, ~ YSR, at = list(YSR = c(6:33)), type = "response", CIs = TRUE)
+
+emmip(M15.2, ~ YSR, at = list(YSR = c(6:33)), type = "response", CIs = TRUE)
 
 ```
 
@@ -2483,6 +2592,21 @@ M16.3 <- glmmTMB(Herb_prop ~ Estuary + YSR + (1|Site/Combo/Tree), family = "twee
 resid <- residuals(simulateResiduals(M16.3), quantileFunction = qnorm, outlierValues = c(-7,7))
 scatter.smooth(predict(M16.3,re.form = NA), resid) 
 plotQQunif(M16.3)
+
+
+## use beta distribution model, consistent with restoration status model
+
+M16.4 <- glmmTMB(Herb_prop ~ Estuary + YSR + (1|Site/Combo/Tree), family = "beta_family", data = manleaf_wide_grey_rest_t) 
+
+resid <- residuals(simulateResiduals(M16.4), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M16.4,re.form = NA), resid) 
+scatter.smooth(predict(M16.4,re.form = NA), abs(resid)) 
+plotQQunif(M16.4)
+
+
+summary(M16.4)
+
+summary(manleaf_wide_grey_rest_t$Herb_prop)
 ```
 
 Next, test the model.
@@ -2504,12 +2628,28 @@ summary(M16.3)
 
 emmeans(M16.3, ~ YSR, at = list(YSR = c(5,9,12,16,30,33)), type = "response")
 emmeans(M16.3, ~ Estuary, type = "response")
+
+
+# beta model, consistent with restoration status model
+M16.4 <- glmmTMB(Herb_prop ~ Estuary + YSR + (1|Site/Combo/Tree), family = "beta_family", data = manleaf_wide_grey_rest_t) 
+M <- glmmTMB(Herb_prop ~ Estuary + (1|Site/Combo/Tree), family = "beta_family", data = manleaf_wide_grey_rest_t) 
+
+anova(M16.4,M)
+
+joint_tests(M16.4)
+
+summary(M16.4)
+
+emmeans(M16.4, ~ YSR, at = list(YSR = c(5,9,12,16,30,33)), type = "response")
+emmeans(M16.4, ~ Estuary, type = "response")
 ```
 
 Finally, plot the results.
 
 ```{r Plot}
 emmip(M16.3, ~ YSR, at = list(YSR = c(6:33)), type = "response", CIs = TRUE)
+
+emmip(M16.4, ~ YSR, at = list(YSR = c(6:33)), type = "response", CIs = TRUE)
 
 # restoring sites YSR
 m_herb_rest <- ggplot(manleaf_wide_grey_rest, aes(x=YSR, y=`Herb_%`, fill=Estuary, group = YSR)) +
@@ -4218,6 +4358,12 @@ check_collinearity(M0)
 # without elevation
 
 M31.5 <- glmmTMB(Herb_prop ~ Estuary + Tree_sapling + Species * rest_status + Estuary:rest_status + (1|Site/Combo/Tree), family = "beta_family", data = manleafandherb_nored)
+  
+resid <- residuals(simulateResiduals(M31.5), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M31.5,re.form = NA), resid) 
+plotQQunif(M31.5)
+
+M31.5 <- glmmTMB(Herb_prop ~ Estuary + Tree_sapling + Species * rest_status + Estuary:rest_status + (1|Site/Combo/Tree), family = "tweedie", data = manleafandherb_nored)
   
 resid <- residuals(simulateResiduals(M31.5), quantileFunction = qnorm, outlierValues = c(-7,7))
 scatter.smooth(predict(M31.5,re.form = NA), resid) 
