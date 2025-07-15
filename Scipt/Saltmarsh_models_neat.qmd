@@ -748,7 +748,8 @@ plotQQunif(M2) # great
 Mn <- glmmTMB(total_cover_prop_no1 ~ Elevation + DomSpeciesSuperSimp + YSR + (1|Site), data = salt_comm_rest_H, family = "beta_family")
 check_collinearity(Mn) # all low
 
-anova(M2,M1, M0)
+anova(M2,M1,M0)
+anova(M2, M1, M,M0)
 summary(M2)
 emmeans(M2, pairwise~DomSpeciesSuperSimp)
 
@@ -1111,13 +1112,13 @@ Next, plot the data.
 -   emmip for predicted values
 
 ```{r Plot}
-S_Bur_rest <- ggplot(salt_comm_rest_H, aes(x=YSR, y=(Burrows_0.5x0.5+0.01), group = YSR, fill = Estuary)) +
-  geom_hline(yintercept = mean(salt_comm_rest_H$Burrows_0.5x0.5, na.rm = TRUE), linetype = "dashed", linewidth = 1) +
+S_Bur_rest <- ggplot(salt_comm_rest, aes(x=YSR, y=(Burrows_0.5x0.5+0.01), group = YSR, fill = Estuary)) +
+  geom_hline(yintercept = mean(salt_comm_rest$Burrows_0.5x0.5, na.rm = TRUE), linetype = "dashed", linewidth = 1) +
   annotate(
     "rect",
     xmin = -Inf, xmax = Inf,  # Extend the rectangle across the entire x-axis
-    ymin = 2, 
-    ymax = 21,  # Set the y-range for the rectangle as the 95% confidence interval bounds
+    ymin = 1, 
+    ymax = 11,  # Set the y-range for the rectangle as the 95% confidence interval bounds
     alpha = 0.4,  # Set the transparency level
     fill = "grey"  # Set the fill color
   ) +
@@ -1138,8 +1139,8 @@ S_Bur_nat <- ggplot(salt_comm_nat, aes(x=Site, y=Burrows_0.5x0.5, fill=Estuary, 
   annotate(
     "rect",
     xmin = -Inf, xmax = Inf,  # Extend the rectangle across the entire x-axis
-    ymin = 4, 
-    ymax = 56,  # Set the y-range for the rectangle as the 95% confidence interval bounds
+    ymin = 2, 
+    ymax = 23,  # Set the y-range for the rectangle as the 95% confidence interval bounds
     alpha = 0.4,  # Set the transparency level
     fill = "grey"  # Set the fill color
   ) +
@@ -1550,7 +1551,7 @@ plotQQunif(M) # great
 
 M7.0 <- glmmTMB(log(Stem_ht_mm) ~ Species + DomSpeciesSuperSimp + Species:Elevation + Species:sp_prop + Species:YSR +  (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_ht)
 
-plot(predict(M7.0), residuals(M7)) # clumped but ok
+plot(predict(M7.0), residuals(M7.0)) # clumped but ok
 plotQQunif(M7.0) # great
 
 anova(M,M7.0) # M7.0 is better
@@ -2272,6 +2273,18 @@ scatter.smooth(predict(M, re.form = NA), resid)
 scatter.smooth(predict(M, re.form = NA), abs(resid))
 plotQQunif(M)
 
+M0 <- glmmTMB(sqrt(Stems/Quadrat_area) ~ Estuary + Species + DomSpeciesSuperSimp + Species:Elevation + Species:sp_prop + Species:rest_status +  (1|Site/Combo) + rr(Species+0|Combo, d = 1), family = "gaussian", data = stem_dens_unique_less)
+
+resid <- residuals(simulateResiduals(M0), quantileFunction = qnorm, outlierValues = c(-7,7))
+scatter.smooth(predict(M0, re.form = NA), resid)
+plotQQunif(M0)
+
+Mx <- glmmTMB(sqrt(Stems) ~ Estuary + Species + Elevation + sp_prop + rest_status +  (1|Site/Combo) + rr(Species+0|Combo, d = 1) + offset(log(Quadrat_area)), family = "gaussian", data = stem_dens_unique_less)
+check_collinearity(Mx) # all low
+
+
+
+
 M12 <- glmmTMB(Stems ~ Estuary + Species + DomSpeciesSuperSimp + Species:Elevation + Species:sp_prop + Species:rest_status + (1|Site/Combo) + rr(Species+0|Combo, d = 1) + offset(log(Quadrat_area)), family = "nbinom2", data = stem_dens_unique_less)
 
 resid <- residuals(simulateResiduals(M12), quantileFunction = qnorm, outlierValues = c(-7,7))
@@ -2280,13 +2293,7 @@ scatter.smooth(predict(M12, re.form = NA), abs(resid))
 plotQQunif(M12)
 ## use this one
 
-M0 <- glmmTMB(sqrt(Stems/Quadrat_area) ~ Estuary + Species + DomSpeciesSuperSimp + Species:Elevation + Species:sp_prop + Species:rest_status +  (1|Site/Combo) + rr(Species+0|Combo, d = 1), family = "gaussian", data = stem_dens_unique_less)
-
-resid <- residuals(simulateResiduals(M0), quantileFunction = qnorm, outlierValues = c(-7,7))
-scatter.smooth(predict(M0, re.form = NA), resid)
-plotQQunif(M0)
-
-Mx <- glmmTMB(sqrt(Stems) ~ Estuary + Species + Elevation + sp_prop + rest_status +  (1|Site/Combo) + rr(Species+0|Combo, d = 1) + offset(log(Quadrat_area)), family = "gaussian", data = stem_dens_unique_less)
+Mx <- glmmTMB(Stems ~ Estuary + Species + DomSpeciesSuperSimp + sp_prop + rest_status + (1|Site/Combo) + rr(Species+0|Combo, d = 1) + offset(log(Quadrat_area)), family = "nbinom2", data = stem_dens_unique_less)
 check_collinearity(Mx) # all low
 ```
 
