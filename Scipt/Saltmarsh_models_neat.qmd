@@ -7,42 +7,13 @@ editor: visual
 
 ## Saltmarsh functional traits modelling
 
-This code is for analysis of saltmarsh functional traits analysis, analysing for associations between functional traits and time since restoration and between restoring and natural sites.
+This code is for analysis of saltmarsh functional traits data, analysing for associations between functional traits and time since restoration and between restoring and natural sites.
 
 # 1. Set up
 
 First, **load packages**.
 
 ```{r Packages, echo = FALSE}
-#install.packages("readxl")
-#install.packages("tidyverse")
-#install.packages("lme4")
-#install.packages("MuMIn")
-#install.packages("car")
-#install.packages("performance")
-#install.packages("glmmTMB")
-#install.packages("bbmle")
-#install.packages("GLMMadaptive")
-#install.packages("ggeffects")
-#install.packages("emmeans")
-#install.packages("robustlmm")
-#install.packages("mvabund")
-#install.packages("plyr")
-#install.packages("ecostats")
-#install.packages("viridis")
-#install.packages("betareg")
-#install.packages("ggpubr")
-#install.packages("countreg", repos="http://R-Forge.R-project.org", type = "binary")
-#install.packages("statmod")
-#install.packages("lmerTest")
-#install.packages("sjPlot")
-#install.packages("DHARMa")
-#install.packages("MCMCglmm")
-#install.packages("ggbreak")
-#install.packages("multcomp")
-#install.packages("ggfortify")
-
-#library(plyr)
 library(readxl)
 library(tidyverse)
 library(lme4)
@@ -76,6 +47,8 @@ library(ggfortify)
 
 -   using setwd() to set the working directory where the data are stored
 
+    -   In this working directory, you should have the project file, and the subfolders "Data", "Script" and "Output"
+
 -   "salt" is the overall saltmarsh dataset
 
     -   creating a "Quadrat_area" column to use as an offset
@@ -93,6 +66,7 @@ library(ggfortify)
 -   "salt_comm_comp" is the dataset for saltmarsh community composition, laid out in an appropriate wide format for community composition analysis
 
 ```{r Data, echo = FALSE}
+# INSERT YOUR OWN WORKING DIRECTORY HERE
 setwd("C:/Users/z5204897/OneDrive - UNSW/Desktop/PhD/Data_analysis/Project/Functional_traits")
 
 salt <- read_excel("Data/Functional_traits_combined_data.xlsx", sheet = "Saltmarsh") %>% 
@@ -216,7 +190,7 @@ cleveland_plot <- function(vector,axislab){
 }
 ```
 
-Run this subset on all data for community-level variables, and on specific species individually for species- and stem-level variables so we can see if any measured observations from a species seem unlikely for that particular species.
+Run this function on all data for community-level variables, and on specific species individually for species- and stem-level variables so we can see if any measured observations from a species seem unlikely for that particular species.
 
 ```{r Outliers_allspecies}
 cleveland_plot(salt$`Total_cover_%`, "Total cover (%)") # left skewed, has outliers but values should be realistic
@@ -231,7 +205,7 @@ spor <- salt %>%
   filter(Species == "Sporobolus")
 cleveland_plot(spor$`Sp_cover_%`, "Species cover (%)") # somewhat left skewed but decent. No outliers
 cleveland_plot(spor$Stem_ht_mm, "Stem height (mm)") # there are only a few values with height >600. When investigating- this is realistic for each large height value. Overall the distribution is fairly evenly spread.
-cleveland_plot(spor$Stem_dia_mm, "Stem diameter (mm)") # right skewed. There are some very large values that need investigating - plant net doesn't state the regular stem diameter so don't exclude. They are little overestimates, and the 0.1mm measurements are likely too low, but should be OK and no reason to remove, so retain
+cleveland_plot(spor$Stem_dia_mm, "Stem diameter (mm)") # right skewed. There are some very large values that need investigating - plant net doesn't state the regular stem diameter, but >4mm seems unrealistic based on field experience, so exclude the two values >4mm. Also, the 0.1mm measurements are likely too low, but should be OK and no reason to remove, so retain
 cleveland_plot(spor$total_stems, "Stem density (number of stems)") # right skewed
 ```
 
@@ -292,7 +266,7 @@ salt[c(738:744), 20] <- NA # remove triglochin measurements with unrealistic ste
 salt[802,19] <- NA # remove triglochin measurement with unrealistic stem height 556mm
 salt[1271,19] <- NA # remove triglochin measurement with unrealistic stem height 860mm
 salt[112,20] <- NA # remove pneumatophore measurement with unrealistic diameter 1mm
-salt[c(862,917),20] <- NA # remove sporobolus measurements with unrealistic diameters > 4mm
+salt[c(862,947),20] <- NA # remove sporobolus measurements with unrealistic diameters > 4mm
 ```
 
 ### Prepare and subset dataframes
@@ -305,8 +279,6 @@ Create a "salt_comm" dataframe for community-level variables.
 
 -   Turn total cover into a proportion between 0 and 1 instead of between 0 and 100
 
-    -   include a tiny offset since it doesn't like values of exactly 1 - must be below 1
-
 ```{r Community}
 salt_comm <- salt %>% distinct(Combo, .keep_all = TRUE) 
 salt_comm <- salt_comm[,-c(11:20,22,26,27,33)] 
@@ -315,11 +287,7 @@ salt_comm <- salt_comm %>% mutate(total_cover_prop = `Total_cover_%`/100)
 
 Subset datasets:
 
--   salt_H for just Hunter estuary data
-
 -   salt_H_rest for just Hunter estuary restored data
-
--   salt_H_nat for just Hunter estuary natural data
 
 -   salt_comm_rest for just restored community-level data
 
@@ -338,21 +306,15 @@ Subset datasets:
 -   salt_comm_comp_H_nat for just Hunter estuary natural community composition data
 
 ```{r Subset}
-salt_H <- salt %>% subset(Estuary == "Hunter")
-
-salt_H_rest <- salt_H %>% subset(rest_status == 1)
-
-salt_H_nat <- salt_H %>% subset(rest_status == 0)
+salt_H_rest <- salt %>% subset(Estuary == "Hunter") %>% subset(rest_status == 1)
 
 salt_comm_rest <- salt_comm %>% subset(salt_comm$rest_status == 1)
 salt_comm_nat <- salt_comm %>% subset(salt_comm$rest_status == 0)
 salt_comm_rest_H <- salt_comm_rest %>% subset(salt_comm_rest$Estuary == "Hunter")
 salt_comm_nat_H <- salt_comm_nat %>% subset(salt_comm_nat$Estuary == "Hunter")
-salt_comm_H <- salt_comm %>% subset(salt_comm$Estuary == "Hunter")
 
 salt_comm_comp_H <- salt_comm_comp %>% subset(Estuary == "Hunter")
 salt_comm_comp_H_res <- salt_comm_comp_H %>% subset(rest_status == "1")
-salt_comm_comp_H_nat <- salt_comm_comp_H %>% subset(rest_status == "0")
 ```
 
 ### Correlation checks
@@ -395,8 +357,6 @@ Before we create any of these models, let's inspect the data space we're working
 -   relationship between YSR and Elevation (numeric predictors)
     -   need to include YSR as a polynomial variable as the relationship doesn't look linear and the residuals graph has a trend without the polynomial variable
     -   model this relationship and test the model
-        -   residuals plot doesn't look great with untransformed data, so also try log and sqrt transformed data (offset as they can't take negatives)
-            -   transformed data don't look good. stick with original but need to try troubleshooting further
 
 ```{r Predictor_association}
 plot(salt_comm_rest_H$Elevation ~ salt_comm_rest_H$YSR)
@@ -486,7 +446,7 @@ emmip(M, ~YSR, at = list(YSR = c(5:33)), type = "response", CIs = TRUE) +
   xlim(0,35)
 ```
 
-Given that elevations are lower with lower YSRs and higher with higher YSRs, we don't have a complete dataspace so can't model across a complete dataspace (i.e. missing data for low elevation and high YSR and low YSR and high elevation). Therefore, probably safest not to include an interaction between Elevation and YSR as the interaction would only be able to interpreted in small sections of the data.
+Given that elevations are lower with lower YSRs and higher with higher YSRs, we don't have a complete dataspace so can't model across a complete dataspace (i.e. missing data for low elevation and high YSR and low YSR and high elevation). Therefore, probably safest not to include an interaction between Elevation and YSR in traits models as the interaction would only be able to interpreted in small sections of the data.
 
 ## 2a. Community composition
 
@@ -657,19 +617,26 @@ ggplot(data = salt_comm_comp_H_res_long, aes(x = as.factor(YSR), y = Percent_cov
 # print at 1500 x 1200
 
 
-salt_comm_comp_p <- salt_comm_comp %>% 
+# Hunter only PCA
+salt_comm_comp_H_p <- salt_comm_comp_H %>% 
   mutate(rest_status = case_when(
     rest_status == 1 ~ "Restored",
     rest_status == 0 ~ "Natural"
   ))
-spdata <- salt_comm_comp_p[,c(1,2,3,8,10,12)]
+spdata <- salt_comm_comp_H_p[,c(1,2,3,8,10,12)]
 pca_res <- prcomp(spdata, scale. = TRUE)
-autoplot(pca_res, data = salt_comm_comp, color = "YSR", size = 2,
+autoplot(pca_res, data = salt_comm_comp_H, color = "YSR", size = 2,
          loadings = TRUE, loadings.colour = 'black',
-         loadings.label = TRUE, loadings.label.size = 3, loadings.label.color = 'black') +
+         loadings.label = TRUE, loadings.label.size = 6, loadings.label.color = 'black',
+         loadings.label.hjust = 0, loadings.label.vjust = -0.5) +
   theme_classic() +
+  theme(axis.text = element_text(size = 20),
+          axis.title = element_text(size = 24),
+        legend.title = element_text(size = 20),
+        legend.text = element_text(size = 18)) +
   scale_color_viridis(begin = 0.1, end = 0.8, option = "D")
 
+#ggsave("C:/Users/z5204897/OneDrive - UNSW/Desktop/PhD/Data_analysis/Project/Functional_traits/Output/Saltmarsh_comm_comp.jpg", width = 2400, height = 1500, units = "px")
 ```
 
 ## 2b. Total cover
@@ -710,6 +677,9 @@ ggplot(data = salt_comm_rest_H, aes(x = YSR, y = Elevation, group = DomSpeciesSu
   facet_wrap(~DomSpeciesSuperSimp)
 
 salt_comm_rest_H$total_cover_prop_no1 <- salt_comm_rest_H$total_cover_prop - 0.0001
+
+# Proportion of each Dominant species
+salt_comm_rest_H %>% group_by(DomSpeciesSuperSimp) %>% summarise(n = n()) %>% ungroup()
 ```
 
 Next, create a model.
@@ -772,9 +742,6 @@ em2 <- emmeans(M2, ~ Elevation, at = list(Elevation = c(-0.2,0,0.2,0.4,0.6,0.8))
 em2
 
 plot(em2)
-
-
-#M2 <- glmmTMB(total_cover_prop_no1 ~ poly(Elevation,2) + DomSpeciesSuperSimp * poly(YSR,2) + (1|Site), data = salt_comm_rest_H, family = "beta_family", contrasts = list(DomSpeciesSuperSimp = "contr.sum"))
 ```
 
 Now, create some plots.
@@ -787,7 +754,7 @@ Now, create some plots.
 
 -   predicted results
 
--   **not sure geom_smooth works for emmip - it's making the same line but not sure we can trust the confidence intervals. Want some way of making smoothed CIs though!**
+-   not sure geom_smooth works for emmip - it's making the same line but not sure we can trust the confidence intervals. Want some way of making smoothed CIs though (didn't use this for paper)
 
 ```{r Plot}
 S_Cov_rest <- ggplot(salt_comm_rest_H, aes(x=YSR, y=total_cover_prop*100, group = YSR, fill = Estuary)) +
@@ -910,7 +877,7 @@ S_Cov_rest2 <- ggplot(salt_comm_rest_H, aes(x=YSR, y=total_cover_prop*100, group
     theme(legend.position = "none",
           axis.text = element_text(size = 36),
           axis.title = element_text(size = 36),
-          plot.title = element_text(size = 48), hjust = 0.5) +
+          plot.title = element_text(size = 48)) +
   xlab("Years since restoration") +
   ylab("Saltmarsh cover (%)") +
   ggtitle("Saltmarsh cover") +
@@ -918,96 +885,7 @@ S_Cov_rest2 <- ggplot(salt_comm_rest_H, aes(x=YSR, y=total_cover_prop*100, group
   ylim(0,100) 
 S_Cov_rest2
 
-ggsave("C:/Users/z5204897/OneDrive - UNSW/Desktop/PhD/Data_analysis/Project/Functional_traits/Output/Saltmarsh_cover_poster.jpg", width = 2400, height = 2400, units = "px")
-```
-
-Accounting for elevation relationships:
-
--   The current model shows decreasing trends with YSR when controlling for elevation, because it models that at any given elevation, total cover decreases with increasing elevation, and with time since restoration, elevation increases.
-
--   However, there is an interaction between the random effect of Site and elevation that we need to account for, as relationships between elevation and total cover differ within and between sites
-
--   Plot relationships between elevation and total cover at each site, and across sites.
-
-```{r Within_between_model}
-
-# Elevation relationships
-ggplot(salt_comm_rest_H , aes( Elevation,total_cover_prop))+geom_jitter()+facet_wrap(~Site)
-
-#Here we calculate the mean elevation per site, and also, the deviation within a site from the site mean.  
-salt_comm_rest_H  = salt_comm_rest_H  %>%
-  group_by(Site) %>%
-  summarise( site_mean_elev = mean(Elevation)) %>%
-  right_join(salt_comm_rest_H ) %>%
-  mutate( site_within_elev = Elevation - site_mean_elev)
-
-ggplot(salt_comm_rest_H , aes( site_mean_elev,total_cover_prop))+geom_jitter()
-
-#MODEL
-M_WB <- glmmTMB(total_cover_prop_no1 ~ site_mean_elev + site_within_elev + DomSpeciesSuperSimp*YSR + (1|Site), data = salt_comm_rest_H, family = beta_family(link = "logit"))
-
-#MODEL LINES
-em <- emmeans(M_WB, ~ YSR|DomSpeciesSuperSimp* site_within_elev*site_mean_elev, at = list(YSR = c(6,11,12,16,30,33),site_within_elev = 0,site_mean_elev= 0.32 ), type= "response")
-
-# Also try with polynomial YSR term
-M_WB2 <- glmmTMB(total_cover_prop_no1 ~ site_mean_elev + site_within_elev + DomSpeciesSuperSimp + poly(YSR,2) + DomSpeciesSuperSimp:YSR + (1|Site), data = salt_comm_rest_H, family = "beta_family")
-
-anova(M_WB,M_WB2) # non significant so therefore use simpler model with linear YSR term
-
-# model assumptions
-resid <- residuals(simulateResiduals(M_WB), quantileFunction = qnorm, outlierValues = c(-7,7))
-scatter.smooth(predict(M_WB,re.form = NA), resid) 
-plotQQunif(M_WB)
-# all good
-
-# Test model
-M <- glmmTMB(total_cover_prop_no1 ~ site_mean_elev + site_within_elev + DomSpeciesSuperSimp + YSR + (1|Site), data = salt_comm_rest_H, family = "beta_family")
-M0 <- glmmTMB(total_cover_prop_no1 ~ site_mean_elev + site_within_elev + DomSpeciesSuperSimp + (1|Site), data = salt_comm_rest_H, family = "beta_family")
-anova(M_WB, M, M0)
-
-#PLOT
-S_Cov_rest2 <- ggplot(data = salt_comm_rest_H, aes(x = YSR, y = total_cover_prop * 100, group = DomSpeciesSuperSimp, color = DomSpeciesSuperSimp)) +
-  geom_jitter() +
-  facet_wrap(~DomSpeciesSuperSimp)+
-  geom_point(data = data.frame(em), aes(y = response * 100), group = NA, colour = "black", shape = 7, size = 3)+
-  geom_line(data = data.frame(em), aes(y = response * 100), group = 1, colour = "black", linewidth = 1) +
-  scale_y_continuous(trans = "log1p", limits = c(5,102)) +
-  theme_bw() +
-  theme(legend.position = "none") +
-  xlab("Years since restoration") +
-  ylab("Saltmarsh cover (%)") + 
-  scale_color_viridis(discrete = TRUE, begin = 0.3, end = 0.8, option = "A")
-S_Cov_rest2
-
-# natural data
-S_Cov_nat2 <- ggplot(salt_comm_nat, aes(x=Site, y=`Total_cover_%`, fill=DomSpeciesSuperSimp, group = Site)) +
-    geom_boxplot(width=0.4) +
-  geom_jitter(width = 0.1, height = 0)  +
-    scale_fill_viridis(discrete = TRUE, begin = 0.3, end = 0.8, option = "A") +
-    theme_bw() +
-    #guides(fill = guide_legend(position = "inside")) +
-    theme(#legend.position.inside = c(0.8,0.2),
-          legend.position = "none",
-          #axis.text = element_text(size = 32),
-          axis.text.y = element_blank(), # remove y axis labels when combining plot with restored
-          #axis.title = element_text(size = 36)
-          ) +
-  xlab("Natural site") +
-  ylab("")  +
-  #labs(fill = "Dominant Species") +
-  scale_y_continuous(trans = "log1p", limits = c(5,102)) +
-  facet_wrap(~DomSpeciesSuperSimp)
-S_Cov_nat2
-
-ggarrange(S_Cov_rest2, S_Cov_nat2, ncol =2,nrow=1,widths = c(2,1)) 
-
-# predicted cover using within-between model
-
-em1 <- emmip(M_WB, ~ YSR, at = list(YSR = c(6,10,15,20,25,30,33)), type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Predicted proportion cover") +
-  geom_jitter(aes(x = YSR, y = total_cover_prop_no1), data = salt_comm_rest_H) +
-  theme_bw()
-
-em1
+#ggsave("C:/Users/z5204897/OneDrive - UNSW/Desktop/PhD/Data_analysis/Project/Functional_traits/Output/Saltmarsh_cover_poster.jpg", width = 2400, height = 2400, units = "px")
 ```
 
 ## 2c. Burrows
@@ -1162,7 +1040,7 @@ S_Bur_nat
 
 ggarrange(S_Bur_rest,S_Bur_nat,ncol =2,nrow=1,widths = c(2,1))
 
-ggsave("C:/Users/z5204897/OneDrive - UNSW/Desktop/PhD/Data_analysis/Project/Functional_traits/Output/Saltmarsh_burrows_grey.jpg", width = 2400, height = 1500, units = "px")
+#ggsave("C:/Users/z5204897/OneDrive - UNSW/Desktop/PhD/Data_analysis/Project/Functional_traits/Output/Saltmarsh_burrows_grey.jpg", width = 2400, height = 1500, units = "px")
 
 emmip(M3, ~ YSR, at = list(YSR = c(6:33)), type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Number of burrows") +
   geom_jitter(aes(x = YSR, y = Burrows_0.5x0.5), data = salt_comm_rest_H) +
@@ -1199,7 +1077,7 @@ S_Bur_rest2 <- ggplot(salt_comm_rest_H, aes(x=YSR, y=(Burrows_0.5x0.5+0.01), gro
   xlim(0,35) 
 S_Bur_rest2
 
-ggsave("C:/Users/z5204897/OneDrive - UNSW/Desktop/PhD/Data_analysis/Project/Functional_traits/Output/Saltmarsh_burrows_poster.jpg", width = 2400, height = 2400, units = "px")
+#ggsave("C:/Users/z5204897/OneDrive - UNSW/Desktop/PhD/Data_analysis/Project/Functional_traits/Output/Saltmarsh_burrows_poster.jpg", width = 2400, height = 2400, units = "px")
 ```
 
 ## 2d. Stem density
@@ -1268,6 +1146,8 @@ Create a model:
 
 -   The data are count data, so use either a poisson or negative binomial model.
 
+    -   negative binomial looks slightly better, so use that
+
 -   We are interested in how stem densities change for each species considering all other factors, so create interactions with as many factors as possible (take factors outside of the brackets if the model doesn't run with them inside).
 
 -   Stem densities of each species in a quadrat are correlated, so include a reduced rank correlation structure for this
@@ -1309,7 +1189,7 @@ Generate model results:
 
 -   summary for estimates of differences between groups
 
--   emtrends for the linear rate of change for each species and confidence intervals **(can I include an offset here?)**
+-   emtrends for the linear rate of change for each species and confidence intervals
 
 -   ref_grid to understand the mean values of each variable, including the offset, included in the model
 
@@ -1334,7 +1214,7 @@ ref_grid(M5)
 
 Now, plot the results.
 
--   **Need to make sure plot is for total stems not stems without offset**
+-   Make sure plots are for total stems, not stems without offset (as below - either stems with offset or total stems)
 
 ```{r Plot}
 emmip(M5, ~ YSR | Species, at = list(YSR = c(6:33)), type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Number of stems", offset = log(10000)) +
@@ -1387,9 +1267,7 @@ Next, create a model:
 
 -   Including quadrat (Combo) as a random factor
 
--   Try a model with raw data and a model with square root transformed data
-
-    -   the former only runs with Elevation in the brackets while the latter only runs when it's outside the bracket, so that's why they differ slightly
+-   Use log transformation, to be consistent with the restoration status stem diameter model
 
 Check assumptions
 
@@ -1400,38 +1278,22 @@ Check assumptions
 -   check_collinearity for predictor collinearity on model without interactions
 
 ```{r Model_building}
-M <- glmmTMB(Stem_dia_mm ~ Species + DomSpeciesSuperSimp + Species:Elevation + Species:sp_prop + Species:YSR + (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_dia)
-
-plot(predict(M, re.form = NA), residuals(M)) # ok but clumped
-plotQQunif(M) # ok but not great
-
-M6.0 <- glmmTMB(sqrt(Stem_dia_mm) ~ Species + DomSpeciesSuperSimp + Species:Elevation + Species:sp_prop + Species:YSR + (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_dia)
-
-plot(predict(M6.0, re.form = NA), residuals(M6.0)) # looks ok
-plotQQunif(M6.0) # not great but better than M - but these models are robust to deviations from normality for this sample size so it's totally fine.
-
-M0 <- glmmTMB(sqrt(Stem_dia_mm) ~ DomSpeciesSuperSimp + Species + Elevation + sp_prop + YSR + (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_dia)
-
-check_collinearity(M0) # all low
-
-anova(M6.0, M) # no difference, but M6.0 looks better
-
-
-
-### create a new model with log normal distribution, consistent with restoration status model
 
 M6 <- glmmTMB(log(Stem_dia_mm) ~ Species + DomSpeciesSuperSimp + Species:Elevation + Species:sp_prop + Species:YSR + (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_dia)
 
-plot(predict(M6, re.form = NA), residuals(M6)) # looks ok
-plotQQunif(M6)
+plot(predict(M6, re.form = NA), residuals(M6)) # clumped but ok
+plotQQunif(M6) # not great but acceptable as normality is not that important here
 
 # check collinearity
-M0 <- glmmTMB(log(Stem_dia_mm) ~ DomSpeciesSuperSimp + Species + Elevation + sp_prop + YSR + (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_dia)
+M0 <- glmmTMB(log(Stem_dia_mm) ~ DomSpeciesSuperSimp + Species + Elevation + sp_prop + YSR +  rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_dia)
 
-check_collinearity(M0) # all low
+check_collinearity(M0)
+
 ```
 
 Test model:
+
+-   scale Elevation and sp_prop, as the model does not run properly (null convergence) without scaling these predictors.
 
 -   joint_tests for model testing
 
@@ -1440,30 +1302,10 @@ Test model:
 -   emmeans for parameter estimates
 
 ```{r Model_testing}
-M6.0 <- glmmTMB(sqrt(Stem_dia_mm) ~ Species + DomSpeciesSuperSimp + Species:Elevation + Species:sp_prop + Species:YSR + (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_dia)
 
-M0 <- glmmTMB(sqrt(Stem_dia_mm) ~ Species + DomSpeciesSuperSimp + Species:Elevation + Species:sp_prop  + (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_dia)
+M6 <- glmmTMB(log(Stem_dia_mm) ~ Species + DomSpeciesSuperSimp + Species:scale(Elevation) + Species:scale(sp_prop) + Species:YSR + (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_dia)
 
-anova(M0, M6.0)
-
-summary(M6.0)
-
-em <- emtrends(M6.0, var = "YSR", specs = ~Species)
-
-em
-
-plot(em)
-
-emmeans(M, ~ YSR, at = list(YSR = c(6,11,12,16,30,33)), type = "response")
-
-emmeans(M6.0, ~ YSR | Species, at = list(YSR = c(6,11,12,16,30,33)), type = "response")
-
-
-## with restoration-status consistent model
-
-M6 <- glmmTMB(log(Stem_dia_mm+0.2) ~ Species + DomSpeciesSuperSimp + Species:Elevation + Species:sp_prop + Species:YSR + (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_dia)
-
-M0 <- glmmTMB(log(Stem_dia_mm+0.2) ~ Species + DomSpeciesSuperSimp + Species:Elevation + Species:sp_prop  + (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_dia)
+M0 <- glmmTMB(log(Stem_dia_mm) ~ Species + DomSpeciesSuperSimp + Species:scale(Elevation) + Species:scale(sp_prop)  + (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_dia)
 
 anova(M0, M6)
 
@@ -1476,6 +1318,7 @@ em
 plot(em)
 
 emmeans(M6, ~ YSR | Species, at = list(YSR = c(6,11,12,16,30,33)), type = "response")
+
 ```
 
 Plot:
@@ -1525,11 +1368,9 @@ plot(salt_H_rest_stems_ht$Stem_ht_mm ~ salt_H_rest_stems_ht$Elevation) # not cle
 
 Now, build a model:
 
--   Try log-transformed data as raw data are slightly right-skewed
+-   Use square-root transformed data to be consistent with the stem height restoration status model
 
-    -   log-transformed explains more variance so use that
-
--   We are interested in how stem heights change for each species considering all other factors, so create interactions with as many factors as possible (take factors outside of the brackets if the model doesn't run with them inside).
+-   We are interested in how stem heights change for each species considering all other factors, so create interactions with as many factors as possible
 
 -   Stem heights of each species in a quadrat might be correlated, so include a reduced rank correlation structure for this
 
@@ -1544,24 +1385,6 @@ Check assumptions
 -   check_collinearity for collinearity between predictors on a model without interactions
 
 ```{r Model_building}
-M <- glmmTMB(Stem_ht_mm ~ Species + DomSpeciesSuperSimp + Species:Elevation + Species:sp_prop + Species:YSR + (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_ht)
-
-plot(predict(M), residuals(M)) # clumped but ok
-plotQQunif(M) # great
-
-M7.0 <- glmmTMB(log(Stem_ht_mm) ~ Species + DomSpeciesSuperSimp + Species:Elevation + Species:sp_prop + Species:YSR +  (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_ht)
-
-plot(predict(M7.0), residuals(M7.0)) # clumped but ok
-plotQQunif(M7.0) # great
-
-anova(M,M7.0) # M7.0 is better
-
-M0 <- glmmTMB(log(Stem_ht_mm) ~ DomSpeciesSuperSimp + Species + Elevation + sp_prop + YSR +  (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_ht) 
-
-check_collinearity(M0) # all low
-
-
-### create a model that's consistent with restoration status model - square root normal
 
 M7 <- glmmTMB(sqrt(Stem_ht_mm) ~ Species + DomSpeciesSuperSimp + Species:Elevation + Species:sp_prop + Species:YSR +  (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_ht)
 
@@ -1582,22 +1405,6 @@ Generate model results:
 -   emtrends for parameter estimates
 
 ```{r Model_testing}
-M7.0 <- glmmTMB(log(Stem_ht_mm) ~ Species + DomSpeciesSuperSimp + Species:Elevation + Species:sp_prop + Species:YSR +  (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_ht)
-M0 <- glmmTMB(log(Stem_ht_mm) ~ Species + DomSpeciesSuperSimp + Species:Elevation + Species:sp_prop + (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_ht)
-
-anova(M7.0, M0)
-summary(M7.0)
-
-em <- emtrends(M7.0, var = "YSR", specs = ~Species, type = "response")
-
-em
-
-plot(em)
-
-emmeans(M7.0, ~ YSR | Species, at = list(YSR = c(6,11,12,16,30,33)), type = "response")
-
-
-## with model that's consistent with restoration status model
 
 M7 <- glmmTMB(sqrt(Stem_ht_mm) ~ Species + DomSpeciesSuperSimp + Species:Elevation + Species:sp_prop + Species:YSR +  (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_ht)
 M0 <- glmmTMB(sqrt(Stem_ht_mm) ~ Species + DomSpeciesSuperSimp + Species:Elevation + Species:sp_prop + (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_H_rest_stems_ht)
@@ -1744,8 +1551,6 @@ Create a model:
 
 -   Including quadrat (Combo) as a random factor
 
--   **Justify contrasts = list(reprod_type = "contr.sum")**
-
 Check model assumptions
 
 -   mean-variance relationship using resid and scatter.smooth
@@ -1768,7 +1573,7 @@ check_collinearity(M0) # all low
 
 Generate model results:
 
--   anova to test importance of YSR \* Species \* reprod_type, YSR \* Species and YSR by comparing with three null models (M1, M, M0)
+-   anova to test importance of YSR \* Species \* reprod_type and YSR by comparing with two null models (M, M0)
 
 -   summary for estimates of differences between groups
 
@@ -1800,8 +1605,6 @@ Plot
 -   first calculate raw average proportion of quadrats at each site with seeds or flowers for each species of interest
 
 -   emmip for predicted values + add raw averages
-
--   boxplot and jitter for raw values (**needs work**)
 
 ```{r Plot}
 reprod_proportions <- reprod_long %>% 
@@ -1986,8 +1789,6 @@ k <- emtrends(M9, var = "rest_status", ~Species, type = "response")
 k
 plot(k) 
 
-#emmip(M9, ~ Elevation | Species, at = list(Elevation = c(-0.5,-0.4,-0.3,-0.2,-0.1,0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1)), type = "response", CIs = TRUE, engine = "ggplot", xlab = "Elevation", ylab = "Predicted proportion cover") +
-  #geom_jitter(data = salt_comm_comp_long_less, aes(x = Elevation, y = Sp_cover_prop))
 
 ggplot(data = salt_comm_comp_long_less, aes(x = Species, y = Sp_cover + 0.0001, fill = as.factor(rest_status))) +
   geom_boxplot() +
@@ -2001,12 +1802,6 @@ ggplot(data = salt_comm_comp_long_less, aes(x = Species, y = Sp_cover + 0.0001, 
   xlab("Species") +
   ylab("Species percent cover") 
 
-ggplot(data = salt_comm_comp_long_less, aes(x = Elevation, y = Sp_cover + 0.0001, fill = Species)) +
-  geom_smooth(method = "lm") +
-  geom_jitter() +
-  ylab("Species cover (%)") +
-  theme_bw() +
-  facet_wrap(~Species, scales = "free")
 ```
 
 ## 3b. Total cover
@@ -2145,9 +1940,7 @@ Next, create a model:
 
 -   include Site as a random factor
 
--   poisson distribution because it's count data
-
--   try both a non-zero-inflated and a zero-inflated poisson model and negative binomial model
+-   try both a non-zero-inflated and a zero-inflated poisson model and negative binomial model, as it's count data
 
     -   use negative binomial model
 
@@ -2251,7 +2044,9 @@ cor(stem_dens_unique_less$total_stems, stem_dens_unique_less$sp_prop)
 
 Next, create a model:
 
--   The data are count data, so first try poisson or negative binomial models. If these don't meet assumptions, the square-root transform above seems to make the data approximate a normal distribution, so try a gaussian model with sqrt(Stems) as the dependent variable.
+-   The data are count data, so try poisson or negative binomial models.
+
+    -   negative binomial looks better, so use that
 
 -   We expect stem density changes with Species, and that elevation and restoration status may impact each species differently. So include these terms in interaction with Species.
 
@@ -2273,17 +2068,6 @@ scatter.smooth(predict(M, re.form = NA), resid)
 scatter.smooth(predict(M, re.form = NA), abs(resid))
 plotQQunif(M)
 
-M0 <- glmmTMB(sqrt(Stems/Quadrat_area) ~ Estuary + Species + DomSpeciesSuperSimp + Species:Elevation + Species:sp_prop + Species:rest_status +  (1|Site/Combo) + rr(Species+0|Combo, d = 1), family = "gaussian", data = stem_dens_unique_less)
-
-resid <- residuals(simulateResiduals(M0), quantileFunction = qnorm, outlierValues = c(-7,7))
-scatter.smooth(predict(M0, re.form = NA), resid)
-plotQQunif(M0)
-
-Mx <- glmmTMB(sqrt(Stems) ~ Estuary + Species + Elevation + sp_prop + rest_status +  (1|Site/Combo) + rr(Species+0|Combo, d = 1) + offset(log(Quadrat_area)), family = "gaussian", data = stem_dens_unique_less)
-check_collinearity(Mx) # all low
-
-
-
 
 M12 <- glmmTMB(Stems ~ Estuary + Species + DomSpeciesSuperSimp + Species:Elevation + Species:sp_prop + Species:rest_status + (1|Site/Combo) + rr(Species+0|Combo, d = 1) + offset(log(Quadrat_area)), family = "nbinom2", data = stem_dens_unique_less)
 
@@ -2297,6 +2081,8 @@ Mx <- glmmTMB(Stems ~ Estuary + Species + DomSpeciesSuperSimp + sp_prop + rest_s
 check_collinearity(Mx) # all low
 ```
 
+Note, the negative binomial QQ plot has a small reverse fan shape. This suggests lower variability with higher values. The main impact of this is lack of power and since it doesn't inflate type 1 error rate, we considered it to be fine.
+
 Next, test the model.
 
 -   test model by comparing it to null models without the Species\*rest_status interaction (M) and without rest_status altogether (M0) using anova
@@ -2304,19 +2090,6 @@ Next, test the model.
 -   calculate parameter estimates using summary and emmeans
 
 ```{r Model_test}
-M12 <- glmmTMB(sqrt(Stems) ~ Estuary + Species + DomSpeciesSuperSimp + Species:Elevation + Species:sp_prop + Species:rest_status +  (1|Site/Combo) + rr(Species+0|Combo, d = 1) + offset(log(Quadrat_area)), family = "gaussian", data = stem_dens_unique_less)
-
-M <- glmmTMB(sqrt(Stems) ~ Estuary + Species + DomSpeciesSuperSimp + Species:Elevation + Species:sp_prop + (1|Site/Combo) + rr(Species+0|Combo, d = 1) + offset(log(Quadrat_area)), family = "gaussian", data = stem_dens_unique_less)
-
-anova(M12,M)
-
-
-joint_tests(M12)
-emmeans(M12, ~rest_status | Species, type = "response", offset = log(10000))
-summary(M12)
-
-
-## use negative bimomial model
 
 M12 <- glmmTMB(Stems ~ Estuary + Species + DomSpeciesSuperSimp + Species:Elevation + Species:sp_prop + Species:rest_status + (1|Site/Combo) + rr(Species+0|Combo, d = 1) + offset(log(Quadrat_area)), family = "nbinom2", data = stem_dens_unique_less)
 
@@ -2383,7 +2156,9 @@ ggplot(salt_less, aes(x = Elevation, y = Stem_dia_mm)) +
 
 Next, create a model:
 
--   log-transform the dependent variable as that meant it approximated normal
+-   continuous data, so gaussian model
+
+-   log-transform the dependent variable as that meant residuals looked better
 
 -   as we expect each species to have different responses, include interactions between Species and Elevation, species proportion and restoration status
 
@@ -2393,8 +2168,6 @@ Next, create a model:
 
 -   include a reduced rank correlation matrix to account for measurements in the same quadrat not being independent
 
--   gaussian distribution **(alternative is Gamma with log-link, but residuals look almost identical)**
-
 ```{r Model_create}
 M13 <- glmmTMB(log(Stem_dia_mm) ~ Estuary + Species + DomSpeciesSuperSimp + Species:Elevation + Species:sp_prop + Species:rest_status +  (1|Site/Combo) + rr(Species+0|Combo, d = 2), family = "gaussian", data = salt_less)
 
@@ -2402,6 +2175,7 @@ resid <- residuals(simulateResiduals(M13), quantileFunction = qnorm, outlierValu
 scatter.smooth(predict(M13, re.form = NA), resid) 
 plotQQunif(M13) 
 scatter.smooth(predict(M13, re.form = NA), abs(resid))
+
 ```
 
 Next, test the model:
@@ -2506,11 +2280,6 @@ emmeans(M14, ~ rest_status, type = "response")
 emmeans(M14, ~ rest_status | Species, type = "response")
 ```
 
-Finally, plot the data.
-
-```{r Plot}
-```
-
 ## 3g. Reproduction
 
 First, prepare the data.
@@ -2524,8 +2293,6 @@ First, prepare the data.
 -   convert to long format with one row for reproduction type and another for presence/absence
 
 -   subset for only flowers and seeds because there are not enough bud data and remove NAs
-
--   also similarly make a dataset for unique sporobolus but retain the qualitative values here and recode as an ordinal categorical variable with no \< very few \< few \< some \< lots
 
 ```{r Prepare}
 reprod <- salt[,c(5,6,7,11,16:18,24,25,28,30:34)]
@@ -2552,16 +2319,6 @@ reprod_all_long <- reprod_all_long %>% subset(!is.na(Reproduction)) %>%
   subset(reprod_type %in% c("Flowers", "Seeds"))
 
 reprod_all_long_H <- reprod_all_long %>% subset(Estuary == "Hunter") 
-
-reprod_spor <- salt[,c(5,6,7,11,18,24,25,28,30:34)] %>% 
-  subset(Species == "Sporobolus") %>% 
-  mutate(unique = factor(interaction(Combo, Species, sep = ":")))
-
-reprod_spor_unique <- reprod_spor %>% 
-  distinct(unique, .keep_all = TRUE) %>% 
-  subset(!is.na(Seeds))
-
-reprod_spor_unique$Seeds <- factor(reprod_spor_unique$Seeds, order = TRUE, levels = c("No", "Very few", "Few", "Some", "Lots"))
 ```
 
 Next, explore the data.
@@ -2591,14 +2348,6 @@ reprod_all_H_proportions %>%
   geom_point() +
   geom_errorbar() +
   facet_wrap(~Species)
-
-ggplot(reprod_spor_unique, aes(y = Seeds, fill = as.factor(rest_status))) +
-  geom_bar() +
-  facet_wrap(~Site)
-
-ggplot(reprod_spor_unique, aes(y = Seeds, fill = as.factor(rest_status))) +
-  geom_bar() +
-  facet_wrap(~rest_status)
 ```
 
 Next, create a model:
@@ -2658,12 +2407,4 @@ reprod_proportions_H <- reprod_all_long_H %>%
 ggplot(aes(x = rest_status, y = avg, group = rest_status), data = reprod_proportions_H) +
   geom_boxplot() +
   facet_wrap(~reprod_type + Species)
-```
-
-P value adjustment
-
-```{r}
-salt_main_raw_p <- tibble(variable = c(),
-                         test = c(),
-                         pvalue = c())
 ```
