@@ -41,6 +41,7 @@ require(tweedie)
 library(glmmTMB)
 library(multcomp)
 library(ggfortify)
+library(here)
 ```
 
 ### Load data
@@ -66,10 +67,7 @@ library(ggfortify)
 -   "salt_comm_comp" is the dataset for saltmarsh community composition, laid out in an appropriate wide format for community composition analysis
 
 ```{r Data, echo = FALSE}
-# INSERT YOUR OWN WORKING DIRECTORY HERE
-setwd("C:/Users/z5204897/OneDrive - UNSW/Desktop/PhD/Data_analysis/Project/Functional_traits")
-
-salt <- read_excel("Data/Functional_traits_combined_data.xlsx", sheet = "Saltmarsh") %>% 
+salt <- read_excel(here("Data/Functional_traits_combined_data.xlsx"), sheet = "Saltmarsh") %>% 
   arrange(Date, Time) %>% 
   mutate(Quadrat_area = Quad_length_cm^2, 
     total_stems = round(Stems * 10000/Quad_length_cm^2), 
@@ -126,7 +124,7 @@ salt <- read_excel("Data/Functional_traits_combined_data.xlsx", sheet = "Saltmar
            Site == "DLW" ~ as.numeric("9") 
          ))  
 
-salt_comm_comp <- read_excel("Data/salt_comm_comp.xlsx", sheet = "alldata")
+salt_comm_comp <- read_excel(here("Data/salt_comm_comp.xlsx"), sheet = "alldata")
 salt_comm_comp$YSR <- as.numeric(salt_comm_comp$YSR)
 ```
 
@@ -440,7 +438,7 @@ S_Elev_nat
 ggarrange(S_Elev_rest,S_Elev_nat,ncol =2,nrow=1,widths = c(2,1))
 # print at 1500 x 800 for paper, 2400 x 800 for preso
 
-#ggsave("C:/Users/z5204897/OneDrive - UNSW/Desktop/PhD/Data_analysis/Project/Functional_traits/Output/Saltmarsh_elev_doc.jpg", width = 2400, height = 1500, units = "px")
+ggsave(here("Output/Saltmarsh_elev_doc.jpg"), width = 2400, height = 1500, units = "px")
 
 emmip(M, ~YSR, at = list(YSR = c(5:33)), type = "response", CIs = TRUE) +
   xlim(0,35)
@@ -636,7 +634,7 @@ autoplot(pca_res, data = salt_comm_comp_H, color = "YSR", size = 2,
         legend.text = element_text(size = 18)) +
   scale_color_viridis(begin = 0.1, end = 0.8, option = "D")
 
-#ggsave("C:/Users/z5204897/OneDrive - UNSW/Desktop/PhD/Data_analysis/Project/Functional_traits/Output/Saltmarsh_comm_comp.jpg", width = 2400, height = 1500, units = "px")
+ggsave(here("Output/Saltmarsh_comm_comp.jpg"), width = 2400, height = 1500, units = "px")
 ```
 
 ## 2b. Total cover
@@ -885,7 +883,7 @@ S_Cov_rest2 <- ggplot(salt_comm_rest_H, aes(x=YSR, y=total_cover_prop*100, group
   ylim(0,100) 
 S_Cov_rest2
 
-#ggsave("C:/Users/z5204897/OneDrive - UNSW/Desktop/PhD/Data_analysis/Project/Functional_traits/Output/Saltmarsh_cover_poster.jpg", width = 2400, height = 2400, units = "px")
+ggsave(here("Output/Saltmarsh_cover_poster.jpg"), width = 2400, height = 2400, units = "px")
 ```
 
 ## 2c. Burrows
@@ -1040,7 +1038,7 @@ S_Bur_nat
 
 ggarrange(S_Bur_rest,S_Bur_nat,ncol =2,nrow=1,widths = c(2,1))
 
-#ggsave("C:/Users/z5204897/OneDrive - UNSW/Desktop/PhD/Data_analysis/Project/Functional_traits/Output/Saltmarsh_burrows_grey.jpg", width = 2400, height = 1500, units = "px")
+ggsave(here("Output/Saltmarsh_burrows_grey.jpg"), width = 2400, height = 1500, units = "px")
 
 emmip(M3, ~ YSR, at = list(YSR = c(6:33)), type = "response", CIs = TRUE, engine = "ggplot", xlab = "Years since restoration", ylab = "Number of burrows") +
   geom_jitter(aes(x = YSR, y = Burrows_0.5x0.5), data = salt_comm_rest_H) +
@@ -1077,7 +1075,7 @@ S_Bur_rest2 <- ggplot(salt_comm_rest_H, aes(x=YSR, y=(Burrows_0.5x0.5+0.01), gro
   xlim(0,35) 
 S_Bur_rest2
 
-#ggsave("C:/Users/z5204897/OneDrive - UNSW/Desktop/PhD/Data_analysis/Project/Functional_traits/Output/Saltmarsh_burrows_poster.jpg", width = 2400, height = 2400, units = "px")
+ggsave(here("Output/Saltmarsh_burrows_poster.jpg"), width = 2400, height = 2400, units = "px")
 ```
 
 ## 2d. Stem density
